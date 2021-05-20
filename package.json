@@ -1,0 +1,15 @@
+{
+  "name": "EncounterLog",
+  "version": "1.0.0",
+  "description": "Stream D&D Beyond GameLog to EncounterPlus",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Robert George",
+  "license": "ISC",
+  "dependencies": {
+    "electron": "^12.0.8",
+    "ws": "^7.4.5"
+  }
+}
