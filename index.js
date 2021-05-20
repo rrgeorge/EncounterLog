@@ -1,12 +1,49 @@
-const {app, session, BrowserWindow, ipcMain, net} = require('electron')
+const {app, session, BrowserWindow, ipcMain, net, Menu, MenuItem} = require('electron')
+const ElectronPreferences = require('electron-preferences');
 const WebSocket = require('ws')
-var encounterhost = null
+const path = require('path');
+
 var ignored = []
+console.log(path.resolve(app.getPath('userData'), 'preferences.json'))
+const preferences = new ElectronPreferences({
+	'dataStore': path.resolve(app.getPath('userData'), 'preferences.json'),
+	'sections': [ {
+		'id': "main",
+		'label': "Settings",
+		'icon': "settings-gear-63",
+		'form': {
+			'groups': [ {
+				'fields': [ {
+					'label': "EncounterPlus Server URL",
+					'key': 'encounterhost',
+					'type': 'text',
+					'help': "Example: http://192.168.1.10:8080"
+				} ]
+			} ]
+		}
+	} ]
+})
+encounterhost = preferences.value('main.encounterhost');
+preferences.on('save', (preferences) => {
+	console.log(preferences)
+	encounterhost = preferences.main.encounterhost
+})
 app.on('ready', () => {
 	const win = new BrowserWindow({ width: 800, height: 600, webPreferences: {nodeIntegration: true, contextIsolation: false} })
+
+	  var menu = Menu.buildFromTemplate([
+	      {
+		  label: 'File',
+		  submenu: [
+			{'click': function() { preferences.show() },'label': "Preferences"},
+		      	{role:'quit'}
+		  ]
+	      }
+	  ])
+	  Menu.setApplicationMenu(menu);
+
+
 	win.loadURL('https://www.dndbeyond.com/my-campaigns');
-	win.webContents.executeJavaScript('window.prompt("Enter the Encounter Plus server url (example: http://192.168.1.100:8080)");')
-		.then(result => encounterhost = result)
 	win.webContents.on('did-finish-load',event => {
 		if (win.webContents.getURL().match(/\/campaigns\/[0-9]+/)) {
 			win.webContents.executeJavaScript(`
@@ -49,7 +86,11 @@ app.on('ready', () => {
 			ignored.push(name)
 		}
 	})
-	
+	if (encounterhost === undefined) {
+		preferences.show();
+	} else {
+		console.log(encounterhost)
+	}
 });
 
 async function getCobaltSession() {
