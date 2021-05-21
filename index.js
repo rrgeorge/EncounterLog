@@ -4,7 +4,6 @@ const WebSocket = require('ws')
 const path = require('path');
 
 var ignored = []
-console.log(path.resolve(app.getPath('userData'), 'preferences.json'))
 const preferences = new ElectronPreferences({
 	'dataStore': path.resolve(app.getPath('userData'), 'preferences.json'),
 	'sections': [ {
@@ -25,7 +24,6 @@ const preferences = new ElectronPreferences({
 })
 encounterhost = preferences.value('main.encounterhost');
 preferences.on('save', (preferences) => {
-	console.log(preferences)
 	encounterhost = preferences.main.encounterhost
 })
 app.on('ready', () => {
@@ -149,7 +147,7 @@ async function connectGameLog(gameId,userId) {
 	ws.on('error',(e) => console.error(e))
 	ws.on('message',(data) => {
 		const msgData = JSON.parse(data)
-		if (msgData.eventType == "dice/roll/fulfilled" && !ignored.includes(msgData.context.name.trim())) {
+		if (msgData.eventType == "dice/roll/fulfilled" && !ignored.includes(msgData.data.context.name.trim())) {
 			for (var roll of msgData.data.rolls) {
 				let rollJson = {
 				    "source": msgData.data.context.name.trim(),
@@ -166,7 +164,7 @@ async function connectGameLog(gameId,userId) {
 				} else if (roll.rollType == "to hit") {
 					rollJson.content.type = "attack";
 				}
-				const request = net.request({url: encounterhost,method: "POST"})
+				const request = net.request({url: encounterhost+"/api/messages",method: "POST"})
 				request.on('error',e => console.error(e))
 				request.write(JSON.stringify(rollJson))
 				request.end()
