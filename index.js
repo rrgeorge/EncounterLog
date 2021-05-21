@@ -2,7 +2,8 @@ const {app, session, BrowserWindow, ipcMain, net, Menu, MenuItem} = require('ele
 const ElectronPreferences = require('electron-preferences');
 const WebSocket = require('ws')
 const path = require('path');
-
+var _ws = null
+app.userAgentFallback = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:88.0) Gecko/20100101 Firefox/88.0'
 var ignored = []
 const preferences = new ElectronPreferences({
 	'dataStore': path.resolve(app.getPath('userData'), 'preferences.json'),
@@ -27,8 +28,7 @@ preferences.on('save', (preferences) => {
 	encounterhost = preferences.main.encounterhost
 })
 app.on('ready', () => {
-	const win = new BrowserWindow({ width: 800, height: 600, webPreferences: {nodeIntegration: true, contextIsolation: false} })
-
+	const win = new BrowserWindow({ width: 800, height: 600, webPreferences: {nodeIntegration: true, contextIsolation: false,nativeWindowOpen: true} })
 	  var menu = Menu.buildFromTemplate([
 	      {
 		  label: 'File',
@@ -39,8 +39,6 @@ app.on('ready', () => {
 	      }
 	  ])
 	  Menu.setApplicationMenu(menu);
-
-
 	win.loadURL('https://www.dndbeyond.com/my-campaigns');
 	win.webContents.on('did-finish-load',event => {
 		if (win.webContents.getURL().match(/\/campaigns\/[0-9]+/)) {
@@ -73,6 +71,8 @@ app.on('ready', () => {
 				];`)
 			.then(result => connectGameLog(result[0],result[1]))
 			.catch(err => console.log(err))
+		} else if (_ws !== null) {
+			_ws.terminate()
 		}
 	})
 	ipcMain.on("changefilter", (event,data) => {
@@ -141,10 +141,13 @@ async function connectGameLog(gameId,userId) {
 	url.searchParams.append('gameId',gameId)
 	url.searchParams.append('userId',userId)
 	url.searchParams.append('stt',await getCobaltAuth())
+	if (_ws !== null) {
+		_ws.terminate()
+	}
 	const ws = new WebSocket(url.toString())
-	ws.on('open',() => console.log("Connected"))
-	ws.on('close',() => console.log("Disonnected"))
-	ws.on('error',(e) => console.error(e))
+	ws.on('open',() => _ws = ws)
+	ws.on('close',() => _ws = null)
+	ws.on('error',(e) => _ws = null)
 	ws.on('message',(data) => {
 		const msgData = JSON.parse(data)
 		if (msgData.eventType == "dice/roll/fulfilled" && !ignored.includes(msgData.data.context.name.trim())) {

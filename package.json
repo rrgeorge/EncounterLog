@@ -1,6 +1,6 @@
 {
   "name": "EncounterLog",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Stream D&D Beyond GameLog to EncounterPlus",
   "main": "index.js",
   "scripts": {
