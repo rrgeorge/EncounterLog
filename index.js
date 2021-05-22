@@ -5,6 +5,7 @@ const path = require('path');
 var _ws = null
 app.userAgentFallback = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:88.0) Gecko/20100101 Firefox/88.0'
 var ignored = []
+var campaignChars = []
 const preferences = new ElectronPreferences({
 	'dataStore': path.resolve(app.getPath('userData'), 'preferences.json'),
 	'sections': [ {
@@ -91,10 +92,6 @@ app.on('ready', () => {
 	}
 });
 
-async function getCobaltSession() {
-	const cobalt = await searchCookies()
-	return cobalt
-}
 async function getCobaltAuth() {
 	try {
 		const cobaltauth = await requestAuthToken()
@@ -103,18 +100,6 @@ async function getCobaltAuth() {
 		console.log(`Error: ${cobaltauth}`)
 		return null
 	}
-}
-function searchCookies() {
-	return new Promise(resolve => {
-		session.defaultSession.cookies.get({})
-		.then(cookies => {
-			for(var cookie of cookies) {
-				if (cookie.name == "CobaltSession") {
-					resolve(cookie.value)
-				}
-			}
-		})
-	})
 }
 function requestAuthToken() {
 	return new Promise((resolve,reject) => {
@@ -136,11 +121,34 @@ function requestAuthToken() {
 		request.end()
 	})
 }
+function requestCampaignChars(gameId,cobalt) {
+	return new Promise((resolve,reject) => {
+		const url = `https://www.dndbeyond.com/api/campaign/stt/active-characters/${gameId}`
+		const request = net.request({url: url,useSessionCookies: true})
+		request.setHeader('Authorization',`Bearer ${cobalt}`)
+		let body = ''
+		request.on('response', (response) => {
+		  if (response.statusCode != 200) {
+			  reject(response.StatusCode)
+		  }
+		  response.on('data', (chunk) => {
+		    body += chunk.toString()
+		  })
+		  response.on('end', () => {
+	            campaignChars = JSON.parse(body).data
+		    resolve("ok")
+		  })
+		})
+		request.end()
+	})
+}
 async function connectGameLog(gameId,userId) {
+	const cobalt = await getCobaltAuth()
+	requestCampaignChars(gameId,cobalt)
 	var url = new URL("wss://game-log-api-live.dndbeyond.com/v1")
 	url.searchParams.append('gameId',gameId)
 	url.searchParams.append('userId',userId)
-	url.searchParams.append('stt',await getCobaltAuth())
+	url.searchParams.append('stt',cobalt)
 	if (_ws !== null) {
 		_ws.terminate()
 	}
@@ -150,10 +158,19 @@ async function connectGameLog(gameId,userId) {
 	ws.on('error',(e) => _ws = null)
 	ws.on('message',(data) => {
 		const msgData = JSON.parse(data)
-		if (msgData.eventType == "dice/roll/fulfilled" && !ignored.includes(msgData.data.context.name.trim())) {
+		var character = msgData.data.context.name?.trim() || ""
+		if (character == "") {
+			for (var cchar of campaignChars) {
+				if (cchar.id.toString() == msgData.data.context.entityId) {
+					character = cchar.name.trim()
+					break
+				}
+			}
+		}
+		if (msgData.eventType == "dice/roll/fulfilled" && !ignored.includes(character)) {
 			for (var roll of msgData.data.rolls) {
 				let rollJson = {
-				    "source": msgData.data.context.name.trim(),
+				    "source": character,
 				    "type":     "roll",
 				    "content": {
 					    "formula": roll.diceNotationStr,
