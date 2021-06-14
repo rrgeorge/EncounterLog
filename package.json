@@ -1,12 +1,13 @@
 {
   "name": "EncounterLog",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Stream D&D Beyond GameLog to EncounterPlus",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build-mac": "electron-builder build --mac",
-    "build-win": "electron-builder build --win"
+    "build-win": "electron-builder build --win",
+    "build": "electron-builder build -mw"
   },
   "build": {
     "appId": "online.play5e.EncounterLog",
@@ -15,7 +16,9 @@
       "hardenedRuntime": true,
       "entitlements": "entitlements.mac.plist",
       "entitlementsInherit": "entitlements.mac.plist",
-      "target": ["dmg"]
+      "target": [
+        "dmg"
+      ]
     }
   },
   "author": "Robert George",
@@ -26,6 +29,6 @@
   },
   "devDependencies": {
     "electron": "^12.0.8",
-    "electron-builder": "^22.10.5"
+    "electron-builder": "^22.11.7"
   }
 }

@@ -214,38 +214,48 @@ async function connectGameLog(gameId,userId,campaignName) {
 	})
 	ws.on('error',(e) => console.log(e))
 	ws.on('message',(data) => {
-		const msgData = JSON.parse(data)
-		var character = msgData.data.context.name?.trim() || ""
-		if (character == "") {
-			for (var cchar of campaignChars) {
-				if (cchar.id.toString() == msgData.data.context.entityId) {
-					character = cchar.name.trim()
-					break
-				}
-			}
-		}
-		if (msgData.eventType == "dice/roll/fulfilled" && !ignored.includes(character)) {
-			for (var roll of msgData.data.rolls) {
-				let rollJson = {
-				    "source": character,
-				    "type":     "roll",
-				    "content": {
-					    "formula": roll.diceNotationStr,
-					    "result": roll.result.total,
-					    "detail": roll.result.text,
-					    "name":   msgData.data.action
-				    }
-				};
-				if (["check","save","attack","damage","heal"].includes(roll.rollType)) {
-					rollJson.content.type = roll.rollType;
-				} else if (roll.rollType == "to hit") {
-					rollJson.content.type = "attack";
-				}
-				const request = net.request({url: encounterhost+"/api/messages",method: "POST"})
-				request.on('error',e => console.error(e))
-				request.write(JSON.stringify(rollJson))
-				request.end()
-			}
-		}
+                try {
+		    const msgData = JSON.parse(data)
+                    if (msgData.eventType != "dice/roll/fulfilled") {
+                        return
+                    }
+                    var character = msgData.data.context.name?.trim() || ""
+                    if (character == "") {
+                            for (var cchar of campaignChars) {
+                                    if (cchar.id.toString() == msgData.data.context.entityId) {
+                                            character = cchar.name.trim()
+                                            break
+                                    }
+                            }
+                    }
+                    if (!ignored.includes(character)) {
+                            for (var roll of msgData.data.rolls) {
+                                    let rollJson = {
+                                        "source": character,
+                                        "type":     "roll",
+                                        "content": {
+                                                "formula": roll.diceNotationStr,
+                                                "result": roll.result.total,
+                                                "detail": roll.result.text,
+                                                "name":   msgData.data.action
+                                        }
+                                    };
+                                    if (["check","save","attack","damage","heal"].includes(roll.rollType)) {
+                                            rollJson.content.type = roll.rollType;
+                                    } else if (roll.rollType == "to hit") {
+                                            rollJson.content.type = "attack";
+                                    }
+                                    const request = net.request({url: encounterhost+"/api/messages",method: "POST"})
+                                    request.on('error',e => console.error(e))
+                                    request.write(JSON.stringify(rollJson))
+                                    request.end()
+                            }
+                    }
+                } catch (e) {
+                    console.log("Error",e.message)
+                    console.log(data)
+                    return
+                }
+
 	})
 }
