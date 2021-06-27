@@ -1,13 +1,14 @@
 {
   "name": "EncounterLog",
-  "version": "1.1.1",
+  "version": "2.0.0b",
   "description": "Stream D&D Beyond GameLog to EncounterPlus",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build-mac": "electron-builder build --mac",
     "build-win": "electron-builder build --win",
-    "build": "electron-builder build -mw"
+    "build": "electron-builder build -mw",
+    "app": "electron ."
   },
   "build": {
     "appId": "online.play5e.EncounterLog",
@@ -24,11 +25,24 @@
   "author": "Robert George",
   "license": "MIT",
   "dependencies": {
+    "@journeyapps/sqlcipher": "^5.2.0",
+    "adm-zip": "^0.5.5",
+    "electron-dl": "^3.2.1",
     "electron-preferences": "^2.3.1",
+    "electron-progressbar": "^2.0.1",
+    "he": "^1.2.0",
+    "html-to-text": "^8.0.0",
+    "jstoxml": "^2.0.6",
+    "sharp": "^0.28.3",
+    "slugify": "^1.5.3",
+    "tmp": "^0.2.1",
+    "uuid": "^8.3.2",
     "ws": "^7.4.5"
   },
+  "postinstall": "electron-builder install-app-deps",
   "devDependencies": {
     "electron": "^12.0.8",
-    "electron-builder": "^22.11.7"
+    "electron-builder": "^22.11.7",
+    "electron-notarize": "^1.0.0"
   }
 }
