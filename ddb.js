@@ -226,23 +226,27 @@ class DDB {
         this.sharedBooks = shared
     }
     async getAllSpells() {
-        const url = "https://character-service.dndbeyond.com/character/v4/game-data/spells"
+        const urls = [ "https://character-service.dndbeyond.com/character/v4/game-data/spells",
+            "https://character-service.dndbeyond.com/character/v4/game-data/always-known-spells",
+            "https://character-service.dndbeyond.com/character/v4/game-data/always-prepared-spells"]
         if (!this.ruledata) await this.getRuleData
         let allSpells = []
         for (let ddbClass of this.ruledata.classConfigurations) {
             if (/(ua|archived)/i.test(ddbClass.name)) continue
-            const params = qs.stringify({ 'sharingSetting': 2, 'classId': ddbClass.id, "classLevel": 20 })
-            await this.getCobaltAuth()
-            const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting items: ${e}`))
-            if (response?.data) {
-                for (let spell of response.data) {
-                    let existing = allSpells.find(s=>s.id===spell.definition.id)
-                    if (existing) {
-                        existing.classes.push(ddbClass.name)
-                    } else {
-                        let newSpell = spell.definition
-                        newSpell.classes = [ddbClass.name]
-                        allSpells.push(newSpell)
+            for (const url of urls) {
+                const params = qs.stringify({ 'sharingSetting': 2, 'classId': ddbClass.id, "classLevel": 20 })
+                await this.getCobaltAuth()
+                const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting spells: ${e}`))
+                if (response?.data) {
+                    for (let spell of response.data) {
+                        let existing = allSpells.find(s=>s.id===spell.definition.id)
+                        if (existing) {
+                            existing.classes.push(ddbClass.name)
+                        } else {
+                            let newSpell = spell.definition
+                            newSpell.classes = [ddbClass.name]
+                            allSpells.push(newSpell)
+                        }
                     }
                 }
             }
@@ -453,8 +457,8 @@ class DDB {
                 }
                 itemEntry._content.push({type: type})
                 let description = sanitize(item.description)
-                if (ddbitems.some(s=>s.groupedId===item.id)) {
-                    let linkedItems = ddbitems.filter(s=>s.groupedId===item.id)
+                if (items.some(s=>s.groupedId===item.id)) {
+                    let linkedItems = items.filter(s=>s.groupedId===item.id)
                     description += `\nApplicable ${itemType}${(itemType!="Armor"&&linkedItems.length>1)?'s':''}`
                     for (let linked of linkedItems) {
                         let linkedurl = "ddb://"
