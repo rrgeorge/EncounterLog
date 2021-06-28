@@ -219,7 +219,36 @@ app.on('ready', () => {
                                                     defaultPath: `${book.bookCode.toLowerCase()}.module`,
                                                 }).then((save) => {
                                                     if (save.filePath)
-                                                        ddb.getModule(book.id,save.filePath,win)
+                                                        ddb.getModule(book.id,save.filePath,win).catch(e=>displayError(e))
+                                                    }
+                                                )
+                                              }
+                                          })
+                                      ]
+                                      //click: (m) => _win?.loadURL(srcUrl)
+                                  }))
+                                }
+                                compendiumMenu.submenu.append( new MenuItem({ type: 'separator' }))
+                                compendiumMenu.submenu.append( new MenuItem({ label: "Shared Books:" }))
+                                for (const book of ddb.sharedBooks) {
+                                  compendiumMenu.submenu.append( new MenuItem({
+                                      label: book.book,
+                                      toolTip: book.bookCode,
+                                      submenu: [
+                                          new MenuItem({
+                                              label: "Open",
+                                              click: () => win.loadURL(book.url),
+                                          }),
+                                          new MenuItem({
+                                              label: "Download Book",
+                                              click: () => {
+                                                dialog.showSaveDialog(win,{
+                                                    title: "Save Book",
+                                                    filters: [ { name: "EncounterPlus Module", extensions: [".module"]} ],
+                                                    defaultPath: `${book.bookCode.toLowerCase()}.module`,
+                                                }).then((save) => {
+                                                    if (save.filePath)
+                                                        ddb.getModule(book.id,save.filePath,win).catch(e=>displayError(e))
                                                     }
                                                 )
                                               }

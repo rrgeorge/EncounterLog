@@ -3,6 +3,7 @@ const qs = require('querystring')
 const ProgressBar = require('electron-progressbar')
 const Slugify = require('slugify')
 const { v5: uuid5 } = require('uuid')
+const he = require('he')
 const { convert } = require('html-to-text')
 const { toXML } = require('jstoxml')
 const AdmZip = require('adm-zip')
@@ -11,7 +12,6 @@ const {download} = require("electron-dl")
 const sqlite3 = require('@journeyapps/sqlcipher').verbose()
 const tmp = require('tmp')
 const path = require('path')
-
 function slugify(str) {
     return Slugify(str,{ lower: true, strict: true })
 }
@@ -20,32 +20,24 @@ function sanitize(text) {
         wordwrap: null,
         formatters: {
             'keepA': function (elem, walk, builder, formatOptions) {
-                builder.openBlock({ leadingLineBreaks: 0 });
                 builder.addInline(`<${elem.name} href="${elem.attribs.href}">`);
                 walk(elem.children, builder);
                 builder.addInline('</a>');
-                builder.closeBlock({ trailingLineBreaks: 0 });
             },
             'bold': function (elem, walk, builder, formatOptions) {
-                builder.openBlock({ leadingLineBreaks: 0 });
                 builder.addInline(`<b>`);
                 walk(elem.children, builder);
                 builder.addInline('</b>');
-                builder.closeBlock({ trailingLineBreaks: 0 });
             },
             'italic': function (elem, walk, builder, formatOptions) {
-                builder.openBlock({ leadingLineBreaks: 0 });
                 builder.addInline(`<i>`);
                 walk(elem.children, builder);
                 builder.addInline('</i>');
-                builder.closeBlock({ trailingLineBreaks: 0 });
             },
             'underline': function (elem, walk, builder, formatOptions) {
-                builder.openBlock({ leadingLineBreaks: 0 });
                 builder.addInline(`<u>`);
                 walk(elem.children, builder);
                 builder.addInline('</u>');
-                builder.closeBlock({ trailingLineBreaks: 0 });
             }
         },
         selectors: [
@@ -214,7 +206,24 @@ class DDB {
                       })
                   )
                 .flat()
+        const shared = sources.Licenses.filter((f) => f.EntityTypeID == "496802664")
+                .map((block) =>
+                    block.Entities
+                      .filter((b) => !b.isOwned)
+                      .filter((b) => this.ruledata.sources.some((s)  => b.id === s.id && s.isReleased))
+                      .map((b) => {
+                        const book = this.ruledata.sources.find((s)  => b.id === s.id);
+                        return {
+                          id: b.id,
+                          book: book.description,
+                          bookCode: book.name,
+                          url: `https://www.dndbeyond.com/${book.sourceURL}`
+                        };
+                      })
+                  )
+                .flat()
         this.books = books
+        this.sharedBooks = shared
     }
     async getAllSpells() {
         const url = "https://character-service.dndbeyond.com/character/v4/game-data/spells"
@@ -316,8 +325,11 @@ class DDB {
             await zip.addFile("compendium.xml",Buffer.from(compendiumXML,'utf8'),null)
             prog.detail = `Writing compendium file`
             zip.writeZip(filename)
+            prog.detail = `Saved compendium`
+            setTimeout(()=>prog.setCompleted(),1000)
+        } else {
+            prog.setCompleted()
         }
-        prog.setCompleted()
         return compendium
     }
 
@@ -356,9 +368,22 @@ class DDB {
             }
             for (const item of items) {
                 prog.detail = item.name
+                let itemurl = "ddb://"
+                let itemType = "Item"
+                if (item.magic) {
+                    itemurl += "magicitems"
+                } else if (item.baseTypeId==this.ruledata.baseTypeArmorId) {
+                    itemurl += "armor"
+                    itemType = "Armor"
+                } else if (item.baseTypeId==this.ruledata.baseTypeWeaponId) {
+                    itemurl += "weapon"
+                    itemType = "Weapon"
+                } else {
+                    itemurl += "adventuring-gear"
+                }
                 var itemEntry = {
                     _name: "item",
-                    _attrs: { id: uuid5(`ddb://${(item.magic)?"magicitems":"adventuring-gear"}/${item.name}`,uuid5.URL) },
+                    _attrs: { id: uuid5(`${itemurl}/${item.id}`,uuid5.URL) },
                     _content: [
                         {name: item.name},
 			{slug: slugify(item.name)},
@@ -383,7 +408,7 @@ class DDB {
                             ac += mod.value
                         }
                     }
-                    itemEntry._content.push({ac: ac})
+                    itemEntry._content.push({ac: ac||''})
                 } else if (type == "WW") {
                     type = itemTypeCodes.find(s=>s.names.some(n=>(n==this.ruledata.weaponCategories.find(n=>n.id===item.categoryId)||n==item.type.toLowerCase())))?.code || type
                     if (type == "WW" && item.attackType) {
@@ -397,9 +422,9 @@ class DDB {
                         if (item.damage?.diceString) damage.push(item.damage.diceString)
                         for (let mod of item.grantedModifiers) {
                             if (mod.type == "bonus" && mod.subType == "magic") {
-                                damage.push((mod.value>0)?`+${mod.value}`:mod.value.toString())
+                                if (mod.value) damage.push((mod.value>0)?`+${mod.value}`:mod.value.toString())
                             } else if (mod.type=="damage") {
-                                damage.push(`(${mod.dice?.diceString||((mod.value>0)?"+"+mod.value.toString():mod.value.toString())} ${mod.subType})`)
+                                if (mod.value) damage.push(`(${mod.dice?.diceString||((mod.value>0)?"+"+mod.value.toString():mod.value.toString())} ${mod.subType})`)
                             }
                         }
                         itemEntry._content.push({dmg1: damage.join(" ") })
@@ -428,6 +453,24 @@ class DDB {
                 }
                 itemEntry._content.push({type: type})
                 let description = sanitize(item.description)
+                if (ddbitems.some(s=>s.groupedId===item.id)) {
+                    let linkedItems = ddbitems.filter(s=>s.groupedId===item.id)
+                    description += `\nApplicable ${itemType}${(itemType!="Armor"&&linkedItems.length>1)?'s':''}`
+                    for (let linked of linkedItems) {
+                        let linkedurl = "ddb://"
+                        if (linked.magic) {
+                            linkedurl += "magicitems"
+                        } else if (linked.baseTypeId==this.ruledata.baseTypeArmorId) {
+                            linkedurl += "armor"
+                        } else if (linked.baseTypeId==this.ruledata.baseTypeWeaponId) {
+                            linkedurl += "weapon"
+                        } else {
+                            linkedurl += "adventuring-gear"
+                        }
+                        let linkedId = uuid5(`${linkedurl}/${linked.id}`,uuid5.URL)
+                        description += `<a href="/item/${linkedId}">${linked.name}</a>\n`
+                    }
+                }
                 let sources = []
                 for (let source of item.sources) {
                     let sourceName = this.ruledata.sources.find(s=>s.id===source.sourceId)?.description
@@ -459,8 +502,11 @@ class DDB {
                 await zip.addFile("compendium.xml",Buffer.from(compendiumXML,'utf8'),null)
                 prog.detail = `Writing compendium file`
                 zip.writeZip(filename)
+                prog.detail = `Saved compendium`
+                setTimeout(()=>prog.setCompleted(),1000)
+            } else {
+                prog.setCompleted()
             }
-            prog.setCompleted()
             return compendium
         }
     }
@@ -517,8 +563,11 @@ class DDB {
             await zip.addFile("compendium.xml",Buffer.from(compendiumXML,'utf8'),null)
             prog.detail = `Writing compendium file`
             zip.writeZip(filename)
+            prog.detail = `Saved compendium`
+            setTimeout(()=>prog.setCompleted(),1000)
+        } else {
+            prog.setCompleted()
         }
-        prog.setCompleted()
         return compendium
     }
 
@@ -606,7 +655,7 @@ class DDB {
                 for (let t of sanitize(field).split(/\r\n|\n/)) {
                     let m = traitRegex.exec(t); if (!m||!m[0]) continue
                     let txt = m[0].replace(m[1],'')
-                    if (monsterEntry._content[monsterEntry._content.length-1]?.hasOwnPropery(type) && !m[1]) {
+                    if (monsterEntry._content[monsterEntry._content.length-1]?.[type] && !m[1]) {
                         monsterEntry._content[monsterEntry._content.length-1][type].text += "\n"+txt
                         continue
                     }
@@ -743,9 +792,9 @@ class DDB {
                 let page = {
                     page: {
                         _attrs: { id: uuid5(`https://www.dndbeyond.com/${book.sourceURL}/${c.Slug}`, uuid5.URL), sort: c.ID},
-                        name: c.Title,
+                        name: he.decode(c.Title),
                         slug: c.Slug.replaceAll("#","-"),
-                        content: ((zip.getEntry(`images/chapter-backgrounds/${c.Slug}.jpg`))?`<img src="images/chapter-backgrounds/${c.Slug}.jpg">`:'') + sanitize(c.RenderedHtml
+                        content: ((zip.getEntry(`images/chapter-backgrounds/${c.Slug}.jpg`))?`<img src="images/chapter-backgrounds/${c.Slug}.jpg">`:'') + he.decode(c.RenderedHtml
                             .replaceAll(/ddb:\/\/compendium\/(.*?)\//g,"/module/$1/page/")
                             //.replaceAll(/\/page\/([^"]*?)#/g,"/page/$1-")
                             //.replaceAll(/\/page\/([^"]*?)#/g,"/page/$1-")
@@ -781,6 +830,8 @@ class DDB {
                                             break
                                         case "magicitems":
                                         case "adventuring-gear":
+                                        case "weapon":
+                                        case "armor":
                                             repl = `/item/${uuid5(m,uuid5.URL)}`
                                             break
                                         default:
@@ -796,11 +847,13 @@ class DDB {
                     page.page._attrs.parent = uuid5(`https://www.dndbeyond.com/${book.sourceURL}/${c.ParentSlug}`,uuid5.URL)
                     let parentpage = mod._content.find(s=>s.page?._attrs?.id==page.page._attrs.parent)?.page
                     if (parentpage) {
-                        console.log("Added to existing page")
                         parentpage.content = parentpage.content.concat("\n",page.page.content)
+                    } else {
+                        mod._content.push(page)
                     }
+                } else {
+                    mod._content.push(page)
                 }
-                mod._content.push(page)
             },
             async () => {
                 prog.detail = "Writing CSS"
@@ -829,7 +882,7 @@ class DDB {
                 console.log("Adding light.css to custom.css")
                 customcss = customcss.concat(zip.readAsText("css/light.css"))
                 console.log("Adding fixing css line endings")
-                customcss = customcss.replaceAll(/(\.\.\/)+/g,"../../").replaceAll(/\r\n/g,"\n")
+                customcss = customcss.replaceAll(/(\.\.\/)+/g,"../../").replaceAll(/\/images\/letters\//g,"/images/").replaceAll(/\r\n/g,"\n")
                 console.log("Adding custom.css to zip")
                 zip.addFile('assets/css/custom.css',customcss)
                 console.log("Storing module.xml")
@@ -849,7 +902,8 @@ class DDB {
                 console.log("Writing .module")
                 prog.detail = "Saving Module"
                 zip.writeZip()
-                prog.setCompleted()
+                prog.detail = "Module saved."
+                setTimeout(()=>prog.setCompleted(),1000)
             })
         })
         console.log("Closing dtabase")
