@@ -378,10 +378,8 @@ class DDB {
                     itemurl += "magicitems"
                 } else if (item.baseTypeId==this.ruledata.baseTypeArmorId) {
                     itemurl += "armor"
-                    itemType = "Armor"
                 } else if (item.baseTypeId==this.ruledata.baseTypeWeaponId) {
                     itemurl += "weapon"
-                    itemType = "Weapon"
                 } else {
                     itemurl += "adventuring-gear"
                 }
@@ -405,6 +403,7 @@ class DDB {
                         (item.baseTypeId==this.ruledata.baseTypeWeaponId)? "WW" :
                         (item.baseTypeId==this.ruledata.baseTypeGearId)? "G" : null)
                 if (type == "AA") {
+                    itemType = "Armor"
                     type = itemTypeCodes.find(s=>s.names.some(n=>n==this.ruledata.armorTypes.find(n=>n.id===item.armorTypeId)?.name.toLowerCase()))?.code || type
                     let ac = item.armorClass
                     for (let mod of item.grantedModifiers) {
@@ -414,6 +413,7 @@ class DDB {
                     }
                     itemEntry._content.push({ac: ac||''})
                 } else if (type == "WW") {
+                    itemType = "Weapon"
                     type = itemTypeCodes.find(s=>s.names.some(n=>(n==this.ruledata.weaponCategories.find(n=>n.id===item.categoryId)||n==item.type.toLowerCase())))?.code || type
                     if (type == "WW" && item.attackType) {
                         type = (item.attackType == 2)? "R" : "M"
@@ -459,7 +459,7 @@ class DDB {
                 let description = sanitize(item.description)
                 if (items.some(s=>s.groupedId===item.id)) {
                     let linkedItems = items.filter(s=>s.groupedId===item.id)
-                    description += `\nApplicable ${itemType}${(itemType!="Armor"&&linkedItems.length>1)?'s':''}`
+                    description += `\nApplicable ${itemType}${(itemType!="Armor"&&linkedItems.length>1)?'s':''}\n`
                     for (let linked of linkedItems) {
                         let linkedurl = "ddb://"
                         if (linked.magic) {
