@@ -15,11 +15,20 @@ const path = require('path')
 function slugify(str) {
     return Slugify(str,{ lower: true, strict: true })
 }
-function sanitize(text) {
+function sanitize(text,rulesdata=null) {
     return convert(text,{
         wordwrap: null,
         formatters: {
             'keepA': function (elem, walk, builder, formatOptions) {
+                if (rulesdata) {
+                    var ddburl = elem?.attribs?.href?.match(/https:\/\/(?:www\.)?dndbeyond\.com\/(sources\/[^\/]*)/)
+                    if (ddburl) {
+                        var source = rulesdata.sources?.find(s=>s.sourceURL==ddburl[1])
+                        if (source) {
+                            elem.attribs.href=elem.attribs.href.replaceAll(new RegExp(`https:\/\/(?:www\.)?dndbeyond\.com\/${source.sourceURL}`,'g'),`/module/${source.name.toLowerCase()}`)
+                        }
+                    }
+                }
                 builder.addInline(`<${elem.name} href="${elem.attribs.href}">`);
                 walk(elem.children, builder);
                 builder.addInline('</a>');
@@ -38,6 +47,13 @@ function sanitize(text) {
                 builder.addInline(`<u>`);
                 walk(elem.children, builder);
                 builder.addInline('</u>');
+            },
+            'quote': function (elem, walk, builder, formatOptions) {
+		builder.openBlock({leadingLineBreaks:1});
+                builder.addInline('-'.repeat(40));
+		walk(elem.children, builder);
+                builder.addInline('-'.repeat(40));
+ 		builder.closeBlock({trailingLineBreaks:1});
             }
         },
         selectors: [
@@ -47,7 +63,8 @@ function sanitize(text) {
             {selector: 'strong',format: 'bold'},
             {selector: 'i',format: 'italic'},
             {selector: 'em',format: 'italic'},
-            {selector: 'u',format: 'underline'}
+            {selector: 'u',format: 'underline'},
+            {selector: 'blockquote',format: 'quote'}
         ]
     })
 }
@@ -314,7 +331,7 @@ class DDB {
             }
             if (spell.range.aoeType && spell.range.aoeValue) range += ` (${spell.range.aoeValue} ft ${spell.range.aoeType})`
             spellEntry._content.push({range: range})
-            let description = sanitize(spell.description)
+            let description = sanitize(spell.description,this.ruledata)
             let sources = []
             for (let source of spell.sources) {
                 let sourceName = this.ruledata.sources.find(s=>s.id===source.sourceId)?.description
@@ -458,7 +475,7 @@ class DDB {
                     type = itemTypeCodes.find(s=>s.names.some(n=>n==item.type?.toLowerCase()||n==item.subType?.toLowerCase()))?.code || type
                 }
                 itemEntry._content.push({type: type})
-                let description = sanitize(item.description)
+                let description = sanitize(item.description,this.ruledata)
                 if (items.some(s=>s.groupedId===item.id)) {
                     let linkedItems = items.filter(s=>s.groupedId===item.id)
                     description += `\nApplicable ${itemType}${(itemType!="Armor"&&linkedItems.length>1)?'s':''}\n`
@@ -658,14 +675,14 @@ class DDB {
             monsterEntry._content.push({save: saves.join(", ")})
             const handleTraits = (field,type,prefix="")=>{
                 const traitRegex = /^(?:<i>)?(<b>(.*?)<\/b>)?.*$/g
-                for (let t of sanitize(field).split(/\r\n|\n/)) {
+                for (let t of sanitize(field,this.ruledata).split(/\r\n|\n/)) {
                     let m = traitRegex.exec(t); if (!m||!m[0]) continue
                     let txt = m[0].replace(m[1],'')
                     if (monsterEntry._content[monsterEntry._content.length-1]?.[type] && !m[1]) {
                         monsterEntry._content[monsterEntry._content.length-1][type].text += "\n"+txt
                         continue
                     }
-                    monsterEntry._content.push( {[type]: { name: `${prefix}${m[2]}`, text: txt }} )
+                    monsterEntry._content.push( {[type]: { name: `${prefix}${m[2]||''}`, text: txt }} )
                 }
             }
             handleTraits(monster.specialTraitsDescription,"trait")
@@ -675,7 +692,7 @@ class DDB {
             handleTraits(monster.legendaryActionsDescription,"legendary")
             handleTraits(monster.mythicActionsDescription,"legendary","Mythic Action: ")
             monsterEntry._content.push({
-                description: `${sanitize(monster.characteristicsDescription)}
+                description: `${(monster.lairDescription)?sanitize(monster.lairDescription+'<hr/>',this.ruledata):''}${sanitize(monster.characteristicsDescription,this.ruledata)}
 
 <i>Source: ${this.ruledata.sources.find((s)=> monster.sourceId === s.id).description}${(monster.sourcePageNumber)?  ` p. ${monster.sourcePageNumber}` : '' }</i>`
             })
