@@ -1,13 +1,14 @@
 {
   "name": "EncounterLog",
-  "version": "2.0.0b3",
+  "version": "2.0.0rc1",
   "description": "Stream D&D Beyond GameLog to EncounterPlus",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build-mac": "electron-builder build --mac",
-    "build-win": "electron-builder build --win",
-    "build": "electron-builder build -mw",
+    "build-mac": "security unlock;electron-builder build --mac",
+    "build-win": "rm -rf node_modules/sharp;npm i sharp --platform=win32 --arch=x64;electron-builder build --win;rm -rf node_modules/sharp;yarn add sharp",
+    "build": "yarn build-mac;yarn build-win",
+    "postinstall": "electron-builder install-app-deps",
     "app": "electron ."
   },
   "build": {
@@ -22,20 +23,20 @@
       ]
     },
     "files": [
-	"**/*",
-	"!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
-	"!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
-	"!**/node_modules/*.d.ts",
-	"!**/node_modules/.bin",
-	"!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
-	"!.editorconfig",
-	"!**/._*",
-	"!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}",
-	"!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}",
-	"!**/{appveyor.yml,.travis.yml,circle.yml}",
-	"!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}",
-	"!**/.env",
-	"!**/scripts"
+      "**/*",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!**/node_modules/*.d.ts",
+      "!**/node_modules/.bin",
+      "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
+      "!.editorconfig",
+      "!**/._*",
+      "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}",
+      "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}",
+      "!**/{appveyor.yml,.travis.yml,circle.yml}",
+      "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}",
+      "!**/.env",
+      "!**/scripts"
     ],
     "afterSign": "scripts/notarize.js"
   },
@@ -44,6 +45,7 @@
   "dependencies": {
     "@journeyapps/sqlcipher": "^5.2.0",
     "adm-zip": "^0.5.5",
+    "build": "^0.1.4",
     "electron-dl": "^3.2.1",
     "electron-preferences": "^2.3.1",
     "electron-progressbar": "^2.0.1",
@@ -56,7 +58,6 @@
     "uuid": "^8.3.2",
     "ws": "^7.4.5"
   },
-  "postinstall": "electron-builder install-app-deps",
   "devDependencies": {
     "electron": "^12.0.8",
     "electron-builder": "^22.11.7",

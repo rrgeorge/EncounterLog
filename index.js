@@ -48,6 +48,7 @@ preferences.on('save', (preferences) => {
 app.on('ready', () => {
 	const win = new BrowserWindow({ show: false, width: 800, height: 600, webPreferences: {nodeIntegration: true, contextIsolation: false,nativeWindowOpen: true} })
 	_win = win
+        ddb = new DDB()
 	var menu = Menu.buildFromTemplate([
 	      {
 		  label: 'File',
@@ -64,7 +65,6 @@ app.on('ready', () => {
               ] },
 	  ])
 	Menu.setApplicationMenu(menu);
-        ddb = new DDB()
         session.defaultSession.webRequest.onCompleted(
             {urls: [
                 'https://*.dndbeyond.com/*css',
@@ -229,9 +229,9 @@ app.on('ready', () => {
                                   }))
                                 }
                                 compendiumMenu.submenu.append( new MenuItem({ type: 'separator' }))
-                                compendiumMenu.submenu.append( new MenuItem({ label: "Shared Books:" }))
+                                var sharedSubmenu = []
                                 for (const book of ddb.sharedBooks) {
-                                  compendiumMenu.submenu.append( new MenuItem({
+                                  sharedSubmenu.push( new MenuItem({
                                       label: book.book,
                                       toolTip: book.bookCode,
                                       submenu: [
@@ -256,6 +256,11 @@ app.on('ready', () => {
                                       ]
                                       //click: (m) => _win?.loadURL(srcUrl)
                                   }))
+                                }
+                                if (sharedSubmenu.length > 0) {
+                                    compendiumMenu.submenu.append(
+                                        new MenuItem({ label: "Shared Books:", submenu: sharedSubmenu })
+                                    )
                                 }
                                 compendiumMenu.submenu.append( new MenuItem({ type: 'separator' }))
                                 compendiumMenu.submenu.append( new MenuItem({

@@ -41,7 +41,7 @@ function sanitize(text) {
             }
         },
         selectors: [
-            { selector: 'table', format: 'dataTable', options: { maxColumnWidth: 15 }},
+            {selector: 'table', format: 'dataTable', options: { maxColumnWidth: 20, rowSpacing: 1 }},
             {selector: 'a',format: 'keepA'},
             {selector: 'b',format: 'bold'},
             {selector: 'strong',format: 'bold'},
@@ -73,6 +73,7 @@ class DDB {
         this.cobaltsession = sess
     }
     async getUserData() {
+        if (!this.cobaltsession) await this.setCobaltSession()
         const url = "https://www.dndbeyond.com/mobile/api/v6/user-data"
         const body = qs.stringify({ 'token': this.cobaltsession })
         const res = await this.postRequest(url,body).catch(e => console.log(`Could not populate userdata: ${e}`))
@@ -186,6 +187,7 @@ class DDB {
         this.campaigns = res?.data || []
     }
     async getSources() {
+        if (!this.cobaltsession) await this.setCobaltSession()
         const url = "https://www.dndbeyond.com/mobile/api/v6/available-user-content"
         const body = qs.stringify({ 'token': this.cobaltsession })
         const sources = await this.postRequest(url,body).then(r => r.data).catch(e =>{ throw new Error(`Cannot retrieve avaialable sources: ${e}`)})
@@ -760,6 +762,7 @@ class DDB {
             _attrs: { id: `https://www.dndbeyond.com/${book.sourceURL}` },
             _content: [
                 { name: book.description },
+                { author: "D&D Beyond" },
                 { slug: book.name.toLowerCase() },
                 { image: `images/cover.jpg` }
             ]
@@ -771,7 +774,23 @@ class DDB {
         db.serialize(() => {
             db.run(`PRAGMA key='${Buffer.from(key,'base64').toString('utf8')}'`)
             db.run("PRAGMA cipher_compatibility = 3")
+            db.each("SELECT M.*, A.FileName as AFile FROM RPGSource M LEFT JOIN Avatar AS A ON M.AvatarID = A.ID",(e,c)=>{
+                if (e) {
+                    console.log(e)
+                    return
+                }
+                if (c.ID===moduleId) {
+                    mod._content.find(s=>s.image).image = `listing_images/${c.AFile}`
+                    mod._content.push({code: c.Name||''})
+                    mod._content.push({category: c.Type||''})
+                    mod._content.push({description: convert(c.ProductBlurb)||''})
+                }
+            })
             db.each("SELECT M.ID,A.EntityID AS AID,A.EntityTypeID AS AET,B.EntityID AS BID,B.EntityTypeID AS BET,A.FileName as AFile,B.FileName as BFile FROM RPGMonster M LEFT JOIN Avatar AS A ON M.AvatarID = A.ID LEFT JOIN Avatar AS B ON M.BasicAvatarID = B.ID WHERE M.AvatarID IS NOT NULL OR M.BasicAvatarID IS NOT NULL",(e,c)=>{
+                if (e) {
+                    console.log(e)
+                    return
+                }
                 imageMap.push( {
                     id: c.ID||c.AID||c.BID,
                     type: c.AET||c.BET,
@@ -780,6 +799,10 @@ class DDB {
                 } )
             })
             db.each("SELECT M.ID,A.EntityID as AID,A.EntityTypeID as AET,A.FileName as AFile,B.EntityID AS BID,B.EntityTypeID as BET,B.FileName as BFile FROM RPGMagicItem M LEFT JOIN Avatar AS A ON M.AvatarID = A.ID LEFT JOIN Avatar AS B ON M.LargeAvatarID = B.ID WHERE M.AvatarID IS NOT NULL OR M.LargeAvatarID IS NOT NULL",(e,c)=>{
+                if (e) {
+                    console.log(e)
+                    return
+                }
                 imageMap.push( {
                     id: c.ID||c.AID||c.BID,
                     type: c.AET||c.BET,
@@ -873,7 +896,7 @@ class DDB {
                                 let resName = uuid5(m2,uuid5.URL)
                                 if (path.extname(m2)) resName += path.extname(m2)
                                 this.getImage(m2).then(r=>zip.addFile(`assets/res/${resName}`,r)).catch(e=>console.log(`${m2}-${e}`))
-                                return `url(${resName})`
+                                return `url(res/${resName})`
                             })
                         )
                         console.log("Added to custom.css")
@@ -889,20 +912,43 @@ class DDB {
                 customcss = customcss.replaceAll(/(\.\.\/)+/g,"../../").replaceAll(/\/images\/letters\//g,"/images/").replaceAll(/\r\n/g,"\n")
                 console.log("Adding custom.css to zip")
                 zip.addFile('assets/css/custom.css',customcss)
+                const customjs = `
+window.addEventListener('load', function() {
+    for (var heading of document.querySelectorAll("h1, h2, h3, h4, h5, h6")) {
+        if (heading.id) {
+            var pageUrl = window.location
+            var pageId = pageUrl.pathname.split('/')[pageUrl.pathname.split('/').length-1].replace('.html','')
+            var url = \`/page/\${pageId}#\${heading.id}\`
+            var link = document.createElement('A')
+            link.href = url
+            link.innerText = ' 🔗'
+            link.title = heading.innerText
+            heading.appendChild(link)
+        }
+    }
+})              
+                `
+                zip.addFile('assets/js/custom.js',customjs)
                 console.log("Storing module.xml")
                 prog.detail = "Writing Module XML"
                 zip.addFile('module.xml',toXML(mod,{indent: '\t'}))
                 console.log("Retrieving Monsters...")
-                var compendium = await this.getMonsters(moduleId,null,zip,imageMap)
+                var compM = await this.getMonsters(moduleId,null,zip,imageMap)||[]
                 console.log("Retrieving Items...")
-                var compI = await this.getItems(moduleId,null,zip,imageMap)
+                var compI = await this.getItems(moduleId,null,zip,imageMap)||[]
                 console.log("Retrieving Spells...")
-                var compS = await this.getSpells(moduleId,null,zip)
+                var compS = await this.getSpells(moduleId,null,zip)||[]
                 console.log("Merging compendiums...")
-                compendium._content = compendium._content.concat(compI._content,compS._content)
-                console.log("Storing compendium.xml")
-                prog.detail = "Writing Compendium XML"
-                zip.addFile('compendium.xml',toXML(compendium,{indent: '\t'}))
+                var compendium = { 
+                    _name: "compendium",
+                    _content: []
+                }
+                compendium._content = compendium._content.concat(compM._content,compI._content,compS._content)
+                if (compendium._content.length > 0) {
+                    console.log("Storing compendium.xml")
+                    prog.detail = "Writing Compendium XML"
+                    zip.addFile('compendium.xml',toXML(compendium,{indent: '\t'}))
+                }
                 console.log("Writing .module")
                 prog.detail = "Saving Module"
                 zip.writeZip()
@@ -914,12 +960,15 @@ class DDB {
         db.close()
     }
 
+    
+
     constructor() {
         this.session = session.defaultSession
         this.expiration = new Date().getTime()
         this.campaigns = []
         this.css = []
         console.log(`Expiration is ${this.expiration}`)
+        /*
         this.setCobaltSession().then(
             this.getUserData().then(
                 this.populateCampaigns().then(
@@ -927,6 +976,7 @@ class DDB {
                 )
             )
         )
+        */
     }
 }
 
