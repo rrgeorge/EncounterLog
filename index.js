@@ -376,21 +376,22 @@ function requestCampaignChars(gameId,cobalt) {
                             }
                             campaignMenu.submenu.append(new MenuItem({type: 'separator'}))
                             campaignMenu.submenu.append(new MenuItem({
-                                label: "Convert Characters for EncounterPlus",
+                                label: "Convert These Characters for EncounterPlus",
                                 click: () => {
-                                    //msgbox = dialog.showMessageBox(_win,{ message: "Please wait..." })
-                                    //const msgbox = new BrowserWindow({parent: _win, modal: true, show: false,width: 250,height: 100 })
-                                    //msgbox.loadURL(`data:text/html,<h1 align="center">Please Wait...</h1>`)
-                                    //msgbox.once('ready-to-show', () => {
-                                    //    msgbox.show()
-                                    const prog = new ProgressBar({text: "Converting campaign characters...", detail: "Please wait..."})
-
-                                    download(_win,`https://w.bobg.us/ddb.php?tokenmap=true&campaign=https://ddb.ac/characters/${campaignChars[0].id}`,{
-                                        saveAs: true,
-                                        filename: `${thisCampaign.label}.compendium`,
-                                        onStarted: () => prog.setCompleted()
+                                    dialog.showSaveDialog(_win,{
+                                        title: "Save exported characters",
+                                        filters: [ { name: "EncounterPlus Compendium", extensions: [".compendium"]} ],
+                                        defaultPath: `${thisCampaign.label}.compendium`,
+                                    }).then((save) => {
+                                        if (save.filePath) {
+                                            const prog = new ProgressBar({text: "Converting campaign characters...", detail: "Please wait..."})
+                                            download(_win,`https://w.bobg.us/ddb.php?tokenmap=true&circles=true&campaign=https://ddb.ac/characters/${campaignChars[0].id}`,{
+                                                filename: path.basename(save.filePath),
+                                                directory: path.dirname(save.filePath),
+                                                onStarted: () => prog.setCompleted()
+                                            })
+                                        }
                                     })
-                                    //})
                                 }
                             }))
                             Menu.setApplicationMenu(menu)
