@@ -25,7 +25,7 @@ function sanitize(text,rulesdata=null) {
                     if (ddburl) {
                         var source = rulesdata.sources?.find(s=>s.sourceURL==ddburl[1])
                         if (source) {
-                            elem.attribs.href=elem.attribs.href.replaceAll(new RegExp(`https:\/\/(?:www\.)?dndbeyond\.com\/${source.sourceURL}`,'g'),`/module/${source.name.toLowerCase()}`)
+                            elem.attribs.href=elem.attribs.href.replaceAll(new RegExp(`https:\/\/(?:www\.)?dndbeyond\.com\/${source.sourceURL}`,'g'),`/module/${source.name.toLowerCase()}/page`)
                         }
                     }
                 }
