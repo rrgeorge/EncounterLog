@@ -173,7 +173,7 @@ app.on('ready', () => {
                                               click: () => {
                                                 dialog.showSaveDialog(win,{
                                                     title: "Save monsters compendium",
-                                                    filters: [ { name: "EncounterPlus Compendium", extensions: [".compendium"]} ],
+                                                    filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
                                                     defaultPath: `${book.bookCode.toLowerCase()}-monsters.compendium`,
                                                 }).then((save) => {
                                                     if (save.filePath)
@@ -187,7 +187,7 @@ app.on('ready', () => {
                                               click: () => {
                                                 dialog.showSaveDialog(win,{
                                                     title: "Save items compendium",
-                                                    filters: [ { name: "EncounterPlus Compendium", extensions: [".compendium"]} ],
+                                                    filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
                                                     defaultPath: `${book.bookCode.toLowerCase()}-items.compendium`,
                                                 }).then((save) => {
                                                     if (save.filePath)
@@ -201,7 +201,7 @@ app.on('ready', () => {
                                               click: () => {
                                                 dialog.showSaveDialog(win,{
                                                     title: "Save spells compendium",
-                                                    filters: [ { name: "EncounterPlus Compendium", extensions: [".compendium"]} ],
+                                                    filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
                                                     defaultPath: `${book.bookCode.toLowerCase()}-spells.compendium`,
                                                 }).then((save) => {
                                                     if (save.filePath)
@@ -215,7 +215,7 @@ app.on('ready', () => {
                                               click: () => {
                                                 dialog.showSaveDialog(win,{
                                                     title: "Save Book",
-                                                    filters: [ { name: "EncounterPlus Module", extensions: [".module"]} ],
+                                                    filters: [ { name: "EncounterPlus Module", extensions: ["module"]} ],
                                                     defaultPath: `${book.bookCode.toLowerCase()}.module`,
                                                 }).then((save) => {
                                                     if (save.filePath)
@@ -244,7 +244,7 @@ app.on('ready', () => {
                                               click: () => {
                                                 dialog.showSaveDialog(win,{
                                                     title: "Save Book",
-                                                    filters: [ { name: "EncounterPlus Module", extensions: [".module"]} ],
+                                                    filters: [ { name: "EncounterPlus Module", extensions: ["module"]} ],
                                                     defaultPath: `${book.bookCode.toLowerCase()}.module`,
                                                 }).then((save) => {
                                                     if (save.filePath)
@@ -268,7 +268,7 @@ app.on('ready', () => {
                                     click: () => {
                                         dialog.showSaveDialog(win,{
                                             title: "Save monsters compendium",
-                                            filters: [ { name: "EncounterPlus Compendium", extensions: [".compendium"]} ],
+                                            filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
                                             defaultPath: `monsters.compendium`,
                                         }).then((save) => {
                                             if (save.filePath)
@@ -282,7 +282,7 @@ app.on('ready', () => {
                                     click: () => {
                                         dialog.showSaveDialog(win,{
                                             title: "Save items compendium",
-                                            filters: [ { name: "EncounterPlus Compendium", extensions: [".compendium"]} ],
+                                            filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
                                             defaultPath: `items.compendium`,
                                         }).then((save) => {
                                             if (save.filePath)
@@ -296,7 +296,7 @@ app.on('ready', () => {
                                     click: () => {
                                         dialog.showSaveDialog(win,{
                                             title: "Save spells compendium",
-                                            filters: [ { name: "EncounterPlus Compendium", extensions: [".compendium"]} ],
+                                            filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
                                             defaultPath: `spells.compendium`,
                                         }).then((save) => {
                                             if (save.filePath)
@@ -380,7 +380,7 @@ function requestCampaignChars(gameId,cobalt) {
                                 click: () => {
                                     dialog.showSaveDialog(_win,{
                                         title: "Save exported characters",
-                                        filters: [ { name: "EncounterPlus Compendium", extensions: [".compendium"]} ],
+                                        filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
                                         defaultPath: `${thisCampaign.label}.compendium`,
                                     }).then((save) => {
                                         if (save.filePath) {
