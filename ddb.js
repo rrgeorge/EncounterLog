@@ -1046,6 +1046,7 @@ blockquote .view-cover-art {
 .chapterart a {
     position: absolute;
     bottom: 0;
+    left: 0;
     width: 100%;
     font-family: "Scaly Sans Caps Bold";
     font-size: x-large;
