@@ -12,6 +12,7 @@ const {download} = require("electron-dl")
 const sqlite3 = require('@journeyapps/sqlcipher').verbose()
 const tmp = require('tmp')
 const path = require('path')
+const url = require('url')
 function slugify(str) {
     return Slugify(str,{ lower: true, strict: true })
 }
@@ -391,7 +392,7 @@ class DDB {
         await this.getCobaltAuth()
         const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting items: ${e}`))
         if (response?.data) {
-            const items = response.data.filter(s=>(source)?s.sources.some(b=>b.sourceId===source):true)
+            const items = response.data.filter(s=>(source)?(s.sources.some(b=>b.sourceId===source)||(source<=2&&s.sources.length==0)):true)
             if (!prog) prog = new ProgressBar({text: "Converting items...", detail: "Please wait...", indeterminate: false, maxValue: items.length})
             if (filename) zip = new AdmZip()
             var compendium = { 
@@ -515,12 +516,19 @@ class DDB {
                     item.avatarUrl = imageMap?.find(s=>s.id===item.id&&s.type===item.entityTypeId)?.avatar || item.avatarUrl
                     item.largeAvatarUrl = imageMap?.find(s=>s.id===item.id&&s.type===item.entityTypeId)?.largeAvatar || item.largeAvatarUrl
                     if (item.largeAvatarUrl||item.avatarUrl) {
-                        if (!zip.getEntry(`items/${uuid5(item.largeAvatarUrl||item.avatarUrl,uuid5.URL)}.webp`)) {
-                            let imagesrc = ((item.avatarUrl||item.largeAvatarUrl).startsWith("listing_images/"))? zip.readFile((item.largeAvatarUrl||item.avatarUrl)) : await this.getImage(item.largeAvatarUrl||item.avatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
-                            let image = await sharp(imagesrc).webp().toBuffer()
-                            await zip.addFile(`items/${uuid5(item.largeAvatarUrl||item.avatarUrl,uuid5.URL)}.webp`,image)
+                        var imageFile = `${uuid5(item.largeAvatarUrl||item.avatarUrl,uuid5.URL)}${path.extname(item.largeAvatarUrl||item.avatarUrl)}`
+                        if (!zip.getEntry(`items/${imageFile}`)) {
+                            if ((item.avatarUrl||item.largeAvatarUrl).startsWith("listing_images/")) {
+                                await zip.addFile(`items/${imageFile}`,zip.readFile((item.largeAvatarUrl||item.avatarUrl)))
+                                zip.deleteFile(item.avatarUrl||item.largeAvatarUrl)
+                            } else {
+                                let imagesrc = await this.getImage(item.largeAvatarUrl||item.avatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                                imageFile = `${path.basename(imageFile,path.extname(imageFile))}.webp`
+                                let image = await sharp(imagesrc).webp().toBuffer()
+                                await zip.addFile(`items/${imageFile}`,image)
+                            }
                         }
-                        itemEntry._content.push( { image: `${uuid5(item.largeAvatarUrl||item.avatarUrl,uuid5.URL)}.webp` } )
+                        itemEntry._content.push( { image: `${imageFile}` } )
                     }
                 } catch (e) {
                     console.log(`Could not load item image: ${e}`)
@@ -703,12 +711,21 @@ class DDB {
             })
             try{
                 if (monster.basicAvatarUrl) {
-                    if (!zip.getEntry(`monsters/${uuid5(monster.basicAvatarUrl,uuid5.URL)}.webp`)) {
-                        let imagesrc = (monster.basicAvatarUrl.startsWith('listing_images/'))? zip.readFile(monster.basicAvatarUrl) : await this.getImage(monster.basicAvatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
-                        let image = await sharp(imagesrc).webp().toBuffer()
-                        await zip.addFile(`monsters/${uuid5(monster.basicAvatarUrl,uuid5.URL)}.webp`,image)
+
+
+                    var imageFile = `${uuid5(monster.basicAvatarUrl,uuid5.URL)}${path.extname(monster.basicAvatarUrl)}`
+                    if (!zip.getEntry(`monsters/${imageFile}`)) {
+                        if (monster.basicAvatarUrl.startsWith("listing_images/")) {
+                            await zip.addFile(`monsters/${imageFile}`,zip.readFile(monster.basicAvatarUrl))
+                            zip.deleteFile(monster.basicAvatarUrl)
+                        } else {
+                            let imagesrc = await this.getImage(monster.basicAvatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                            imageFile = `${path.basename(imageFile,path.extname(imageFile))}.webp`
+                            let image = await sharp(imagesrc).webp().toBuffer()
+                            await zip.addFile(`monsters/${imageFile}`,image)
+                        }
                     }
-                    monsterEntry._content.push( { image: `${uuid5(monster.basicAvatarUrl,uuid5.URL)}.webp` } )
+                    monsterEntry._content.push( { image: `${imageFile}` } )
                 }
             } catch (e) {
                 console.log(`Error adding artwork: ${e}\n${monster.basicAvatarUrl}`)
@@ -854,7 +871,17 @@ class DDB {
                         _attrs: { id: uuid5(`https://www.dndbeyond.com/${book.sourceURL}/${c.Slug}`, uuid5.URL), sort: c.ID},
                         name: he.decode(c.Title),
                         slug: c.Slug.replaceAll("#","-"),
-                        content: ((zip.getEntry(`images/chapter-backgrounds/${c.Slug}.jpg`))?`<img src="images/chapter-backgrounds/${c.Slug}.jpg">`:'') + he.decode(c.RenderedHtml
+                        content: ((zip.getEntry(`images/chapter-backgrounds/${c.Slug}.jpg`))?`
+            <div class="chapterart view-cover-art" style="background-image: url(images/chapter-backgrounds/${c.Slug}.jpg);">
+                <a href="images/chapter-backgrounds/${c.Slug}.jpg">View Art</a>
+            </div>
+                        `:(c.Slug=="table-of-contents")?`
+            <div class="chapterart view-cover-art">
+                <a href="images/cover.jpg">View Cover Art</a>
+            </div>
+                        `:'') +
+                        '<div id="content" class="site body-page site-main container main content-container primary-content"><article class="p-article p-article-a"><div class="p-article-content u-typography-format">' +
+                        he.decode(c.RenderedHtml
                             .replaceAll(/ddb:\/\/compendium\/([^\/\"]*?)\"/g,"/module/$1\"")
                             .replaceAll(/ddb:\/\/compendium\/([^\/\"]*?)\//g,"/module/$1/page/")
                             .replaceAll(/\/page\/([^\"]*#[^\"]*)/g,m=>m.replace(/#(?=.*?#)/g,'-'))
@@ -863,8 +890,10 @@ class DDB {
                             .replaceAll(new RegExp(`\\./${book.name.toLowerCase()}/`,'g'),"")
                             .replaceAll(/ddb:\/\/conditions\/([0-9]*)/g, (m,m1)=>
                                 {
-                                    const condition = this.ruledata.conditions.find(s=>s.definition.id===parseInt(m1)).name
-                                    return `/module/br/appendix-a-conditions#${condition}`
+                                    const condition = this.ruledata.conditions.find(s=>s.definition.id===parseInt(m1)).definition
+                                    var modalObject = { type: "condition", title: condition.name, text: condition.description }
+                                    var encodedStr = Buffer.from(JSON.stringify(modalObject)).toString('base64')
+                                    return `javascript:void()" onclick="displayModal(&amp;amp;quot;${encodedStr}&amp;amp;quot;)`
                                 }
                             )
                             .replaceAll(/ddb:\/\/(.*?)\/([0-9]*)/g, (m,root,n)=>
@@ -872,16 +901,35 @@ class DDB {
                                     var repl = m
                                     switch(root) {
                                         case "skills":
-                                            n = this.ruledata.abilitySkills.find(s=>s.id===parseInt(n)).name
-                                            repl =  `/module/br/using-ability-scores-UsingEachAbility#${n}`
+                                            n = this.ruledata.abilitySkills.find(s=>s.id===parseInt(n))
+                                            var modalObject = {
+                                                type: "skill",
+                                                subtype: this.ruledata.stats.find(s=>s.id===n.stat)?.name,
+                                                title: n.name,
+                                                text: n.description }
+                                            var encodedStr = Buffer.from(JSON.stringify(modalObject))
+                                                .toString('base64')
+                                            repl = `javascript:void()" onclick="displayModal(&amp;amp;quot;${encodedStr}&amp;amp;quot;)`
                                             break
                                         case "actions":
-                                            n = this.ruledata.basicActions.find(s=>s.id===parseInt(n)).name
-                                            repl = `/module/br/combat-ActionsinCombat#${n}`
+                                            n = this.ruledata.basicActions.find(s=>s.id===parseInt(n))
+                                            var modalObject = {
+                                                type: "action",
+                                                title: n.name,
+                                                text: n.description }
+                                            var encodedStr = Buffer.from(JSON.stringify(modalObject))
+                                                .toString('base64')
+                                            repl = `javascript:void()" onclick="displayModal(&amp;amp;quot;${encodedStr}&amp;amp;quot;)`
                                             break
                                         case "senses":
-                                            n = this.ruledata.senses.find(s=>s.id===parseInt(n)).name
-                                            repl = `/module/br/monsters-MonsterStatistics#${n}`
+                                            n = this.ruledata.senses.find(s=>s.id===parseInt(n))
+                                            var modalObject = {
+                                                type: "sense",
+                                                title: n.name,
+                                                text: n.description }
+                                            var encodedStr = Buffer.from(JSON.stringify(modalObject))
+                                                .toString('base64')
+                                            repl = `javascript:void()" onclick="displayModal(&amp;amp;quot;${encodedStr}&amp;amp;quot;)`
                                             break
                                         case "spells":
                                             repl = `/spell/${uuid5(m,uuid5.URL)}`
@@ -901,7 +949,8 @@ class DDB {
                                     return repl
                                 }
                             )
-                            )
+                            ) +
+                            '</div></article></div>'
                     }
                 }
                 page.page.content = page.page.content.concat(`<script>window.thisSlug="${page.page.slug}"</script>`)
@@ -924,7 +973,98 @@ class DDB {
             },
             async () => {
                 prog.detail = "Writing CSS"
+                var globalcss = "@import '../../css/book.css';\n@import '../../css/light.css';\n"
                 var customcss = `
+@font-face {
+    font-family: "Scaly Sans Caps Bold";
+    src: url("../fonts/scalysanscapsbold.otf") format("opentype");
+    font-weight: bold;
+}
+@font-face {
+    font-family: "Solbera Imitation";
+    src: url("../fonts/solberaimitation.otf") format("opentype");
+    font-weight: normal;
+}
+#content {
+    padding: 1.5rem 2rem;
+    overflow: hidden;
+}
+img {
+    max-width: 100%;
+    height: auto;
+}
+.compendium-image-right,
+.compendium-image-left {
+    max-width: 30%;
+}
+a[href*='dndbeyond.com/sources'],
+a[href*='/module/'],
+a[href*='/page/'] {
+  color: #33CC80!important;
+}
+a[href*='dndbeyond.com/monsters'],
+a[href*='/monster/'] {
+  color: #bc0f0e!important;
+}
+a[href*='dndbeyond.com/spells'],
+a[href*='/spell/'] {
+  color: #532bca!important;
+  font-style: italic;
+}
+a[href*='dndbeyond.com/equipment'],
+a[href*='dndbeyond.com/magic-items'],
+a[href*='/item/'] {
+  color: #105a92!important;
+  font-style: italic;
+}
+a[href*='/roll/'] {
+  color: #d77e20!important;
+}
+.compendium-toc-blockquote a {
+    color: white!important;
+}
+.compendium-toc-full-text a
+{
+    color: black!important;
+}
+.compendium-toc-full-text ul li a:hover,
+.compendium-toc-full h4 a {
+    color: #47D18C!important;
+}
+blockquote .view-cover-art {
+    display: none!important;
+}
+.chapterart {
+    display: inline-block;
+    overflow: hidden;
+    height: 250px;
+    width:100%;
+    text-align:center;
+    background-image: url(../../images/cover.jpg);
+    position: relative;
+}
+.chapterart a {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    font-family: "Scaly Sans Caps Bold";
+    font-size: x-large;
+    color: white;
+    font-weight: bold;
+    text-align: center;
+}
+
+h1 + p:not(.no-fancy)::first-letter {
+    font-family: 'Solbera Imitation' !important;
+    font-size: 9.3rem;
+    text-decoration: none;
+    font-style: normal;
+    font-weight: normal;
+    line-height: 1;
+    margin-top: -0.3rem;
+    padding-right: 0.8rem;
+    float: left;
+}
 #comp-next-nav {
     display: none;
 }
@@ -1116,33 +1256,48 @@ class DDB {
                                 this.getImage(m2).then(r=>zip.addFile(`assets/css/res/${resName}`,r)).catch(e=>console.log(`${m2}-${e}`))
                                 return `url(res/${resName})`
                             })
+                this.css.push("https://media.dndbeyond.com/ddb-compendium-client/compendium.590bdb9dc0538e3c4006.css")
                 for (let css of this.css) {
                     try {
                         console.log(`Retrieving ${css}`)
                         let cssBuf = await this.getImage(css).catch(e=>console.log(`Error retrieving ${css}: ${e}`))
-                        customcss = customcss.concat(
-                            cssBuf.toString('utf8').replaceAll(/url\((['"]?)((?:https?:)?\/\/.*?)(?:\1)\)/g,(m,m1,m2)=>{
-                                if (!m2.startsWith("http")) m2 = "https:" + m2
+                        let cssTxt = cssBuf
+                            .toString('utf8').replaceAll(/url\((['"]?)((?:(?:https?:)?\/\/|\.\.).*?)(?:\1)\)/g,(m,m1,m2)=>{
+                                if (!m2.startsWith("http")&&m2.startsWith("//")) m2 = "https:" + m2
+                                if (m2.startsWith("../")) {
+                                    if (m2.startsWith("../images/letters","/images/")) {
+                                        m2 = m2.replace(/\/images\/letters\//,"/images/")
+                                    }
+                                    if (zip.getEntry(m2.substr(3))) {
+                                        console.log(`Skipping ${m2}`)
+                                        return `url("../${m2}")`
+                                    }
+                                    m2 = url.resolve(css,m2)
+                                }
             //                    if (m2.startsWith("http://i.imgur.com")) return m
                                 let resName = uuid5(m2,uuid5.URL)
                                 if (path.extname(m2)) resName += path.extname(m2)
                                 this.getImage(m2).then(r=>zip.addFile(`assets/css/res/${resName}`,r)).catch(e=>console.log(`${m2}-${e}`))
                                 return `url(res/${resName})`
-                            }).replaceAll(/(background:.*) (114px)/g,"$1 0px")
-                        )
-                        console.log("Added to custom.css")
+                            }).replaceAll(/(background:.*) (114px)/g,"$1 0px").replace(/@media\(max-width:1023px\)\{\.tooltip/,"@media(max-width: 10px){.tooltip")
+                        zip.addFile(`assets/css/${uuid5(css,uuid5.URL)}.css`,cssTxt)
+                        globalcss = globalcss.concat(`@import '${uuid5(css,uuid5.URL)}.css';\n`)
+                        console.log("Added to global.css")
                     } catch (e) {
                         console.log(`Error loading css: ${e}`)
                     }
                 }
-                console.log("Adding book.css to custom.css")
-                customcss = customcss.concat(zip.readAsText("css/book.css").replaceAll(/(background:.*) (114px)/g,"$1 0px"))
-                console.log("Adding light.css to custom.css")
-                customcss = customcss.concat(zip.readAsText("css/light.css").replaceAll(/(background:.*) (114px)/g,"$1 0px"))
+                //console.log("Adding book.css to custom.css")
+                //customcss = customcss.concat(zip.readAsText("css/book.css").replaceAll(/(background:.*) (114px)/g,"$1 0px").replaceAll(/\.\.\//g,"../../"))
+                //console.log("Adding light.css to custom.css")
+                //customcss = customcss.concat(zip.readAsText("css/light.css").replaceAll(/(background:.*) (114px)/g,"$1 0px").replaceAll(/\.\.\//g,"../../"))
                 console.log("Adding fixing css line endings")
-                customcss = customcss.replaceAll(/(\.\.\/)+/g,"../../").replaceAll(/\/images\/letters\//g,"/images/").replaceAll(/\r\n/g,"\n")
-                console.log("Adding custom.css to zip")
+                customcss = customcss.replaceAll(/\r\n/g,"\n")
+                console.log("Adding global.css to zip")
+                zip.addFile('assets/css/global.css',globalcss)
                 zip.addFile('assets/css/custom.css',customcss)
+                zip.addLocalFile('scalysanscapsbold.otf','assets/fonts')
+                zip.addLocalFile('solberaimitation.otf','assets/fonts')
                 const customjs = `
 const knownIds = ${JSON.stringify(slugIdMap)}
 window.addEventListener('load', function() {
@@ -1291,6 +1446,78 @@ window.addEventListener('click', function(e) {
         }
     }
 })
+function displayModal(encoded) {
+        var decoded = JSON.parse(atob(encoded))
+        document.querySelector('#db-tooltip-container')?.remove()
+	var modal = document.createElement('div')
+	modal.id = "db-tooltip-container"
+	modal.className = "waterdeep-tooltip"
+	modal.style.position = "fixed"
+	modal.style.zIndex = 9999
+	modal.style.whiteSpace = "nowrap"
+	modal.style.display = "block"
+
+	
+	var modalBody = document.createElement('div')
+	modalBody.className = "body"
+
+	var modalContent = document.createElement('div')
+	modalContent.classList = \`tooltip tooltip-\${decoded.type}\`
+        modalContent.style.minWidth = (document.documentElement.clientWidth<512)?
+            \`\${document.documentElement.clientWidth}px\` : "512px"
+
+	var modalHeader = document.createElement('div')
+	modalHeader.className = "tooltip-header"
+	var modalHeaderI = document.createElement('div')
+	modalHeaderI.className = "tooltip-header-icon"
+	var modalHeaderIcon = document.createElement('div')
+	modalHeaderIcon.classList = \`\${decoded.type}-icon \${decoded.type}-icon-\${decoded.title.toLowerCase()}\`
+	if (decoded.subtype) modalHeaderIcon.classList.add(\`\${decoded.type}-icon-\${decoded.subtype.toLowerCase()}\`)
+	var modalHeaderT = document.createElement('div')
+	modalHeaderT.className = "tooltip-header-text"
+	modalHeaderT.innerText = (decoded.subtype)? \`\${decoded.subtype} (\${decoded.title})\`:decoded.title
+	var modalHeaderId = document.createElement('div')
+	modalHeaderId.classList = \`tooltip-header-identifier tooltip-header-identifier-\${decoded.type}\`
+	modalHeaderId.innerText = decoded.type
+
+	var modalContentBody = document.createElement('div')
+	modalContentBody.className = "tooltip-body"
+	var modalContentBodyD = document.createElement('div')
+	modalContentBodyD.className = "tooltip-body-description"
+	var modalContentBodyDT = document.createElement('div')
+	modalContentBodyDT.className = "tooltip-body-description-text"
+	modalContentBodyDT.innerHTML = decoded.text
+
+	modalHeaderI.appendChild(modalHeaderIcon)
+	modalHeader.appendChild(modalHeaderI)
+	modalHeader.appendChild(modalHeaderT)
+	modalHeader.appendChild(modalHeaderId)
+	modalContent.appendChild(modalHeader)
+	modalContentBody.appendChild(modalContentBodyD)
+	modalContentBodyD.appendChild(modalContentBodyDT)
+	modalContent.appendChild(modalContentBody)
+	modalBody.appendChild(modalContent)
+	modal.appendChild(modalBody)
+        modal.onclick = function() { this.remove() }
+	document.querySelector('#page').appendChild(modal)
+        var modalW = modal.clientWidth
+        var modalH = modal.clientHeight
+        console.log(modalW,modalH,this.event.x,this.event.y,(modalW/2)-this.event.x)
+        if (this.event.x - (modalW/2) < 0) {
+            modal.style.left = 0
+        } else if (this.event.x + (modalW/2) > document.documentElement.clientWidth) {
+            modal.style.left = \`\${document.documentElement.clientWidth - modalW}px\`
+        } else {
+            modal.style.left = \`\${this.event.x - (modalW/2)}px\`
+        }
+        if (this.event.y - (modalH/2) < 0) {
+            modal.style.top = 0
+        } else if (this.event.y + (modalH/2) > document.documentElement.clientHeight) {
+            modal.style.bottom = 0
+        } else {
+            modal.style.top = \`\${this.event.y - (modalH/2)}px\`
+        }
+}
                 `
                 zip.addFile('assets/js/custom.js',customjs)
                 console.log("Storing module.xml")
