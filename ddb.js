@@ -59,7 +59,7 @@ function sanitize(text,rulesdata=null) {
             }
         },
         selectors: [
-            {selector: 'table', format: 'dataTable', options: { maxColumnWidth: 20, rowSpacing: 1 }},
+            {selector: 'table', format: 'dataTable', options: { maxColumnWidth: 20 }},
             {selector: 'a',format: 'keepA'},
             {selector: 'b',format: 'bold'},
             {selector: 'strong',format: 'bold'},
@@ -417,7 +417,7 @@ class DDB {
                     _name: "item",
                     _attrs: { id: uuid5(`${itemurl}/${item.id}`,uuid5.URL) },
                     _content: [
-                        {name: item.name},
+                        {name: (items.some(s=>s.groupedId===item.id))? `${item.name} (Group)` : item.name},
 			{slug: slugify(item.name)},
 			{value: item.cost||''},
 			{weight: item.weight||''},
@@ -800,7 +800,7 @@ class DDB {
         })
         var mod = {
             _name: "module",
-            _attrs: { id: `https://www.dndbeyond.com/${book.sourceURL}` },
+            _attrs: { id: uuid5(`https://www.dndbeyond.com/${book.sourceURL}`,uuid5.URL) },
             _content: [
                 { name: book.description },
                 { author: "D&D Beyond" },
@@ -834,7 +834,7 @@ class DDB {
                     mod._content.find(s=>s.image).image = `listing_images/${c.AFile}`
                     mod._content.push({code: c.Name||''})
                     mod._content.push({category: c.Type||''})
-                    mod._content.push({description: convert(c.ProductBlurb)||''})
+                    mod._content.push({description: convert(c.ProductBlurb).trim()||''})
                 }
             })
             db.each("SELECT M.ID,A.EntityID AS AID,A.EntityTypeID AS AET,B.EntityID AS BID,B.EntityTypeID AS BET,A.FileName as AFile,B.FileName as BFile FROM RPGMonster M LEFT JOIN Avatar AS A ON M.AvatarID = A.ID LEFT JOIN Avatar AS B ON M.BasicAvatarID = B.ID WHERE M.AvatarID IS NOT NULL OR M.BasicAvatarID IS NOT NULL",(e,c)=>{
@@ -881,75 +881,13 @@ class DDB {
                 <a href="images/cover.jpg">View Cover Art</a>
             </div>
                         `:'') +
-                        '<div id="content" class="site body-page site-main container main content-container primary-content"><article class="p-article p-article-a"><div class="p-article-content u-typography-format">' +
+                        `<div id="content" class="site site-main container main content-container primary-content ${(c.Slug=='table-of-contents')?'body-category':'body-page'}"><article class="p-article p-article-a"><div class="p-article-content u-typography-format" id="mainpage">` +
                         he.decode(c.RenderedHtml
                             .replaceAll(/ddb:\/\/compendium\/([^\/\"]*?)\"/g,"/module/$1\"")
                             .replaceAll(/ddb:\/\/compendium\/([^\/\"]*?)\//g,"/module/$1/page/")
                             .replaceAll(/\/page\/([^\"]*#[^\"]*)/g,m=>m.replace(/#(?=.*?#)/g,'-'))
-                            //.replaceAll(/\/page\/([^"]*?)#/g,"/page/$1-")
                             .replaceAll(new RegExp(`ddb:\/\/image\/${book.name.toLowerCase()}\/`,'g'),"")
                             .replaceAll(new RegExp(`\\./${book.name.toLowerCase()}/`,'g'),"")
-                            .replaceAll(/ddb:\/\/conditions\/([0-9]*)/g, (m,m1)=>
-                                {
-                                    const condition = this.ruledata.conditions.find(s=>s.definition.id===parseInt(m1)).definition
-                                    var modalObject = { type: "condition", title: condition.name, text: condition.description }
-                                    var encodedStr = Buffer.from(JSON.stringify(modalObject)).toString('base64')
-                                    return `javascript:void()" onclick="displayModal(&amp;amp;quot;${encodedStr}&amp;amp;quot;)`
-                                }
-                            )
-                            .replaceAll(/ddb:\/\/(.*?)\/([0-9]*)/g, (m,root,n)=>
-                                {
-                                    var repl = m
-                                    switch(root) {
-                                        case "skills":
-                                            n = this.ruledata.abilitySkills.find(s=>s.id===parseInt(n))
-                                            var modalObject = {
-                                                type: "skill",
-                                                subtype: this.ruledata.stats.find(s=>s.id===n.stat)?.name,
-                                                title: n.name,
-                                                text: n.description }
-                                            var encodedStr = Buffer.from(JSON.stringify(modalObject))
-                                                .toString('base64')
-                                            repl = `javascript:void()" onclick="displayModal(&amp;amp;quot;${encodedStr}&amp;amp;quot;)`
-                                            break
-                                        case "actions":
-                                            n = this.ruledata.basicActions.find(s=>s.id===parseInt(n))
-                                            var modalObject = {
-                                                type: "action",
-                                                title: n.name,
-                                                text: n.description }
-                                            var encodedStr = Buffer.from(JSON.stringify(modalObject))
-                                                .toString('base64')
-                                            repl = `javascript:void()" onclick="displayModal(&amp;amp;quot;${encodedStr}&amp;amp;quot;)`
-                                            break
-                                        case "senses":
-                                            n = this.ruledata.senses.find(s=>s.id===parseInt(n))
-                                            var modalObject = {
-                                                type: "sense",
-                                                title: n.name,
-                                                text: n.description }
-                                            var encodedStr = Buffer.from(JSON.stringify(modalObject))
-                                                .toString('base64')
-                                            repl = `javascript:void()" onclick="displayModal(&amp;amp;quot;${encodedStr}&amp;amp;quot;)`
-                                            break
-                                        case "spells":
-                                            repl = `/spell/${uuid5(m,uuid5.URL)}`
-                                            break
-                                        case "monsters":
-                                            repl = `/monster/${uuid5(m,uuid5.URL)}`
-                                            break
-                                        case "magicitems":
-                                        case "adventuring-gear":
-                                        case "weapon":
-                                        case "armor":
-                                            repl = `/item/${uuid5(m,uuid5.URL)}`
-                                            break
-                                        default:
-                                            console.log(`Unknown URL: ${repl}`)
-                                    }
-                                    return repl
-                                }
-                            )
                             ) +
                             '</div></article></div>'
                     }
@@ -961,7 +899,7 @@ class DDB {
                     var m
                     slugIdMap[page.page.slug] = { parent: page.page._attrs.parent, title: page.page.name, ids: [] }
                     while (m = htmlids.exec(page.page.content)) {
-                        slugIdMap[page.page.slug].ids.push(m[1])
+                        if (!m[1].match(/([a-f\d]{8}(-[a-f\d]{4}){3}-[a-f\d]{12}?)/i)) slugIdMap[page.page.slug].ids.push(m[1])
                     }
                     page.page.content = page.page.content.concat(`<script>window.parentUUID="${page.page._attrs.parent}"</script>`)
                     //let parentpage = mod._content.find(s=>s.page?._attrs?.id==page.page._attrs.parent)?.page
@@ -974,7 +912,7 @@ class DDB {
             },
             async () => {
                 prog.detail = "Writing CSS"
-                var globalcss = "@import '../../css/book.css';\n@import '../../css/light.css';\n"
+                var globalcss = "@import '../../css/book.css';\n"
                 var customcss = `
 @font-face {
     font-family: "Scaly Sans Caps Bold";
@@ -985,6 +923,15 @@ class DDB {
     font-family: "Solbera Imitation";
     src: url("../fonts/solberaimitation.otf") format("opentype");
     font-weight: normal;
+}
+body {
+    font-family: '-apple-system', sans-serif;
+    font-size: 1.3rem;
+    line-height: 1.8rem;
+    padding: 0;
+    margin: 0;
+    color: black;
+    background: #fefefc;
 }
 #content {
     padding: 1.5rem 2rem;
@@ -998,22 +945,24 @@ img {
 .compendium-image-left {
     max-width: 30%;
 }
-a[href*='dndbeyond.com/sources'],
+a[href^='ddb://'],
 a[href*='/module/'],
 a[href*='/page/'] {
   color: #33CC80!important;
 }
-a[href*='dndbeyond.com/monsters'],
+a[href*='ddb://monsters'],
 a[href*='/monster/'] {
   color: #bc0f0e!important;
 }
-a[href*='dndbeyond.com/spells'],
+a[href*='ddb://spells'],
 a[href*='/spell/'] {
   color: #532bca!important;
   font-style: italic;
 }
-a[href*='dndbeyond.com/equipment'],
-a[href*='dndbeyond.com/magic-items'],
+a[href*='ddb://armor'],
+a[href*='ddb://weapons'],
+a[href*='ddb://adventuring-gear'],
+a[href*='ddb://magic-items'],
 a[href*='/item/'] {
   color: #105a92!important;
   font-style: italic;
@@ -1156,6 +1105,7 @@ h1 + p:not(.no-fancy)::first-letter {
     color: #878787;
     text-transform: uppercase;
     font-family: "Roboto Condensed", serif;
+    line-height: 1rem!important
 }
 
 .top-next-nav a,
@@ -1271,12 +1221,10 @@ h1 + p:not(.no-fancy)::first-letter {
                                         m2 = m2.replace(/\/images\/letters\//,"/images/")
                                     }
                                     if (zip.getEntry(m2.substr(3))) {
-                                        console.log(`Skipping ${m2}`)
                                         return `url("../${m2}")`
                                     }
                                     m2 = url.resolve(css,m2)
                                 }
-            //                    if (m2.startsWith("http://i.imgur.com")) return m
                                 let resName = uuid5(m2,uuid5.URL)
                                 if (path.extname(m2)) resName += path.extname(m2)
                                 this.getImage(m2).then(r=>zip.addFile(`assets/css/res/${resName}`,r)).catch(e=>console.log(`${m2}-${e}`))
@@ -1289,18 +1237,24 @@ h1 + p:not(.no-fancy)::first-letter {
                         console.log(`Error loading css: ${e}`)
                     }
                 }
-                //console.log("Adding book.css to custom.css")
-                //customcss = customcss.concat(zip.readAsText("css/book.css").replaceAll(/(background:.*) (114px)/g,"$1 0px").replaceAll(/\.\.\//g,"../../"))
-                //console.log("Adding light.css to custom.css")
-                //customcss = customcss.concat(zip.readAsText("css/light.css").replaceAll(/(background:.*) (114px)/g,"$1 0px").replaceAll(/\.\.\//g,"../../"))
                 console.log("Adding fixing css line endings")
                 customcss = customcss.replaceAll(/\r\n/g,"\n")
                 console.log("Adding global.css to zip")
                 zip.addFile('assets/css/global.css',globalcss)
                 zip.addFile('assets/css/custom.css',customcss)
-                zip.addLocalFile(path.join(__dirname,"..","scalysanscapsbold.otf"),'assets/fonts')
-                zip.addLocalFile(path.join(__dirname,"..","solberaimitation.otf"),'assets/fonts')
+                try {
+                    zip.addLocalFile(path.join(__dirname,"..","scalysanscapsbold.otf"),'assets/fonts')
+                } catch {
+                    zip.addLocalFile("scalysanscapsbold.otf",'assets/fonts')
+                }
+                try {
+                    zip.addLocalFile(path.join(__dirname,"..","solberaimitation.otf"),'assets/fonts')
+                } catch {
+                    zip.addLocalFile("solberaimitation.otf",'assets/fonts')
+                }
+
                 const customjs = `
+${(await this.getImage("https://cdnjs.cloudflare.com/ajax/libs/uuid/8.1.0/uuidv5.min.js").catch(e=>console.log(`Error retrieving ${css}: ${e}`))).toString('utf8')}
 const knownIds = ${JSON.stringify(slugIdMap)}
 window.addEventListener('load', function() {
     var pageUrl = window.location
@@ -1320,11 +1274,20 @@ window.addEventListener('load', function() {
     }
     */
     var frag = window.location.hash
-    if (frag && !document.querySelector(window.location.hash)) {
+    if (frag && !document.getElementById(frag.substr(1))) {
         for (var slug of Object.keys(knownIds)) {
             if ([pageId,window.parentUUID].includes(knownIds[slug].parent) && knownIds[slug].ids.includes(frag.substr(1))) {
                 window.location.assign(\`https://encounter.plus/page/\${slug}\${frag}\`)
             }
+        }
+    }
+    var tables = document.querySelectorAll('.compendium-horizontal-scroll-table')
+    if (tables) {
+        for (var table of tables) {
+            var wrapper = document.createElement('div');
+            wrapper.className = "table-overflow-wrapper"
+            table.parentNode.insertBefore(wrapper,table)
+            wrapper.appendChild(table)
         }
     }
     var nav = document.querySelector('#comp-next-nav')
@@ -1362,7 +1325,7 @@ window.addEventListener('load', function() {
         topNav.appendChild(topNext)
         nav.parentNode.insertBefore(topNav,nav)
     }
-    var page = document.querySelector('#page')
+    var page = document.querySelector('#mainpage')
     if (!window.parentUUID){
         var bottomNav = document.createElement('div')
         bottomNav.className = "top-next-nav"
@@ -1437,7 +1400,7 @@ window.addEventListener('click', function(e) {
     var target = e.target.closest('a') || e.target;
     if (target.tagName === 'A') {
 	var link = target.getAttribute('href');
-	if (link.startsWith("#") && !document.querySelector(link)) {
+	if (link.startsWith("#") && !document.getElementById(link.substr(1))) {
 	    for (var slug of Object.keys(knownIds)) {
 		if ([pageId,window.parentUUID].includes(knownIds[slug].parent) && knownIds[slug].ids.includes(link.substr(1))) {
                     e.preventDefault()
@@ -1445,11 +1408,36 @@ window.addEventListener('click', function(e) {
 		    return
 	        }
 	    }
+        } else if (link.startsWith("ddb://")) {
+            e.preventDefault()
+            var ddburl = new URL(link)
+            if (ddburl.host == "spells") {
+                window.location = \`https://encounter.plus/spell/\${uuidv5(link, uuidv5.URL)}\`
+            } else if (ddburl.host == "monsters") {
+                window.location = \`https://encounter.plus/monster/\${uuidv5(link, uuidv5.URL)}\`
+            } else if (["magicitems","adventuring-gear","weapon","armor"].includes(ddburl.host)) {
+                window.location = \`https://encounter.plus/item/\${uuidv5(link, uuidv5.URL)}\`
+            } else {
+                displayModal(ddburl.host,ddburl.pathname.replace(/^\\//,''))
+            }
         }
     }
 })
-function displayModal(encoded) {
-        var decoded = JSON.parse(atob(encoded))
+function displayModal(path,id) {
+        var info = {
+            conditions: ${JSON.stringify(this.ruledata.conditions.map(s=>s.definition))},
+            skills:     ${JSON.stringify(this.ruledata.abilitySkills)},
+            actions:    ${JSON.stringify(this.ruledata.basicActions)},
+            senses:     ${JSON.stringify(this.ruledata.senses)},
+            weaponproperties: ${JSON.stringify(this.ruledata.weaponProperties)},
+            stat:       ${JSON.stringify(this.ruledata.stats)}
+        }
+        var type = path.slice(0,-1)
+        var detail = info[path]?.find(s=>s.id===parseInt(id))
+        var subtype = (type=="skill")? info.stat.find(s=>s.id===detail?.stat)?.name : null
+        var title = detail?.name || "Unknown"
+        var text = detail?.description || \`Could not find \${type} #\${id}\`
+
         document.querySelector('#db-tooltip-container')?.remove()
 	var modal = document.createElement('div')
 	modal.id = "db-tooltip-container"
@@ -1464,7 +1452,7 @@ function displayModal(encoded) {
 	modalBody.className = "body"
 
 	var modalContent = document.createElement('div')
-	modalContent.classList = \`tooltip tooltip-\${decoded.type}\`
+	modalContent.classList = \`tooltip tooltip-\${type}\`
         modalContent.style.minWidth = (document.documentElement.clientWidth<512)?
             \`\${document.documentElement.clientWidth}px\` : "512px"
 
@@ -1473,14 +1461,14 @@ function displayModal(encoded) {
 	var modalHeaderI = document.createElement('div')
 	modalHeaderI.className = "tooltip-header-icon"
 	var modalHeaderIcon = document.createElement('div')
-	modalHeaderIcon.classList = \`\${decoded.type}-icon \${decoded.type}-icon-\${decoded.title.toLowerCase()}\`
-	if (decoded.subtype) modalHeaderIcon.classList.add(\`\${decoded.type}-icon-\${decoded.subtype.toLowerCase()}\`)
+	modalHeaderIcon.classList = \`\${type}-icon \${type}-icon-\${title.toLowerCase()}\`
+	if (subtype) modalHeaderIcon.classList.add(\`\${type}-icon-\${subtype.toLowerCase()}\`)
 	var modalHeaderT = document.createElement('div')
 	modalHeaderT.className = "tooltip-header-text"
-	modalHeaderT.innerText = (decoded.subtype)? \`\${decoded.subtype} (\${decoded.title})\`:decoded.title
+	modalHeaderT.innerText = (subtype)? \`\${subtype} (\${title})\`:title
 	var modalHeaderId = document.createElement('div')
-	modalHeaderId.classList = \`tooltip-header-identifier tooltip-header-identifier-\${decoded.type}\`
-	modalHeaderId.innerText = decoded.type
+	modalHeaderId.classList = \`tooltip-header-identifier tooltip-header-identifier-\${type}\`
+	modalHeaderId.innerText = type
 
 	var modalContentBody = document.createElement('div')
 	modalContentBody.className = "tooltip-body"
@@ -1488,7 +1476,7 @@ function displayModal(encoded) {
 	modalContentBodyD.className = "tooltip-body-description"
 	var modalContentBodyDT = document.createElement('div')
 	modalContentBodyDT.className = "tooltip-body-description-text"
-	modalContentBodyDT.innerHTML = decoded.text
+	modalContentBodyDT.innerHTML = text
 
 	modalHeaderI.appendChild(modalHeaderIcon)
 	modalHeader.appendChild(modalHeaderI)
