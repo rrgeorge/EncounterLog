@@ -13,6 +13,7 @@ const sqlite3 = require('@journeyapps/sqlcipher').verbose()
 const tmp = require('tmp')
 const path = require('path')
 const url = require('url')
+const fs = require('fs')
 function slugify(str) {
     return Slugify(str,{ lower: true, strict: true })
 }
@@ -1297,8 +1298,8 @@ h1 + p:not(.no-fancy)::first-letter {
                 console.log("Adding global.css to zip")
                 zip.addFile('assets/css/global.css',globalcss)
                 zip.addFile('assets/css/custom.css',customcss)
-                zip.addLocalFile('scalysanscapsbold.otf','assets/fonts')
-                zip.addLocalFile('solberaimitation.otf','assets/fonts')
+                zip.addLocalFile(path.join(__dirname,"..","scalysanscapsbold.otf"),'assets/fonts')
+                zip.addLocalFile(path.join(__dirname,"..","solberaimitation.otf"),'assets/fonts')
                 const customjs = `
 const knownIds = ${JSON.stringify(slugIdMap)}
 window.addEventListener('load', function() {

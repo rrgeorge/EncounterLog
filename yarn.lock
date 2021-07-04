@@ -1649,6 +1649,11 @@ lru-cache@^6.0.0:
   dependencies:
     yallist "^4.0.0"
 
+mac@^0.4.0:
+  version "0.4.0"
+  resolved "https://registry.yarnpkg.com/mac/-/mac-0.4.0.tgz#777fba48af0bc50ab8cdda796779a7105ca34b89"
+  integrity sha1-d3+6SK8LxQq4zdp5Z3mnEFyjS4k=
+
 make-dir@^3.0.0, make-dir@^3.1.0:
   version "3.1.0"
   resolved "https://registry.npmjs.org/make-dir/-/make-dir-3.1.0.tgz"
