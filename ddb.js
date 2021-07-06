@@ -1,4 +1,4 @@
-const { net, session, app } = require('electron')
+const { net, session, app, dialog } = require('electron')
 const qs = require('querystring')
 const ProgressBar = require('electron-progressbar')
 const Slugify = require('slugify')
@@ -13,7 +13,6 @@ const sqlite3 = require('@journeyapps/sqlcipher').verbose()
 const tmp = require('tmp')
 const path = require('path')
 const url = require('url')
-const fs = require('fs')
 function slugify(str) {
     return Slugify(str,{ lower: true, strict: true })
 }
@@ -211,10 +210,11 @@ class DDB {
         const body = qs.stringify({ 'token': this.cobaltsession })
         const sources = await this.postRequest(url,body).then(r => r.data).catch(e =>{ throw new Error(`Cannot retrieve avaialable sources: ${e}`)})
         if (!this.ruledata) await this.getRuleData().catch(e=>{throw new Error(e)})
-        const books = sources.Licenses.filter((f) => f.EntityTypeID == "496802664")
+        const books = sources.Licenses.filter(f => f.EntityTypeID == "496802664")
                 .map((block) =>
                     block.Entities
                       .filter((b) => b.isOwned)
+                      .filter(f=>![4,26,29,30,31,53,42].includes(f.id))
                       .filter((b) => this.ruledata.sources.some((s)  => b.id === s.id && s.isReleased))
                       .map((b) => {
                         const book = this.ruledata.sources.find((s)  => b.id === s.id);
@@ -231,6 +231,7 @@ class DDB {
                 .map((block) =>
                     block.Entities
                       .filter((b) => !b.isOwned)
+                      .filter(f=>![4,26,29,30,31,53,42].includes(f.id))
                       .filter((b) => this.ruledata.sources.some((s)  => b.id === s.id && s.isReleased))
                       .map((b) => {
                         const book = this.ruledata.sources.find((s)  => b.id === s.id);
@@ -281,7 +282,7 @@ class DDB {
         return allSpells
     }
 
-    async getSpells(source=null,filename,zip=null,prog=null) {
+    async getSpells(source=null,filename,zip=null,prog=null,homebrew=false) {
         const spellSchools = [
             { code: "A", name: "abjuration" },
             { code: "C", name: "conjuration" },
@@ -294,7 +295,7 @@ class DDB {
         ]
         if(!prog) prog = new ProgressBar({text: "Converting spells...", detail: "Please wait...", indeterminate: false, maxValue: 100})
         const allSpells = await this.getAllSpells(prog)
-        const spells = allSpells.filter(s=>(source)?s.sources.some(b=>b.sourceId===source):true)
+        const spells = allSpells.filter(s=>(source)?s.sources.some(b=>b.sourceId===source):!s.sources.some(b=>b.sourceId===29))
         if (filename) zip = new AdmZip()
         var compendium = { 
             _name: "compendium",
@@ -306,6 +307,9 @@ class DDB {
                 prog.value += (1/spells.length)*90
             } else {
                 prog.value += (1/spells.length)*5
+            }
+            if (spell.isHomebrew !== homebrew) {
+                continue
             }
             var spellEntry = {
                 _name: "spell",
@@ -356,6 +360,12 @@ class DDB {
             compendium._content.push(spellEntry)
         }
         if (filename) {
+            if (compendium._content.length === 0) {
+                prog.detail = "No spells available from this source."
+                prog.setCompleted()
+                dialog.showMessageBox({message:"No spells are available from this source.",type:"info"})
+                return
+            }
             prog.detail = `Creating XML`
             var compendiumXML = toXML(compendium,{indent:'\t'})
             await zip.addFile("compendium.xml",Buffer.from(compendiumXML,'utf8'),null)
@@ -367,7 +377,7 @@ class DDB {
         return compendium
     }
 
-    async getItems(source=null,filename,zip=null,imageMap=null,prog=null) {
+    async getItems(source=null,filename,zip=null,imageMap=null,prog=null,homebrew=false) {
         const itemTypeCodes = [
             { code: "AA", names: [ "armor" ] },
             { code: "WW", names: [ "weapon" ] },
@@ -393,7 +403,7 @@ class DDB {
         await this.getCobaltAuth()
         const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting items: ${e}`))
         if (response?.data) {
-            const items = response.data.filter(s=>(source)?(s.sources.some(b=>b.sourceId===source)||(source<=2&&s.sources.length==0)):true)
+            const items = response.data.filter(s=>(source)?(s.sources.some(b=>b.sourceId===source&&b.sourceId!==29)||(source<=2&&s.sources.length==0)):true)
             if (!prog) prog = new ProgressBar({text: "Converting items...", detail: "Please wait...", indeterminate: false, maxValue: items.length})
             if (filename) zip = new AdmZip()
             var compendium = { 
@@ -401,6 +411,10 @@ class DDB {
                 _content: []
             }
             for (const item of items) {
+                if (item.isHomebrew !== homebrew) {
+                    prog.value += (!filename)? (15*(1/items.length)) : 1
+                    continue
+                }
                 prog.detail = item.name
                 let itemurl = "ddb://"
                 let itemType = "Item"
@@ -537,7 +551,14 @@ class DDB {
                 compendium._content.push(itemEntry)
                 prog.value += (!filename)? (15*(1/items.length)) : 1
             }
+            console.log(`Total items ${compendium._content.length}`)
             if (filename) {
+                if (compendium._content.length === 0) {
+                    prog.detail = "No items available from this source."
+                    prog.setCompleted()
+                    dialog.showMessageBox({message:"No items are available from this source.",type:"info"})
+                    return
+                }
                 prog.detail = `Creating XML`
                 var compendiumXML = toXML(compendium,{indent:'\t'})
                 await zip.addFile("compendium.xml",Buffer.from(compendiumXML,'utf8'),null)
@@ -545,6 +566,7 @@ class DDB {
                 zip.writeZip(filename)
                 prog.detail = `Saved compendium`
                 setTimeout(()=>prog.setCompleted(),1000)
+                console.log("Wrote compendium")
             }
             return compendium
         }
@@ -561,7 +583,7 @@ class DDB {
         const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting monster count for source id ${source}: ${e}`))
         return response.pagination.total
     }
-    async getMonsters(source = 0,filename,zip=null,imageMap=null,prog=null) {
+    async getMonsters(source = 0,filename,zip=null,imageMap=null,prog=null,homebrew=false) {
         const url = "https://monster-service.dndbeyond.com/v1/Monster"
         var params
         const count = await this.getMonsterCount(source).catch((e)=>console.log(e))
@@ -588,6 +610,14 @@ class DDB {
                     prog.value += (!filename)? (15*(1/count)) : 1
                     continue
                 }
+                if (monster.isHomebrew !== homebrew) {
+                    prog.value += (!filename)? (15*(1/count)) : 1
+                    continue
+                }
+                if (source !== 29 && monster.sourceId === 29) {
+                    prog.value += (!filename)? (15*(1/count)) : 1
+                    continue
+                }
                 prog.detail = `${monster.name}`
                 monster.avatarUrl = imageMap?.find(s=>s.id===monster.id&&s.type===monster.entityTypeId)?.avatar || monster.avatarUrl
                 monster.basicAvatarUrl = imageMap?.find(s=>s.id===monster.id&&s.type===monster.entityTypeId)?.basicAvatar || monster.basicAvatarUrl
@@ -597,6 +627,12 @@ class DDB {
             pos += 100
         }
         if (filename) {
+            if (compendium._content.length === 0) {
+                prog.detail = "No monsters available from this source."
+                prog.setCompleted()
+                dialog.showMessageBox({message:"No monsters are available from this source.",type:"info"})
+                return
+            }
             prog.detail = `Creating XML`
             var compendiumXML = toXML(compendium,{indent:'\t'})
             await zip.addFile("compendium.xml",Buffer.from(compendiumXML,'utf8'),null)
@@ -883,7 +919,7 @@ class DDB {
                         `:'') +
                         `<div id="content" class="site site-main container main content-container primary-content ${(c.Slug=='table-of-contents')?'body-category':'body-page'}"><article class="p-article p-article-a"><div class="p-article-content u-typography-format" id="mainpage">` +
                         he.decode(c.RenderedHtml
-                            .replaceAll(/ddb:\/\/compendium\/([^\/\"]*?)\"/g,"/module/$1\"")
+                            .replaceAll(/ddb:\/\/compendium\/([^\/\"]*?)\"/g,"/module/$1/table-of-contents\"")
                             .replaceAll(/ddb:\/\/compendium\/([^\/\"]*?)\//g,"/module/$1/page/")
                             .replaceAll(/\/page\/([^\"]*#[^\"]*)/g,m=>m.replace(/#(?=.*?#)/g,'-'))
                             .replaceAll(new RegExp(`ddb:\/\/image\/${book.name.toLowerCase()}\/`,'g'),"")

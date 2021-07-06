@@ -168,8 +168,23 @@ app.on('ready', () => {
                                               label: "Open",
                                               click: () => win.loadURL(book.url),
                                           }),
+                                          new MenuItem({ type: 'separator' }),
                                           new MenuItem({
-                                              label: "Download Monsters",
+                                              label: "Download Module",
+                                              click: () => {
+                                                dialog.showSaveDialog(win,{
+                                                    title: "Save Book",
+                                                    filters: [ { name: "EncounterPlus Module", extensions: ["module"]} ],
+                                                    defaultPath: `${book.bookCode.toLowerCase()}.module`,
+                                                }).then((save) => {
+                                                    if (save.filePath)
+                                                        ddb.getModule(book.id,save.filePath,win).catch(e=>displayError(e))
+                                                    }
+                                                )
+                                              }
+                                          }),
+                                          new MenuItem({
+                                              label: "Download Only Monsters",
                                               click: () => {
                                                 dialog.showSaveDialog(win,{
                                                     title: "Save monsters compendium",
@@ -183,7 +198,7 @@ app.on('ready', () => {
                                               }
                                           }),
                                           new MenuItem({
-                                              label: "Download Items",
+                                              label: "Download Only Items",
                                               click: () => {
                                                 dialog.showSaveDialog(win,{
                                                     title: "Save items compendium",
@@ -197,7 +212,7 @@ app.on('ready', () => {
                                               }
                                           }),
                                           new MenuItem({
-                                              label: "Download Spells",
+                                              label: "Download Only Spells",
                                               click: () => {
                                                 dialog.showSaveDialog(win,{
                                                     title: "Save spells compendium",
@@ -206,20 +221,6 @@ app.on('ready', () => {
                                                 }).then((save) => {
                                                     if (save.filePath)
                                                         ddb.getSpells(book.id,save.filePath)
-                                                    }
-                                                )
-                                              }
-                                          }),
-                                          new MenuItem({
-                                              label: "Download Book",
-                                              click: () => {
-                                                dialog.showSaveDialog(win,{
-                                                    title: "Save Book",
-                                                    filters: [ { name: "EncounterPlus Module", extensions: ["module"]} ],
-                                                    defaultPath: `${book.bookCode.toLowerCase()}.module`,
-                                                }).then((save) => {
-                                                    if (save.filePath)
-                                                        ddb.getModule(book.id,save.filePath,win).catch(e=>displayError(e))
                                                     }
                                                 )
                                               }
@@ -240,7 +241,7 @@ app.on('ready', () => {
                                               click: () => win.loadURL(book.url),
                                           }),
                                           new MenuItem({
-                                              label: "Download Book",
+                                              label: "Download Module",
                                               click: () => {
                                                 dialog.showSaveDialog(win,{
                                                     title: "Save Book",
@@ -259,9 +260,102 @@ app.on('ready', () => {
                                 }
                                 if (sharedSubmenu.length > 0) {
                                     compendiumMenu.submenu.append(
-                                        new MenuItem({ label: "Shared Books:", submenu: sharedSubmenu })
+                                        new MenuItem({ label: "Shared Books", submenu: sharedSubmenu })
                                     )
+                                    compendiumMenu.submenu.append( new MenuItem({ type: 'separator' }))
                                 }
+                                var uaSubMenu = []
+                                uaSubMenu.push( new MenuItem({
+                                    label: "Download UA Monsters",
+                                    click: () => {
+                                        dialog.showSaveDialog(win,{
+                                            title: "Save monsters compendium",
+                                            filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
+                                            defaultPath: `ua_monsters.compendium`,
+                                        }).then((save) => {
+                                            if (save.filePath)
+                                                ddb.getMonsters(29,save.filePath)
+                                            }
+                                        )
+                                    }
+                                    }))
+                                uaSubMenu.push( new MenuItem({
+                                    label: "Download UA Items",
+                                    click: () => {
+                                        dialog.showSaveDialog(win,{
+                                            title: "Save items compendium",
+                                            filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
+                                            defaultPath: `ua_items.compendium`,
+                                        }).then((save) => {
+                                            if (save.filePath)
+                                                ddb.getItems(29,save.filePath)
+                                            }
+                                        )
+                                    }
+                                    }))
+                                uaSubMenu.push( new MenuItem({
+                                    label: "Download UA Spells",
+                                    click: () => {
+                                        dialog.showSaveDialog(win,{
+                                            title: "Save spells compendium",
+                                            filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
+                                            defaultPath: `ua_spells.compendium`,
+                                        }).then((save) => {
+                                            if (save.filePath)
+                                                ddb.getSpells(29,save.filePath)
+                                            }
+                                        )
+                                    }
+                                    }))
+                                compendiumMenu.submenu.append(
+                                    new MenuItem({ label: "Unearthed Arcana", submenu: uaSubMenu })
+                                )
+                                var homebrewSubMenu = []
+                                homebrewSubMenu.push( new MenuItem({
+                                    label: "Download Homebrew Monsters",
+                                    click: () => {
+                                        dialog.showSaveDialog(win,{
+                                            title: "Save monsters compendium",
+                                            filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
+                                            defaultPath: `homebrew_monsters.compendium`,
+                                        }).then((save) => {
+                                            if (save.filePath)
+                                                ddb.getMonsters(null,save.filePath,null,null,null,true)
+                                            }
+                                        )
+                                    }
+                                    }))
+                                homebrewSubMenu.push( new MenuItem({
+                                    label: "Download Homebrew Items",
+                                    click: () => {
+                                        dialog.showSaveDialog(win,{
+                                            title: "Save items compendium",
+                                            filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
+                                            defaultPath: `homebrew_items.compendium`,
+                                        }).then((save) => {
+                                            if (save.filePath)
+                                                ddb.getItems(null,save.filePath,null,null,null,true)
+                                            }
+                                        )
+                                    }
+                                    }))
+                                homebrewSubMenu.push( new MenuItem({
+                                    label: "Download Homebrew Spells",
+                                    click: () => {
+                                        dialog.showSaveDialog(win,{
+                                            title: "Save spells compendium",
+                                            filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
+                                            defaultPath: `homebrew_spells.compendium`,
+                                        }).then((save) => {
+                                            if (save.filePath)
+                                                ddb.getSpells(null,save.filePath,null,null,null,true)
+                                            }
+                                        )
+                                    }
+                                    }))
+                                compendiumMenu.submenu.append(
+                                    new MenuItem({ label: "Homebrew Collection", submenu: homebrewSubMenu })
+                                )
                                 compendiumMenu.submenu.append( new MenuItem({ type: 'separator' }))
                                 compendiumMenu.submenu.append( new MenuItem({
                                     label: "Download All Monsters",
