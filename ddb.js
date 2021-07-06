@@ -1273,6 +1273,10 @@ h1 + p:not(.no-fancy)::first-letter {
                         console.log(`Error loading css: ${e}`)
                     }
                 }
+                if (moduleId <= 2) {
+                    let dwarfIntro = await this.getImage("https://media-waterdeep.cursecdn.com/attachments/thumbnails/0/619/850/190/dwarfintro.png").catch(e=>console.log(`Error retrieving missing dwarf intro: ${e}`))
+                    if (dwarfIntro) zip.addFile("dwarfintro.png",dwarfIntro)
+                }
                 console.log("Adding fixing css line endings")
                 customcss = customcss.replaceAll(/\r\n/g,"\n")
                 console.log("Adding global.css to zip")
