@@ -57,8 +57,8 @@ app.on('ready', () => {
 		      	{role:'quit'}
 		  ]
 	      },
-              {label: "Campaigns", id: 'campaignMenu', submenu: [] },
-              {label: "Compendium", id: 'compendium', enabled: false, submenu: [] },
+              {label: "Campaigns", id: 'campaignMenu', submenu: [ { label: "Loading...", enabled: false } ] },
+              {label: "Compendium", id: 'compendium', submenu: [ {label: "Loading...", enabled: false } ] },
               {role: 'help', submenu: [
                   { label: "About", click: () => shell.openExternal("https://github.com/rrgeorge/EncounterLog") },
                   { label: "Support this project", click: () => shell.openExternal("https://github.com/sponsors/rrgeorge") }
@@ -75,32 +75,13 @@ app.on('ready', () => {
         )
         win.loadURL('https://www.dndbeyond.com/my-campaigns')
         win.once('ready-to-show', () => {
-            ddb.populateCampaigns().then(() => {
-                const campaignMenu = menu.getMenuItemById('campaignMenu')
-                campaignMenu.submenu.clear()
-                campaignMenu.submenu.append( new MenuItem({
-                    label: "Campaign List",
-                    toolTip: "Jump to campaign list",
-                    click: (m) => _win?.loadURL(`https://www.dndbeyond.com/my-campaigns`)
-                }))
-                campaignMenu.submenu.append(new MenuItem({type: 'separator'}))
-                for (var campaign of ddb.campaigns) {
-                    campaignMenu.submenu.append( new MenuItem({
-                        label: he.decode(campaign.name).replaceAll("&","&&"),
-                        id: campaign.id,
-                        toolTip: "Jump to campaign",
-                        click: (m) => _win?.loadURL(`https://www.dndbeyond.com/campaigns/${m.id}`)
-                    }))
-                }
-                Menu.setApplicationMenu(menu)
-            }).catch(e=>displayError(`Error populating campaigns: ${e}`))
             win.show()
         })
         win.webContents.on('did-navigate',(e,u,r,m) => {
             if (r==200) {
             win.webContents.once('did-finish-load',()=> {
                     console.log(win.webContents.getURL())
-                    if (win.webContents.getURL().match(/\/campaigns\/[0-9]+/)) {
+                    if (win.webContents.getURL().match(/dndbeyond.com\/campaigns\/[0-9]+/)) {
                             win.webContents.executeJavaScript(`
                                     const {ipcRenderer} = require('electron')
                                     var characters = document.getElementsByClassName('ddb-campaigns-character-card')
@@ -135,7 +116,7 @@ app.on('ready', () => {
                             _ws.isDisconnecting = true
                             _ws.close(1001,"Going away")
                     }
-                    if (win.webContents.getURL().match(/\/my-campaigns/)) {
+                    if (win.webContents.getURL().match(/dndbeyond.com\/my-campaigns/)) {
                         const menu = Menu.getApplicationMenu()
                         ddb.populateCampaigns().then(() => {
                             const campaignMenu = menu.getMenuItemById('campaignMenu')
