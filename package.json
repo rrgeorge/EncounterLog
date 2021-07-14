@@ -1,7 +1,11 @@
 {
   "name": "EncounterLog",
-  "version": "2.0.0rc5",
-  "description": "Stream D&D Beyond GameLog to EncounterPlus",
+  "version": "2.0.0",
+  "description": "Connect D&D Beyond to EncounterPlus",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rrgeorge/encounterlog"
+  },
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -12,6 +16,7 @@
     "app": "electron ."
   },
   "build": {
+    "productName": "EncounterLog",
     "appId": "online.play5e.EncounterLog",
     "mac": {
       "category": "public.app-category.utilities",

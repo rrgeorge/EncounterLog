@@ -27,18 +27,33 @@ const preferences = new ElectronPreferences({
 		'icon': "settings-gear-63",
 		'form': {
 			'groups': [ {
-				'fields': [ {
+				'fields': [
+                                    {
+					'heading': "Preferences",
+					'key': 'prefs_message',
+                                        'type': 'message',
+					'content': '<p>If you would like to forward dice rolls to EncounterPlus from a Campaign\'s Game Log, enter the EncounterPlus Server URL below. Then load a campaign page, and EncounterLog will automatically connect the Game Log to EncounterPlus</p>',
+				    },
+                                    {
 					'label': "EncounterPlus Server URL",
 					'key': 'encounterhost',
 					'type': 'text',
 					'help': "Example: http://192.168.1.10:8080"
-				} ]
+                                    },
+                                    {
+					'heading': "",
+					'key': 'prefs_okay',
+                                        'type': 'message',
+					'content': '<div align="right"><input type="submit" class="bt" onclick="window.close()" value="Okay"></div>',
+				    },
+                                ]
 			} ]
 		}
 	} ],
         'browserWindowOverrides': {
-            'width': 750,
-            'height': 500,
+            title: 'Preferences',
+            width: 800,
+            height: 400,
             }
 })
 encounterhost = preferences.value('main.encounterhost');
@@ -80,7 +95,6 @@ app.on('ready', () => {
         win.webContents.on('did-navigate',(e,u,r,m) => {
             if (r==200) {
             win.webContents.once('did-finish-load',()=> {
-                    console.log(win.webContents.getURL())
                     if (win.webContents.getURL().match(/dndbeyond.com\/campaigns\/[0-9]+/)) {
                             win.webContents.executeJavaScript(`
                                     const {ipcRenderer} = require('electron')
@@ -234,9 +248,8 @@ app.on('ready', () => {
                                                     }
                                                 )
                                               }
-                                          })
+                                          }),
                                       ]
-                                      //click: (m) => _win?.loadURL(srcUrl)
                                   }))
                                 }
                                 if (sharedSubmenu.length > 0) {
@@ -389,6 +402,7 @@ app.on('ready', () => {
                 })
             }
         })
+        win.on('closed',()=>app.quit())
 	ipcMain.on("changefilter", (event,data) => {
 		let name = data[0];
 		let filter = data[1];
@@ -398,10 +412,8 @@ app.on('ready', () => {
 			ignored.push(name)
 		}
 	})
-	if (encounterhost === undefined) {
-		preferences.show();
-	} else {
-		console.log(encounterhost)
+	if (encounterhost !== undefined) {
+	    console.log(`EncounterPlus URL: ${encounterhost}`)
 	}
 });
 function displayError(e) {
@@ -459,7 +471,7 @@ function requestCampaignChars(gameId,cobalt) {
                                         defaultPath: `${thisCampaign.label}.compendium`,
                                     }).then((save) => {
                                         if (save.filePath) {
-                                            const prog = new ProgressBar({text: "Converting campaign characters...", detail: "Please wait..."})
+                                            const prog = new ProgressBar({title: "Converting campaign characters...", text: "Converting campaign characters...", detail: "Please wait..."})
                                             download(_win,`https://w.bobg.us/ddb.php?tokenmap=true&circles=true&campaign=https://ddb.ac/characters/${campaignChars[0].id}`,{
                                                 filename: path.basename(save.filePath),
                                                 directory: path.dirname(save.filePath),

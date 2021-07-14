@@ -293,7 +293,7 @@ class DDB {
             { code: "N", name: "necromancy" },
             { code: "T", name: "transmutation" }
         ]
-        if(!prog) prog = new ProgressBar({text: "Converting spells...", detail: "Please wait...", indeterminate: false, maxValue: 100})
+        if(!prog) prog = new ProgressBar({title: "Please wait...", text: "Converting spells...", detail: "Please wait...", indeterminate: false, maxValue: 100})
         const allSpells = await this.getAllSpells(prog)
         const spells = allSpells.filter(s=>(source)?s.sources.some(b=>b.sourceId===source):!s.sources.some(b=>b.sourceId===29))
         if (filename) zip = new AdmZip()
@@ -361,9 +361,8 @@ class DDB {
         }
         if (filename) {
             if (compendium._content.length === 0) {
-                prog.detail = "No spells available from this source."
-                prog.setCompleted()
                 dialog.showMessageBox({message:"No spells are available from this source.",type:"info"})
+                    .then(prog.setCompleted())
                 return
             }
             prog.detail = `Creating XML`
@@ -404,7 +403,7 @@ class DDB {
         const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting items: ${e}`))
         if (response?.data) {
             const items = response.data.filter(s=>(source)?(s.sources.some(b=>b.sourceId===source&&b.sourceId!==29)||(source<=2&&s.sources.length==0)):true)
-            if (!prog) prog = new ProgressBar({text: "Converting items...", detail: "Please wait...", indeterminate: false, maxValue: items.length})
+            if (!prog) prog = new ProgressBar({title: "Please wait...",text: "Converting items...", detail: "Please wait...", indeterminate: false, maxValue: items.length})
             if (filename) zip = new AdmZip()
             var compendium = { 
                 _name: "compendium",
@@ -554,9 +553,8 @@ class DDB {
             console.log(`Total items ${compendium._content.length}`)
             if (filename) {
                 if (compendium._content.length === 0) {
-                    prog.detail = "No items available from this source."
-                    prog.setCompleted()
                     dialog.showMessageBox({message:"No items are available from this source.",type:"info"})
+                        .then(prog.setCompleted())
                     return
                 }
                 prog.detail = `Creating XML`
@@ -589,7 +587,7 @@ class DDB {
         const count = await this.getMonsterCount(source).catch((e)=>console.log(e))
         console.log(`Source ${source} has ${count} monsters`)
         let pos = 0
-        if(!prog) prog = new ProgressBar({text: "Converting monsters...", detail: "Please wait...", indeterminate: false, maxValue: count})
+        if(!prog) prog = new ProgressBar({title: "Please wait...",text: "Converting monsters...", detail: "Please wait...", indeterminate: false, maxValue: count})
         //prog.on('progress', (v) => prog.detail = `Converting ${v} of ${prog.getOptions().maxValue}`)
         if (filename) zip = new AdmZip()
         var compendium = { 
@@ -628,9 +626,8 @@ class DDB {
         }
         if (filename) {
             if (compendium._content.length === 0) {
-                prog.detail = "No monsters available from this source."
-                prog.setCompleted()
                 dialog.showMessageBox({message:"No monsters are available from this source.",type:"info"})
+                    .then(prog.setCompleted())
                 return
             }
             prog.detail = `Creating XML`
@@ -747,16 +744,14 @@ class DDB {
 <i>Source: ${this.ruledata.sources.find((s)=> monster.sourceId === s.id).description}${(monster.sourcePageNumber)?  ` p. ${monster.sourcePageNumber}` : '' }</i>`
             })
             try{
-                if (monster.basicAvatarUrl) {
-
-
-                    var imageFile = `${uuid5(monster.basicAvatarUrl,uuid5.URL)}${path.extname(monster.basicAvatarUrl)}`
+                if (monster.basicAvatarUrl||monster.largeAvatarUrl) {
+                    var imageFile = `${uuid5(monster.basicAvatarUrl||monster.largeAvatarUrl,uuid5.URL)}${path.extname(monster.basicAvatarUrl||monster.largeAvatarUrl)}`
                     if (!zip.getEntry(`monsters/${imageFile}`)) {
-                        if (monster.basicAvatarUrl.startsWith("listing_images/")) {
-                            await zip.addFile(`monsters/${imageFile}`,zip.readFile(monster.basicAvatarUrl))
-                            zip.deleteFile(monster.basicAvatarUrl)
-                        } else {
-                            let imagesrc = await this.getImage(monster.basicAvatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                        if ((monster.basicAvatarUrl||monster.largeAvatarUrl).startsWith("listing_images/")) {
+                            await zip.addFile(`monsters/${imageFile}`,zip.readFile(monster.basicAvatarUrl||monster.largeAvatarUrl))
+                            zip.deleteFile(monster.basicAvatarUrl||monster.largeAvatarUrl)
+                        } else if (!zip.getEntry(`monsters/${path.basename(imageFile,path.extname(imageFile))}.webp`)) {
+                            let imagesrc = await this.getImage(monster.basicAvatarUrl||monster.largeAvatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
                             imageFile = `${path.basename(imageFile,path.extname(imageFile))}.webp`
                             let image = await sharp(imagesrc).webp().toBuffer()
                             await zip.addFile(`monsters/${imageFile}`,image)
@@ -765,7 +760,7 @@ class DDB {
                     monsterEntry._content.push( { image: `${imageFile}` } )
                 }
             } catch (e) {
-                console.log(`Error adding artwork: ${e}\n${monster.basicAvatarUrl}`)
+                console.log(`Error adding artwork: ${e}\n${monster.name}: ${monster.basicAvatarUrl||monster.largeAvatarUrl}`)
             }
             try {
                 if (monster.avatarUrl) {
@@ -809,6 +804,7 @@ class DDB {
             showBadge: false,
             onStarted: (d) => {
                 prog = new ProgressBar({
+                    title: "Converting module...",
                     text: "Converting book...",
                     detail: "Downloading book...",
                     indeterminate: (d.getTotalBytes())?false:true,
@@ -834,6 +830,8 @@ class DDB {
             detail: "Extracting database...",
             indeterminate: true,
         })
+        prog.text = "Converting book..."
+        prog.detail = "Extracting database..."
         var mod = {
             _name: "module",
             _attrs: { id: uuid5(`https://www.dndbeyond.com/${book.sourceURL}`,uuid5.URL) },
@@ -897,6 +895,7 @@ class DDB {
                     largeAvatar: (c.BFile)?`listing_images/${c.BFile}`:null
                 } )
             })
+            prog.text = "Converting pages..."
             db.each("SELECT C.*,P.Slug AS ParentSlug FROM Content C LEFT JOIN Content P ON P.CobaltID = C.ParentID ORDER BY C.ParentID ASC, C.CobaltID ASC, C.ID ASC",(e,c)=>{
                 if (e) {
                     console.log(e)
@@ -947,7 +946,7 @@ class DDB {
                 prog.value = 25+((pos/pageCount)*25)
             },
             async () => {
-                prog.detail = "Writing CSS"
+                prog.detail = "Writing stylesheets"
                 var globalcss = "@import '../../css/book.css';\n"
                 var customcss = `
 @font-face {
@@ -977,9 +976,11 @@ img {
     max-width: 100%;
     height: auto;
 }
-.compendium-image-right,
-.compendium-image-left {
-    max-width: 30%;
+@media (min-width: 768px) {
+    .compendium-image-right,
+    .compendium-image-left {
+        max-width: 405px;
+    }
 }
 a[href^='ddb://'],
 a[href*='/module/'],
@@ -1263,6 +1264,7 @@ h1 + p:not(.no-fancy)::first-letter {
                                 }
                                 let resName = uuid5(m2,uuid5.URL)
                                 if (path.extname(m2)) resName += path.extname(m2)
+                                prog.detail = `Adding resource ${m2}`
                                 this.getImage(m2).then(r=>zip.addFile(`assets/css/res/${resName}`,r)).catch(e=>console.log(`${m2}-${e}`))
                                 return `url(res/${resName})`
                             }).replaceAll(/(background:.*) (114px)/g,"$1 0px").replace(/@media\(max-width:1023px\)\{\.tooltip/,"@media(max-width: 10px){.tooltip")
@@ -1554,18 +1556,22 @@ function displayModal(path,id) {
                 prog.detail = "Writing Module XML"
                 zip.addFile('module.xml',toXML(mod,{indent: '\t'}))
                 console.log("Retrieving Monsters...")
+                prog.text = "Converting Monsters..."
                 prog.detail = "Retrieving Monsters..."
                 prog.value = 50
                 var compM = await this.getMonsters(moduleId,null,zip,imageMap,prog)||[]
                 console.log("Retrieving Items...")
+                prog.text = "Converting Items..."
                 prog.detail = "Retrieving Items..."
                 prog.value = 65
                 var compI = await this.getItems(moduleId,null,zip,imageMap,prog)||[]
                 console.log("Retrieving Spells...")
+                prog.text = "Converting Spells..."
                 prog.detail = "Retrieving Spells..."
                 prog.value = 80
                 var compS = await this.getSpells(moduleId,null,zip,prog)||[]
                 prog.value = 95
+                prog.text = "Finishing up..."
                 console.log("Merging compendiums...")
                 var compendium = { 
                     _name: "compendium",
