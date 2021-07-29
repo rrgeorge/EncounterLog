@@ -569,13 +569,13 @@ class DDB {
             return compendium
         }
     }
-    async getMonsterCount(source = 0) {
+    async getMonsterCount(source = 0,homebrew = false) {
         const url = "https://monster-service.dndbeyond.com/v1/Monster"
         var params
         if (source) {
             params = qs.stringify({ 'skip': 0, 'take': 1, 'sources': source })
         } else {
-            params = qs.stringify({ 'skip': 0, 'take': 1 })
+            params = qs.stringify({ 'skip': 0, 'take': 1, 'showHomebrew': (homebrew)?'t':'f' })
         }
         await this.getCobaltAuth()
         const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting monster count for source id ${source}: ${e}`))
@@ -584,7 +584,7 @@ class DDB {
     async getMonsters(source = 0,filename,zip=null,imageMap=null,prog=null,homebrew=false) {
         const url = "https://monster-service.dndbeyond.com/v1/Monster"
         var params
-        const count = await this.getMonsterCount(source).catch((e)=>console.log(e))
+        const count = await this.getMonsterCount(source,homebrew).catch((e)=>console.log(e))
         console.log(`Source ${source} has ${count} monsters`)
         let pos = 0
         if(!prog) prog = new ProgressBar({title: "Please wait...",text: "Converting monsters...", detail: "Please wait...", indeterminate: false, maxValue: count})
@@ -599,13 +599,14 @@ class DDB {
             if (source) {
                 params = qs.stringify({ 'skip': pos, 'take': 100, 'sources': source })
             } else {
-                params = qs.stringify({ 'skip': pos, 'take': 100 })
+                params = qs.stringify({ 'skip': pos, 'take': 100, 'showHomebrew': (homebrew)?'t':'f' })
             }
             const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting monster count for source id ${source}: ${e}`))
             console.log(`Retrieved ${response.data.length}`)
             for (const monster of response.data) {
-                if (!monster.isReleased) {
+                if (!monster.isReleased&&monster.isHomebrew!==homebrew) {
                     prog.value += (!filename)? (15*(1/count)) : 1
+                    console.log(`Skipping ${monster.isReleased} ${monster.isHomebrew}`)
                     continue
                 }
                 if (monster.isHomebrew !== homebrew) {
@@ -739,9 +740,9 @@ class DDB {
             handleTraits(monster.legendaryActionsDescription,"legendary")
             handleTraits(monster.mythicActionsDescription,"legendary","Mythic Action: ")
             monsterEntry._content.push({
-                description: `${(monster.lairDescription)?sanitize(monster.lairDescription+'<hr/>',this.ruledata):''}${sanitize(monster.characteristicsDescription,this.ruledata)}
+                description: `${(monster.lairDescription)?sanitize(monster.lairDescription+'<hr/>',this.ruledata)+'\n':''}${sanitize(monster.characteristicsDescription,this.ruledata)}
 
-<i>Source: ${this.ruledata.sources.find((s)=> monster.sourceId === s.id).description}${(monster.sourcePageNumber)?  ` p. ${monster.sourcePageNumber}` : '' }</i>`
+${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sourceId === s.id)?.description}${(monster.sourcePageNumber)?  ` p. ${monster.sourcePageNumber}` : '' }</i>`:''}`
             })
             try{
                 if (monster.basicAvatarUrl||monster.largeAvatarUrl) {

@@ -342,7 +342,7 @@ app.on('ready', () => {
                                             defaultPath: `homebrew_spells.compendium`,
                                         }).then((save) => {
                                             if (save.filePath)
-                                                ddb.getSpells(null,save.filePath,null,null,null,true)
+                                                ddb.getSpells(null,save.filePath,null,null,true)
                                             }
                                         )
                                     }
