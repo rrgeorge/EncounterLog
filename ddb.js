@@ -529,7 +529,7 @@ class DDB {
                 try{
                     item.avatarUrl = imageMap?.find(s=>s.id===item.id&&s.type===item.entityTypeId)?.avatar || item.avatarUrl
                     item.largeAvatarUrl = imageMap?.find(s=>s.id===item.id&&s.type===item.entityTypeId)?.largeAvatar || item.largeAvatarUrl
-                    if (item.largeAvatarUrl||item.avatarUrl) {
+                    if ((item.largeAvatarUrl||item.avatarUrl)&&this.art?.includes('artwork')) {
                         var imageFile = `${uuid5(item.largeAvatarUrl||item.avatarUrl,uuid5.URL)}${path.extname(item.largeAvatarUrl||item.avatarUrl)}`
                         if (!zip.getEntry(`items/${imageFile}`)) {
                             if ((item.avatarUrl||item.largeAvatarUrl).startsWith("listing_images/")) {
@@ -691,7 +691,11 @@ class DDB {
             monsterEntry._content.push({environments: environments.join(", ")})
             var movement = []
             for (let move of monster.movements) {
-                movement.push((this.ruledata.movements.find(s=>s.id===move.movemnetId)?.name||move.movementId.toString()) + `${move.speed} ft.${(move.notes)? ` (${move.notes})` : ''}`)
+                if (move.movementId === 1) {
+                    movement.unshift(`${move.speed} ft.${(move.notes)? ` (${move.notes})` : ''}`)
+                } else {
+                    movement.push((this.ruledata.movements.find(s=>s.id===move.movementId)?.name||move.movementId.toString()).toLowerCase() + ` ${move.speed} ft.${(move.notes)? ` (${move.notes})` : ''}`)
+                }
             }
             monsterEntry._content.push({speed: movement.join(", ")})
             for (let stat of monster.stats) {
@@ -745,7 +749,7 @@ class DDB {
 ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sourceId === s.id)?.description}${(monster.sourcePageNumber)?  ` p. ${monster.sourcePageNumber}` : '' }</i>`:''}`
             })
             try{
-                if (monster.basicAvatarUrl||monster.largeAvatarUrl) {
+                if ((monster.basicAvatarUrl||monster.largeAvatarUrl)&&this.art?.includes('artwork')) {
                     var imageFile = `${uuid5(monster.basicAvatarUrl||monster.largeAvatarUrl,uuid5.URL)}${path.extname(monster.basicAvatarUrl||monster.largeAvatarUrl)}`
                     if (!zip.getEntry(`monsters/${imageFile}`)) {
                         if ((monster.basicAvatarUrl||monster.largeAvatarUrl).startsWith("listing_images/")) {
@@ -764,7 +768,7 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                 console.log(`Error adding artwork: ${e}\n${monster.name}: ${monster.basicAvatarUrl||monster.largeAvatarUrl}`)
             }
             try {
-                if (monster.avatarUrl) {
+                if (monster.avatarUrl&&this.art?.includes('tokens')) {
                     if (!zip.getEntry(`monsters/${uuid5(monster.avatarUrl,uuid5.URL)}_token.webp`)) {
                         let imagesrc = (monster.avatarUrl.startsWith('listing_images/'))? zip.readFile(monster.avatarUrl) : await this.getImage(monster.avatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
                         let image = sharp(imagesrc)

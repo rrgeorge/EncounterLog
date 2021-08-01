@@ -21,6 +21,11 @@ var encounterhost = undefined
 
 const preferences = new ElectronPreferences({
 	'dataStore': path.resolve(app.getPath('userData'), 'preferences.json'),
+        'defaults': {
+            'main': {
+                'art': [ 'artwork', 'tokens' ]
+            }
+        },
 	'sections': [ {
 		'id': "main",
 		'label': "Settings",
@@ -41,6 +46,15 @@ const preferences = new ElectronPreferences({
 					'help': "Example: http://192.168.1.10:8080"
                                     },
                                     {
+					'label': "Include compendium artwork",
+					'key': 'art',
+					'type': 'checkbox',
+                                        'options': [
+                                            { 'label': 'Artwork', 'value': 'artwork' },
+                                            { 'label': 'Tokens', 'value': 'tokens' },
+                                        ]
+                                    },
+                                    {
 					'heading': "",
 					'key': 'prefs_okay',
                                         'type': 'message',
@@ -57,13 +71,16 @@ const preferences = new ElectronPreferences({
             }
 })
 encounterhost = preferences.value('main.encounterhost');
-preferences.on('save', (preferences) => {
-	encounterhost = preferences.main.encounterhost
-})
 app.on('ready', () => {
 	const win = new BrowserWindow({ show: false, width: 800, height: 600, webPreferences: {nodeIntegration: true, contextIsolation: false,nativeWindowOpen: true} })
 	_win = win
         ddb = new DDB()
+        ddb.art = preferences.value('main.art');
+        console.log(ddb.art)
+        preferences.on('save', (preferences) => {
+                encounterhost = preferences.main.encounterhost
+                ddb.art = preferences.main.art
+        })
 	var menu = Menu.buildFromTemplate([
 	      {
 		  label: 'File',
