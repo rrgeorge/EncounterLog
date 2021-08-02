@@ -604,7 +604,7 @@ class DDB {
             const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting monster count for source id ${source}: ${e}`))
             console.log(`Retrieved ${response.data.length}`)
             for (const monster of response.data) {
-                if (!monster.isReleased&&monster.isHomebrew!==homebrew) {
+                if (!monster.isReleased&&!monster.isHomebrew) {
                     prog.value += (!filename)? (15*(1/count)) : 1
                     console.log(`Skipping ${monster.isReleased} ${monster.isHomebrew}`)
                     continue
