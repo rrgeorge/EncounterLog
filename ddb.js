@@ -222,6 +222,7 @@ class DDB {
                           id: b.id,
                           book: book.description,
                           bookCode: book.name,
+                          category: book.sourceCategoryId,
                           url: `https://www.dndbeyond.com/${book.sourceURL}`
                         };
                       })
@@ -239,6 +240,7 @@ class DDB {
                           id: b.id,
                           book: book.description,
                           bookCode: book.name,
+                          category: book.sourceCategoryId,
                           url: `https://www.dndbeyond.com/${book.sourceURL}`
                         };
                       })
@@ -1502,6 +1504,7 @@ function displayModal(path,id) {
 	modalContent.classList = \`tooltip tooltip-\${type}\`
         modalContent.style.minWidth = (document.documentElement.clientWidth<512)?
             \`\${document.documentElement.clientWidth}px\` : "512px"
+        modalContent.style.overflow = "scroll"
 
 	var modalHeader = document.createElement('div')
 	modalHeader.className = "tooltip-header"

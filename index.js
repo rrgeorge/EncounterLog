@@ -1,4 +1,4 @@
-const {app, session, BrowserWindow, ipcMain, net, Menu, MenuItem, dialog, shell} = require('electron')
+const {app, session, BrowserWindow, ipcMain, net, Menu, MenuItem, dialog, shell, globalShortcut} = require('electron')
 const ElectronPreferences = require('electron-preferences')
 const WebSocket = require('ws')
 const path = require('path')
@@ -85,7 +85,11 @@ app.on('ready', () => {
 	      {
 		  label: 'File',
 		  submenu: [
-			{'click': function() { preferences.show() },'label': "Preferences"},
+			{
+                            'click': function() { preferences.show() },
+                            'label': "Preferences",
+                            accelerator: "CommandOrControl+,",
+                        },
 		      	{role:'quit'}
 		  ]
 	      },
@@ -109,6 +113,7 @@ app.on('ready', () => {
         win.once('ready-to-show', () => {
             win.show()
         })
+        globalShortcut.register('CommandOrControl+R', () => win.reload())
         win.webContents.on('did-navigate',(e,u,r,m) => {
             if (r==200) {
             win.webContents.once('did-finish-load',()=> {
@@ -155,6 +160,7 @@ app.on('ready', () => {
                             campaignMenu.submenu.append( new MenuItem({
                                 label: "Campaign List",
                                 toolTip: "Jump to campaign list",
+                                accelerator: "CommandOrControl+Shift+C",
                                 click: (m) => _win?.loadURL(`https://www.dndbeyond.com/my-campaigns`)
                             }))
                             campaignMenu.submenu.append(new MenuItem({type: 'separator'}))
@@ -171,10 +177,19 @@ app.on('ready', () => {
                             ddb.getSources().then(() => {
                                 const compendiumMenu = menu.getMenuItemById('compendium')
                                 compendiumMenu.submenu.clear()
-                                for (const book of ddb.books) {
-                                  compendiumMenu.submenu.append( new MenuItem({
-                                      label: book.book,
-                                      toolTip: book.bookCode,
+                                for (const book of ddb.books.sort((a, b) => a.id-b.id)) {
+                                  let categoryMenu = menu.getMenuItemById(`category-${book.category}`)
+                                  if (!categoryMenu) {
+                                      categoryMenu = new MenuItem({
+                                          id: `category-${book.category}`,
+                                          label: he.decode(ddb.ruledata.sourceCategories.find(s=>book.category===s.id)?.name||"Unknown Category").replaceAll("&","&&"),
+                                          submenu: []
+                                      })
+                                      compendiumMenu.submenu.append(categoryMenu)
+                                  }
+                                  categoryMenu.submenu.append( new MenuItem({
+                                      label: he.decode(book.book).replaceAll("&","&&"),
+                                      toolTip: he.decode(book.bookCode),
                                       submenu: [
                                           new MenuItem({
                                               label: "Open",
@@ -238,13 +253,21 @@ app.on('ready', () => {
                                               }
                                           })
                                       ]
-                                      //click: (m) => _win?.loadURL(srcUrl)
                                   }))
                                 }
                                 compendiumMenu.submenu.append( new MenuItem({ type: 'separator' }))
                                 var sharedSubmenu = []
                                 for (const book of ddb.sharedBooks) {
-                                  sharedSubmenu.push( new MenuItem({
+                                  let categoryMenu = menu.getMenuItemById(`sharedCategory-${book.category}`)
+                                  if (!categoryMenu) {
+                                      categoryMenu = new MenuItem({
+                                          id: `sharedCategory-${book.category}`,
+                                          label: he.decode(ddb.ruledata.sourceCategories.find(s=>book.category===s.id)?.name||"Unknown Category").replaceAll("&","&&"),
+                                          submenu: []
+                                      })
+                                      compendiumMenu.submenu.append(categoryMenu)
+                                  }
+                                  categoryMenu.push( new MenuItem({
                                       label: book.book,
                                       toolTip: book.bookCode,
                                       submenu: [
@@ -275,52 +298,6 @@ app.on('ready', () => {
                                     )
                                     compendiumMenu.submenu.append( new MenuItem({ type: 'separator' }))
                                 }
-                                var uaSubMenu = []
-                                uaSubMenu.push( new MenuItem({
-                                    label: "Download UA Monsters",
-                                    click: () => {
-                                        dialog.showSaveDialog(win,{
-                                            title: "Save monsters compendium",
-                                            filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
-                                            defaultPath: `ua_monsters.compendium`,
-                                        }).then((save) => {
-                                            if (save.filePath)
-                                                ddb.getMonsters(29,save.filePath)
-                                            }
-                                        )
-                                    }
-                                    }))
-                                uaSubMenu.push( new MenuItem({
-                                    label: "Download UA Items",
-                                    click: () => {
-                                        dialog.showSaveDialog(win,{
-                                            title: "Save items compendium",
-                                            filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
-                                            defaultPath: `ua_items.compendium`,
-                                        }).then((save) => {
-                                            if (save.filePath)
-                                                ddb.getItems(29,save.filePath)
-                                            }
-                                        )
-                                    }
-                                    }))
-                                uaSubMenu.push( new MenuItem({
-                                    label: "Download UA Spells",
-                                    click: () => {
-                                        dialog.showSaveDialog(win,{
-                                            title: "Save spells compendium",
-                                            filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
-                                            defaultPath: `ua_spells.compendium`,
-                                        }).then((save) => {
-                                            if (save.filePath)
-                                                ddb.getSpells(29,save.filePath)
-                                            }
-                                        )
-                                    }
-                                    }))
-                                compendiumMenu.submenu.append(
-                                    new MenuItem({ label: "Unearthed Arcana", submenu: uaSubMenu })
-                                )
                                 var homebrewSubMenu = []
                                 homebrewSubMenu.push( new MenuItem({
                                     label: "Download Homebrew Monsters",
@@ -467,6 +444,7 @@ function requestCampaignChars(gameId,cobalt) {
                             campaignMenu.submenu.append( new MenuItem({
                                 label: "Campaign List",
                                 toolTip: "Jump to campaign list",
+                                accelerator: "CommandOrControl+Shift+C",
                                 click: (m) => _win?.loadURL(`https://www.dndbeyond.com/my-campaigns`)
                             }))
                             campaignMenu.submenu.append(new MenuItem({type: 'separator'}))
