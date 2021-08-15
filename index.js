@@ -267,7 +267,7 @@ app.on('ready', () => {
                                       })
                                       compendiumMenu.submenu.append(categoryMenu)
                                   }
-                                  categoryMenu.push( new MenuItem({
+                                  categoryMenu.submenu.append( new MenuItem({
                                       label: book.book,
                                       toolTip: book.bookCode,
                                       submenu: [
