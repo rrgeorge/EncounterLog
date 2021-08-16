@@ -265,7 +265,7 @@ app.on('ready', () => {
                                           label: he.decode(ddb.ruledata.sourceCategories.find(s=>book.category===s.id)?.name||"Unknown Category").replaceAll("&","&&"),
                                           submenu: []
                                       })
-                                      compendiumMenu.submenu.append(categoryMenu)
+                                      sharedSubmenu.push(categoryMenu)
                                   }
                                   categoryMenu.submenu.append( new MenuItem({
                                       label: book.book,
