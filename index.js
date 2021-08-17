@@ -256,47 +256,45 @@ app.on('ready', () => {
                                   }))
                                 }
                                 compendiumMenu.submenu.append( new MenuItem({ type: 'separator' }))
-                                var sharedSubmenu = []
-                                for (const book of ddb.sharedBooks) {
-                                  let categoryMenu = menu.getMenuItemById(`sharedCategory-${book.category}`)
-                                  if (!categoryMenu) {
-                                      categoryMenu = new MenuItem({
-                                          id: `sharedCategory-${book.category}`,
-                                          label: he.decode(ddb.ruledata.sourceCategories.find(s=>book.category===s.id)?.name||"Unknown Category").replaceAll("&","&&"),
-                                          submenu: []
-                                      })
-                                      sharedSubmenu.push(categoryMenu)
-                                  }
-                                  categoryMenu.submenu.append( new MenuItem({
-                                      label: book.book,
-                                      toolTip: book.bookCode,
-                                      submenu: [
-                                          new MenuItem({
-                                              label: "Open",
-                                              click: () => win.loadURL(book.url),
-                                          }),
-                                          new MenuItem({
-                                              label: "Download Module",
-                                              click: () => {
-                                                dialog.showSaveDialog(win,{
-                                                    title: "Save Book",
-                                                    filters: [ { name: "EncounterPlus Module", extensions: ["module"]} ],
-                                                    defaultPath: `${book.bookCode.toLowerCase()}.module`,
-                                                }).then((save) => {
-                                                    if (save.filePath)
-                                                        ddb.getModule(book.id,save.filePath,win).catch(e=>displayError(e))
-                                                    }
-                                                )
-                                              }
-                                          }),
-                                      ]
-                                  }))
-                                }
-                                if (sharedSubmenu.length > 0) {
-                                    compendiumMenu.submenu.append(
-                                        new MenuItem({ label: "Shared Books", submenu: sharedSubmenu })
-                                    )
+                                if (ddb.sharedBooks.length > 0) {
                                     compendiumMenu.submenu.append( new MenuItem({ type: 'separator' }))
+                                    sharedSubmenu = new MenuItem({ label: "Shared Books", submenu: [] })
+                                    compendiumMenu.submenu.append(sharedSubmenu)
+                                    for (const book of ddb.sharedBooks) {
+                                      let categoryMenu = menu.getMenuItemById(`sharedCategory-${book.category}`)
+                                      if (!categoryMenu) {
+                                          categoryMenu = new MenuItem({
+                                              id: `sharedCategory-${book.category}`,
+                                              label: he.decode(ddb.ruledata.sourceCategories.find(s=>book.category===s.id)?.name||"Unknown Category").replaceAll("&","&&"),
+                                              submenu: []
+                                          })
+                                          sharedSubmenu.submenu.append(categoryMenu)
+                                      }
+                                      categoryMenu.submenu.append( new MenuItem({
+                                          label: book.book,
+                                          toolTip: book.bookCode,
+                                          submenu: [
+                                              new MenuItem({
+                                                  label: "Open",
+                                                  click: () => win.loadURL(book.url),
+                                              }),
+                                              new MenuItem({
+                                                  label: "Download Module",
+                                                  click: () => {
+                                                    dialog.showSaveDialog(win,{
+                                                        title: "Save Book",
+                                                        filters: [ { name: "EncounterPlus Module", extensions: ["module"]} ],
+                                                        defaultPath: `${book.bookCode.toLowerCase()}.module`,
+                                                    }).then((save) => {
+                                                        if (save.filePath)
+                                                            ddb.getModule(book.id,save.filePath,win).catch(e=>displayError(e))
+                                                        }
+                                                    )
+                                                  }
+                                              }),
+                                          ]
+                                      }))
+                                    }
                                 }
                                 var homebrewSubMenu = []
                                 homebrewSubMenu.push( new MenuItem({

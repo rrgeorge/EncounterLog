@@ -1305,23 +1305,62 @@ h1 + p:not(.no-fancy)::first-letter {
                 const customjs = `
 ${(await this.getImage("https://cdnjs.cloudflare.com/ajax/libs/uuid/8.1.0/uuidv5.min.js").catch(e=>console.log(`Error retrieving ${css}: ${e}`))).toString('utf8')}
 const knownIds = ${JSON.stringify(slugIdMap)}
+
+function makeRollLinks(el) {
+    const dice = new RegExp(/[0-9]*[dD][0-9]+( ?[-+] ?[0-9]+)?/,"g")
+    if (el.childElementCount > 0) {
+        for (var child of el.childNodes) {
+            makeRollLinks(child)
+        }
+    } else {
+        if (el.nodeName != "#text") {
+            if (el.nodeName == "A") return
+            el = el.firstChild
+            if (!el) return
+        }
+        var rolls = []
+        while ((m = dice.exec(el.textContent)) !== null) {
+            rolls.push(m)
+        }
+        rolls.reverse()
+        for (let roll of rolls) {
+            let remainder = el.splitText(roll.index)
+            remainder.data = remainder.data.substr(roll[0].length)
+            let rollLink = document.createElement("A")
+            rollLink.href = \`/roll/\${roll[0]}\`
+            rollLink.innerText = roll[0]
+            el.parentNode.insertBefore(rollLink,remainder)
+        }
+    }
+}
+
 window.addEventListener('load', function() {
     var pageUrl = window.location
     var pageId = pageUrl.pathname.split('/')[pageUrl.pathname.split('/').length-1].replace('.html','')
-    /*
-    for (var heading of document.querySelectorAll("h1, h2, h3, h4, h5, h6")) {
+    for (let heading of document.querySelectorAll("h1, h2, h3, h4, h5, h6")) {
         if (heading.id) {
-            var pageUrl = window.location
-            var pageId = pageUrl.pathname.split('/')[pageUrl.pathname.split('/').length-1].replace('.html','')
-            var url = \`/page/\${pageId}#\${heading.id}\`
-            var link = document.createElement('A')
-            link.href = url
-            link.innerText = ' 🔗'
-            link.title = heading.innerText
-            heading.appendChild(link)
+            heading.addEventListener('mousedown', function() {
+                this.clicktime = new Date().getTime()
+            })
+            heading.addEventListener('mouseup', function() {
+                if (heading.querySelector(".autoHeaderLink")) {
+                    if (((new Date().getTime()) - this.clicktime) < 100)
+                        heading.querySelector(".autoHeaderLink").remove()
+                } else {
+                    var url = \`/page/\${pageId}#\${heading.id}\`
+                    var link = document.createElement('A')
+                    link.className = "autoHeaderLink"
+                    link.href = url
+                    link.innerText = ' 📍'
+                    link.title = heading.innerText
+                    heading.appendChild(link)
+                }
+            })
         }
     }
-    */
+    for (var el of document.querySelectorAll("p, table")) {
+        makeRollLinks(el)
+    }
     var frag = window.location.hash
     if (frag && !document.getElementById(frag.substr(1))) {
         for (var slug of Object.keys(knownIds)) {
@@ -1330,7 +1369,7 @@ window.addEventListener('load', function() {
             }
         }
     }
-    var tables = document.querySelectorAll('.compendium-horizontal-scroll-table')
+    var tables = document.querySelectorAll('table')
     if (tables) {
         for (var table of tables) {
             var wrapper = document.createElement('div');
@@ -1504,7 +1543,6 @@ function displayModal(path,id) {
 	modalContent.classList = \`tooltip tooltip-\${type}\`
         modalContent.style.minWidth = (document.documentElement.clientWidth<512)?
             \`\${document.documentElement.clientWidth}px\` : "512px"
-        modalContent.style.overflow = "scroll"
 
 	var modalHeader = document.createElement('div')
 	modalHeader.className = "tooltip-header"
@@ -1522,6 +1560,7 @@ function displayModal(path,id) {
 
 	var modalContentBody = document.createElement('div')
 	modalContentBody.className = "tooltip-body"
+        modalContentBody.style.overflow = "scroll"
 	var modalContentBodyD = document.createElement('div')
 	modalContentBodyD.className = "tooltip-body-description"
 	var modalContentBodyDT = document.createElement('div')
