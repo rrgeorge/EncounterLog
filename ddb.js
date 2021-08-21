@@ -99,6 +99,7 @@ class DDB {
     }
     async getRuleData() {
         //const url = "https://character-service.dndbeyond.com/character/v4/rule-data"
+        if (!this.cobaltauth) await this.getCobaltAuth()
         const url = "https://www.dndbeyond.com/api/config/json"
         const res = await this.getRequest(url,true).catch(e => console.log(`Could not retrieve rule data: ${e}`))
         this.ruledata = res
@@ -249,26 +250,82 @@ class DDB {
         this.books = books
         this.sharedBooks = shared
     }
+    async getClassList(prog=null) {
+        const cparams = qs.stringify({ 'sharingSetting': 2 })
+        const curl = "https://character-service.dndbeyond.com/character/v5/game-data/classes"
+        const classes = await this.getRequest(`${curl}?${cparams}`,true).catch((e)=>console.log(`Error getting classess: ${e}`))
+        var classlist = []
+        if (prog) {
+            prog.detail = `Retrieving class list`
+        }
+        if (classes?.data) {
+            for (const aClass of classes.data) {
+                if (aClass.canCastSpells) {
+                    if (prog) {
+                        prog.detail = `Retrieving class list ${aClass.name}`
+                    }
+                    classlist.push({
+                        id: aClass.id, name: aClass.name, prep: aClass.spellPrepareType
+                    })
+                }
+                const sparams = qs.stringify({ 'sharingSetting': 2, 'baseClassId': aClass.id })
+                const surl = "https://character-service.dndbeyond.com/character/v5/game-data/subclasses"
+                const subclasses = await this.getRequest(`${surl}?${sparams}`,true).catch((e)=>console.log(`Error getting ${aClass.name} subclassess: ${e}`))
+                if (subclasses?.data) {
+                    for (const subClass of subclasses.data) {
+                        if (aClass.canCastSpells || subClass.canCastSpells) {
+                            if (prog) {
+                                prog.detail = `Retrieving class list ${aClass.name}/${subClass.name}`
+                            }
+                            classlist.push({
+                                id: subClass.id, name: `${aClass.name}/${subClass.name}`, prep: subClass.spellPrepareType, baseClass: aClass.name
+                            })
+                        }
+                    }
+                }
+            }
+        }
+        this.classlist = classlist
+        return classlist
+    }
     async getAllSpells(prog=null) {
-        const urls = [ "https://character-service.dndbeyond.com/character/v4/game-data/spells",
-            "https://character-service.dndbeyond.com/character/v4/game-data/always-known-spells",
-            "https://character-service.dndbeyond.com/character/v4/game-data/always-prepared-spells"]
-        if (!this.ruledata) await this.getRuleData
+        const urls = [ "https://character-service.dndbeyond.com/character/v5/game-data/spells",
+            "https://character-service.dndbeyond.com/character/v5/game-data/always-known-spells",
+            "https://character-service.dndbeyond.com/character/v5/game-data/always-prepared-spells"]
+        if (!this.ruledata) await this.getRuleData()
+        if (!this.cobaltauth) await this.getCobaltAuth()
         let allSpells = []
-        for (let ddbClass of this.ruledata.classConfigurations) {
+        if (!this.classlist) await this.getClassList(prog)
+        for (const ddbClass of this.classlist) {
             if (prog) {
                 prog.detail = `Retrieving spells for ${ddbClass.name}`
             }
-            if (/(ua|archived)/i.test(ddbClass.name)) continue
+            //if (/(ua|archived)/i.test(ddbClass.name)) continue
             for (const url of urls) {
                 const params = qs.stringify({ 'sharingSetting': 2, 'classId': ddbClass.id, "classLevel": 20 })
-                await this.getCobaltAuth()
                 const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting spells: ${e}`))
                 if (response?.data) {
                     for (let spell of response.data) {
                         let existing = allSpells.find(s=>s.id===spell.definition.id)
                         if (existing) {
-                            existing.classes.push(ddbClass.name)
+                            if (!existing.classes.includes(ddbClass.name)) {
+                                if (!ddbClass.baseClass || !existing.classes.includes(ddbClass.baseClass)) {
+                                    existing.classes.push(ddbClass.name)
+                                    existing.classes.sort((a,b)=>{
+                                        if (a.includes('/') && !b.includes('/')) {
+                                            return 1
+                                        } else if (b.includes('/') && !a.includes('/')) {
+                                            return -1
+                                        } else if (a.startsWith('Blood') && !b.startsWith('Blood')) {
+                                            return 1
+                                        } else if (b.startsWith('Blood') && !a.startsWith('Blood')) {
+                                            return -1
+                                        } else {
+                                            return a<b
+                                        }
+                                    })
+                                }
+                            }
                         } else {
                             let newSpell = spell.definition
                             newSpell.classes = [ddbClass.name]
@@ -278,7 +335,7 @@ class DDB {
                 }
             }
             if (prog) {
-                prog.value += (1/this.ruledata.classConfigurations.length)*10
+                prog.value += (1/classlist.length)*10
             }
         }
         return allSpells
@@ -297,7 +354,7 @@ class DDB {
         ]
         if(!prog) prog = new ProgressBar({title: "Please wait...", text: "Converting spells...", detail: "Please wait...", indeterminate: false, maxValue: 100})
         const allSpells = await this.getAllSpells(prog)
-        const spells = allSpells.filter(s=>(source)?s.sources.some(b=>b.sourceId===source):!s.sources.some(b=>b.sourceId===29))
+        const spells = allSpells.filter(s=>(source)?s.sources.some(b=>(source===10&&(b.sourceId===10||b.sourceId===4))||b.sourceId===source):!s.sources.some(b=>b.sourceId===29))
         if (filename) zip = new AdmZip()
         var compendium = { 
             _name: "compendium",
@@ -321,7 +378,7 @@ class DDB {
                     {slug: slugify(spell.name)},
                     {level: spell.level},
                     {school: spellSchools.find(s=>s.name==spell.school.toLowerCase())?.code||spell.school},
-                    {ritual: (spell.level)?'YES':"NO"},
+                    {ritual: (spell.ritual)?'YES':"NO"},
                     {time: `${spell.activation.activationTime} ${this.ruledata.activationTypes.find(s=>s.id==spell.activation.activationType)?.name}`},
                     {classes: spell.classes.join(",")},
                 ]

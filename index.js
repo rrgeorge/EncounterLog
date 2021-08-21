@@ -176,6 +176,9 @@ app.on('ready', () => {
                         }).then(
                             ddb.getSources().then(() => {
                                 const compendiumMenu = menu.getMenuItemById('compendium')
+                                while (compendiumMenu.submenu.items.length > 0) {
+                                    compendiumMenu.submenu.items.pop()
+                                }
                                 compendiumMenu.submenu.clear()
                                 for (const book of ddb.books.sort((a, b) => a.id-b.id)) {
                                   let categoryMenu = menu.getMenuItemById(`category-${book.category}`)
@@ -186,6 +189,31 @@ app.on('ready', () => {
                                           submenu: []
                                       })
                                       compendiumMenu.submenu.append(categoryMenu)
+                                  }
+                                  if (book.bookCode.toLowerCase() == 'tftyp') {
+                                      var tftypMenu = menu.getMenuItemById(`tftyp-menu`)
+                                      if (!tftypMenu) {
+                                          tftypMenu = new MenuItem({
+                                              id: 'tftyp-menu',
+                                              label: he.decode("Tales from the Yawning Portal").replaceAll("&","&&"),
+                                              toolTip: he.decode("TftYP"),
+                                              submenu: []
+                                          })
+                                          categoryMenu.submenu.append(tftypMenu)
+                                      }
+                                      continue
+                                  } else if (book.url.startsWith('https://www.dndbeyond.com/sources/tftyp/')) {
+                                      var tftypMenu = menu.getMenuItemById(`tftyp-menu`)
+                                      if (!tftypMenu) {
+                                          tftypMenu = new MenuItem({
+                                              id: 'tftyp-menu',
+                                              label: he.decode("Tales from the Yawning Portal").replaceAll("&","&&"),
+                                              toolTip: he.decode("TftYP"),
+                                              submenu: []
+                                          })
+                                          categoryMenu.submenu.append(tftypMenu)
+                                      }
+                                      categoryMenu = tftypMenu
                                   }
                                   categoryMenu.submenu.append( new MenuItem({
                                       label: he.decode(book.book).replaceAll("&","&&"),
@@ -260,7 +288,7 @@ app.on('ready', () => {
                                     compendiumMenu.submenu.append( new MenuItem({ type: 'separator' }))
                                     sharedSubmenu = new MenuItem({ label: "Shared Books", submenu: [] })
                                     compendiumMenu.submenu.append(sharedSubmenu)
-                                    for (const book of ddb.sharedBooks) {
+                                    for (const book of ddb.sharedBooks.sort((a, b) => a.id-b.id)) {
                                       let categoryMenu = menu.getMenuItemById(`sharedCategory-${book.category}`)
                                       if (!categoryMenu) {
                                           categoryMenu = new MenuItem({
@@ -269,6 +297,31 @@ app.on('ready', () => {
                                               submenu: []
                                           })
                                           sharedSubmenu.submenu.append(categoryMenu)
+                                      }
+                                      if (book.bookCode.toLowerCase() == 'tftyp') {
+                                          var tftypMenu = menu.getMenuItemById(`tftyp-menu`)
+                                          if (!tftypMenu) {
+                                              tftypMenu = new MenuItem({
+                                                  id: 'tftyp-menu',
+                                                  label: he.decode("Tales from the Yawning Portal").replaceAll("&","&&"),
+                                                  toolTip: he.decode("TftYP"),
+                                                  submenu: []
+                                              })
+                                              categoryMenu.submenu.append(tftypMenu)
+                                          }
+                                          continue
+                                      } else if (book.url.startsWith('https://www.dndbeyond.com/sources/tftyp/')) {
+                                          var tftypMenu = menu.getMenuItemById(`tftyp-menu`)
+                                          if (!tftypMenu) {
+                                              tftypMenu = new MenuItem({
+                                                  id: 'tftyp-menu',
+                                                  label: he.decode("Tales from the Yawning Portal").replaceAll("&","&&"),
+                                                  toolTip: he.decode("TftYP"),
+                                                  submenu: []
+                                              })
+                                              categoryMenu.submenu.append(tftypMenu)
+                                          }
+                                          categoryMenu = tftypMenu
                                       }
                                       categoryMenu.submenu.append( new MenuItem({
                                           label: book.book,
