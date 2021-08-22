@@ -335,7 +335,7 @@ class DDB {
                 }
             }
             if (prog) {
-                prog.value += (1/classlist.length)*10
+                prog.value += (1/this.classlist.length)*10
             }
         }
         return allSpells
