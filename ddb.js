@@ -13,6 +13,9 @@ const sqlite3 = require('@journeyapps/sqlcipher').verbose()
 const tmp = require('tmp')
 const path = require('path')
 const url = require('url')
+const {createScheduler,createWorker,PSM} = require('tesseract.js')
+const os = require('os')
+
 function slugify(str) {
     return Slugify(str,{ lower: true, strict: true })
 }
@@ -300,10 +303,18 @@ class DDB {
             if (prog) {
                 prog.detail = `Retrieving spells for ${ddbClass.name}`
             }
+            console.log(`Retrieving spells for ${ddbClass.name}`)
             //if (/(ua|archived)/i.test(ddbClass.name)) continue
+            let requests = []
             for (const url of urls) {
                 const params = qs.stringify({ 'sharingSetting': 2, 'classId': ddbClass.id, "classLevel": 20 })
-                const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting spells: ${e}`))
+                //const response = await 
+                requests.push(
+                    this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting spells: ${e}`))
+                )
+            }
+            const allResponses = await Promise.all(requests)
+            for(const response of allResponses) {
                 if (response?.data) {
                     for (let spell of response.data) {
                         let existing = allSpells.find(s=>s.id===spell.definition.id)
@@ -1329,7 +1340,7 @@ h1 + p:not(.no-fancy)::first-letter {
                                 let resName = uuid5(m2,uuid5.URL)
                                 if (path.extname(m2)) resName += path.extname(m2)
                                 prog.detail = `Adding resource ${m2}`
-                                this.getImage(m2).then(r=>zip.addFile(`assets/css/res/${resName}`,r)).catch(e=>console.log(`${m2}-${e}`))
+                                this.getImage(m2).then(r=>zip.addFile(`assets/css/res/${resName}`,r)).catch(()=>{})
                                 return `url(res/${resName})`
                             }).replaceAll(/(background:.*) (114px)/g,"$1 0px").replace(/@media\(max-width:1023px\)\{\.tooltip/,"@media(max-width: 10px){.tooltip")
                         zip.addFile(`assets/css/${uuid5(css,uuid5.URL)}.css`,cssTxt)
@@ -1656,6 +1667,124 @@ function displayModal(path,id) {
 }
                 `
                 zip.addFile('assets/js/custom.js',customjs)
+                if (this.maps && this.maps != "nomaps") {
+                    const getGrid = require('./getgrid')
+                    prog.detail = "Searching for Maps"
+                    if (this.maps == "markers") {
+                        this.tesseract = createScheduler();
+                        console.log(path.join(__dirname, 'lang_data'))
+                        for (let i=0;i<(os.cpus().length-1||1);i++) {
+                            let worker = createWorker({
+                                cacheMethod: 'readOnly',
+                                logger: m => {
+                                    if (m["jobId"]) {
+                                        let progress = parseInt(m["progress"]*100)
+                                        if (this.tesseract?.getQueueLen() >= 1) {
+                                            progress = parseInt(progress/(1+this.tesseract?.getQueueLen()))
+                                        }
+                                        prog.detail = prog.detail.replace(/- .*/,`- scanning maps for markers ${progress}%`)
+                                    }
+                                }
+                            });
+                            await worker.load()
+                            await worker.loadLanguage('dnd')
+                            await worker.initialize('dnd')
+                            await worker.setParameters({
+                                tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
+                                tessedit_pageseg_mode: PSM.SPARSE_TEXT,
+                            })
+                            this.tesseract.addWorker(worker)
+                        }
+                    }
+                    var mapJobs = []
+                    const mapgroup = uuid5(`https://www.dndbeyond.com/${book.sourceURL}/maps`,uuid5.URL)
+                    if (this.mapsloc != "parent") {
+                        mod._content.push(
+                            {
+                                _name: "group",
+                                _attrs: { id: mapgroup, sort: 99999999999999 },
+                                _content: [
+                                    { name: "Maps" },
+                                    { slug: 'maps' }
+                                ]
+                            })
+                    }
+                    var mapsort = 0;
+                    for (const page of mod._content) {
+                        if (!page.page) continue
+                        mapJobs.push((async ()=>{
+                        var mapRE = /<figure.*?id="([^"]*)"[^>]*>.*?<figcaption>(.*?) ?<a[^>]*href="(ddb:\/\/image\/[  ^\/]*?\/)?(.*?)\"[^>]*?>.*?[Pp]layer.*?<\/a>.*?<\/figure>/g
+                        if (mapRE.test(page.page.content)) {
+                            mapRE.lastIndex = 0
+                            var maps
+                            while (maps = mapRE.exec(page.page.content)) {
+                                mapsort ++
+                                prog.detail = `Searching for Maps - ${maps[2]}`
+                                prog.detail = `Searching for Maps - ${maps[2]} - attempting to find grid`
+                                const grid = await getGrid(await sharp(zip.readFile(maps[4])).toBuffer());
+                                console.log(`This might be a map: ${maps[4]}`)
+                                let playerMap = {
+                                    _name: "map",
+                                    _attrs: { id: uuid5(`https://www.dndbeyond.com/${book.sourceURL}/image/${maps[1]}`, uuid5.URL), parent: (this.mapsloc!="group")? page.page._attrs.id : mapgroup, sort: mapsort},
+                                    _content: [
+                                        { name: he.decode(maps[2]) },
+                                        { slug: slugify(maps[2]) },
+                                        { image: maps[4] }
+                                    ]
+                                }
+                                if (grid.freq > 0) {
+                                    playerMap._content.push( { gridSize: grid.size } )
+                                    playerMap._content.push( { gridOffsetX: grid.x } )
+                                    playerMap._content.push( { gridOffsetY: grid.y } )
+                                    playerMap._content.push( { scale: grid.scale } )
+                                }
+                                if (this.maps == "markers") {
+                                    prog.detail = `Searching for Maps - ${maps[2]} - attempting to find markers`
+                                    let dmMap = (new RegExp(`<img.*?src="(.*?)".*?>`)).exec(maps[0])
+                                    if (dmMap) {
+                                        const dmMapImg = await sharp(zip.readFile(dmMap[1])).blur().median(4).threshold(96).toBuffer()
+                                        const { data: { tsv } } = await this.tesseract.addJob('recognize',dmMapImg)
+                                        for(let row of tsv.split(/\n/)) {
+                                            let m = row.split(/\t/)
+                                            if (!m[11]) continue
+                                            let [x,y,w,h,txt] = [
+                                                parseInt(m[6]),
+                                                parseInt(m[7]),
+                                                parseInt(m[8]),
+                                                parseInt(m[9]),
+                                                m[11]]
+                                            let markerRE = new RegExp(`<(h[1-9]).*?id="(.*?)".*?>(${txt}\. .*?)<\/\\1>`,'i')
+                                            let marker = markerRE.exec(page.page.content)
+                                            if (marker) {
+                                                console.log(`Adding marker for ${marker[3]} to ${maps[2]}`)
+                                                playerMap._content.push({
+                                                    marker: {
+                                                        name: marker[3],
+                                                        color: "#ff0000",
+                                                        shape: "marker",
+                                                        size: "medium",
+                                                        hidden: "YES",
+                                                        locked: "YES",
+                                                        x: Math.round(x+(w/2)),
+                                                        y: Math.round(y+(h/2)),
+                                                        content: {_attrs: { ref: `/page/${page.page.slug}#${marker[2]}` }}
+                                                    }
+                                                })
+                                            }
+                                        }
+                                    }
+                                }
+                                prog.detail = `Adding Map: ${maps[2]}`
+                                console.log(`Adding MAP: ${maps[2]}`)
+                                page.page.content = page.page.content.replaceAll(new RegExp(`href="${maps[3]??''}${maps[4]}"`,'g'),`href="/map/${playerMap._attrs.id}"`);
+                                mod._content.push(playerMap)
+                            }
+                        }
+                        })())
+                    }
+                    await Promise.all(mapJobs)
+                    if (this.maps == "markers") this.tesseract.terminate()
+                }
                 console.log("Storing module.xml")
                 prog.detail = "Writing Module XML"
                 zip.addFile('module.xml',toXML(mod,{indent: '\t'}))

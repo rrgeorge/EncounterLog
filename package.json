@@ -1,6 +1,6 @@
 {
   "name": "EncounterLog",
-  "version": "2.0.7",
+  "version": "2.1.0",
   "description": "Connect D&D Beyond to EncounterPlus",
   "repository": {
     "type": "git",
@@ -10,7 +10,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build-mac": "security unlock;electron-builder build --mac",
-    "build-win": "rm -rf node_modules/sharp;npm i sharp --platform=win32 --arch=x64;electron-builder build --win;rm -rf node_modules/sharp;yarn add sharp",
+    "build-win": "electron-builder build --win",
     "build": "yarn build-mac;yarn build-win",
     "postinstall": "electron-builder install-app-deps",
     "app": "electron ."
@@ -42,10 +42,12 @@
       "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}",
       "!**/.env",
       "!**/scripts",
-      "!**/*.otf"
+      "!**/*.otf",
+      "!**/dnd.traineddata"
     ],
     "extraResources": [
-      "*.otf"
+      "*.otf",
+      "dnd.traineddata"
     ],
     "afterSign": "scripts/notarize.js"
   },
@@ -62,8 +64,10 @@
     "html-to-text": "^8.0.0",
     "jstoxml": "^2.0.6",
     "mac": "^0.4.0",
+    "opencv4nodejs-prebuilt": "^5.3.3",
     "sharp": "^0.29.0",
     "slugify": "^1.5.3",
+    "tesseract.js": "^2.1.5",
     "tmp": "^0.2.1",
     "uuid": "^8.3.2",
     "ws": "^7.4.5"
@@ -71,6 +75,7 @@
   "devDependencies": {
     "electron": "^12.0.8",
     "electron-builder": "^22.11.7",
-    "electron-notarize": "^1.1.0"
+    "electron-notarize": "^1.1.0",
+    "electron-rebuild": "^3.2.1"
   }
 }

@@ -23,7 +23,9 @@ const preferences = new ElectronPreferences({
 	'dataStore': path.resolve(app.getPath('userData'), 'preferences.json'),
         'defaults': {
             'main': {
-                'art': [ 'artwork', 'tokens' ]
+                'art': [ 'artwork', 'tokens' ],
+                'maps': 'nomaps',
+                'mapsloc': 'group'
             }
         },
 	'sections': [ {
@@ -55,6 +57,26 @@ const preferences = new ElectronPreferences({
                                         ]
                                     },
                                     {
+					'label': "Attempt to create maps",
+					'key': 'maps',
+					'type': 'radio',
+                                        'options': [
+                                            { 'label': 'Do not look for maps', 'value': 'nomaps' },
+                                            { 'label': 'Look for maps', 'value': 'maps' },
+                                            { 'label': 'Look for maps and search for markers (slow)', 'value': 'markers' },
+                                        ],
+                                        'help': 'EncounterLog will attempt to identify and align the grid in discovered maps. If you choose to search for markers, EncounterLog will run the maps through OCR to try to find label text and match it to headers in the page. This can be *very slow* depending on the speed of your computer.'
+                                    },
+                                    {
+					'label': "Location for discovered maps",
+					'key': 'mapsloc',
+					'type': 'radio',
+                                        'options': [
+                                            { 'label': 'Under page parent', 'value': 'page' },
+                                            { 'label': 'In "Maps" group', 'value': 'group' },
+                                        ],
+                                    },
+                                    {
 					'heading': "",
 					'key': 'prefs_okay',
                                         'type': 'message',
@@ -76,10 +98,14 @@ app.on('ready', () => {
 	_win = win
         ddb = new DDB()
         ddb.art = preferences.value('main.art');
-        console.log(ddb.art)
+        ddb.maps = preferences.value('main.maps') ?? "nomaps";
+        ddb.mapsloc = preferences.value('main.mapsloc') ?? "group";
+        console.log(ddb.art,ddb.maps)
         preferences.on('save', (preferences) => {
                 encounterhost = preferences.main.encounterhost
                 ddb.art = preferences.main.art
+                ddb.maps = preferences.main.maps
+                ddb.mapsloc = preferences.main.mapsloc
         })
 	var menu = Menu.buildFromTemplate([
 	      {
