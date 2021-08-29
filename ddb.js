@@ -1676,13 +1676,15 @@ function displayModal(path,id) {
                         for (let i=0;i<(os.cpus().length-1||1);i++) {
                             let worker = createWorker({
                                 cacheMethod: 'readOnly',
+                                langPath: path.join(__dirname,".."),
+                                gzip: false,
                                 logger: m => {
                                     if (m["jobId"]) {
                                         let progress = parseInt(m["progress"]*100)
                                         if (this.tesseract?.getQueueLen() >= 1) {
                                             progress = parseInt(progress/(1+this.tesseract?.getQueueLen()))
                                         }
-                                        prog.detail = prog.detail.replace(/- .*/,`- scanning maps for markers ${progress}%`)
+                                        prog.detail = `Scanning Map for markers ${m["jobId"]} ${progress}%`
                                     }
                                 }
                             });
@@ -1720,7 +1722,7 @@ function displayModal(path,id) {
                             while (maps = mapRE.exec(page.page.content)) {
                                 mapsort ++
                                 prog.detail = `Searching for Maps - ${maps[2]}`
-                                prog.detail = `Searching for Maps - ${maps[2]} - attempting to find grid`
+                                prog.detail = `Searching for Maps - ${maps[2]} - locating grid`
                                 const grid = await getGrid(await sharp(zip.readFile(maps[4])).toBuffer());
                                 console.log(`This might be a map: ${maps[4]}`)
                                 let playerMap = {
@@ -1739,9 +1741,10 @@ function displayModal(path,id) {
                                     playerMap._content.push( { scale: grid.scale } )
                                 }
                                 if (this.maps == "markers") {
-                                    prog.detail = `Searching for Maps - ${maps[2]} - attempting to find markers`
+                                    prog.detail = `Searching for Maps - ${maps[2]} - preparing to scan for markers`
                                     let dmMap = (new RegExp(`<img.*?src="(.*?)".*?>`)).exec(maps[0])
-                                    if (dmMap) {
+                                    
+                                    if (dmMap && /<(h[1-9]).*?id="(.*?)".*?>(.+?\. .+?)<\/\1>/is.test(page.page.content)) {
                                         const dmMapImg = await sharp(zip.readFile(dmMap[1])).blur().median(4).threshold(96).toBuffer()
                                         const { data: { tsv } } = await this.tesseract.addJob('recognize',dmMapImg)
                                         for(let row of tsv.split(/\n/)) {
@@ -1753,15 +1756,17 @@ function displayModal(path,id) {
                                                 parseInt(m[8]),
                                                 parseInt(m[9]),
                                                 m[11]]
-                                            let markerRE = new RegExp(`<(h[1-9]).*?id="(.*?)".*?>(${txt}\. .*?)<\/\\1>`,'i')
+                                            txt = txt.trim()
+                                            let markerRE = new RegExp(`<(h[1-9]).*?id="(.*?)".*?>(${txt}\\. .+?)<\/\\1>`,'is')
                                             let marker = markerRE.exec(page.page.content)
                                             if (marker) {
                                                 console.log(`Adding marker for ${marker[3]} to ${maps[2]}`)
                                                 playerMap._content.push({
                                                     marker: {
-                                                        name: marker[3],
+                                                        name: "",//marker[3],
+                                                        label: txt.toUpperCase(),
                                                         color: "#ff0000",
-                                                        shape: "marker",
+                                                        shape: "circle",
                                                         size: "medium",
                                                         hidden: "YES",
                                                         locked: "YES",
@@ -1770,6 +1775,8 @@ function displayModal(path,id) {
                                                         content: {_attrs: { ref: `/page/${page.page.slug}#${marker[2]}` }}
                                                     }
                                                 })
+                                            } else {
+                                                console.log(`No heading found like: "${txt}. ..."`)
                                             }
                                         }
                                     }
