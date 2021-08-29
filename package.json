@@ -1,5 +1,6 @@
 {
-  "name": "EncounterLog",
+  "name": "encounterlog",
+  "productName": "EncounterLog",
   "version": "2.1.0",
   "description": "Connect D&D Beyond to EncounterPlus",
   "repository": {
@@ -11,13 +12,36 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "build-mac": "security unlock;electron-builder build --mac",
     "build-win": "electron-builder build --win",
-    "build": "yarn build-mac;yarn build-win",
+    "build-deb": "electron-builder build --linux deb",
+    "build": "security unlock;electron-builder build -mwl",
     "postinstall": "electron-builder install-app-deps",
     "app": "electron ."
   },
   "build": {
-    "productName": "EncounterLog",
     "appId": "online.play5e.EncounterLog",
+    "win": {
+      "files": [
+        "**/*",
+        "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+        "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+        "!**/node_modules/*.d.ts",
+        "!**/node_modules/.bin",
+        "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
+        "!.editorconfig",
+        "!**/._*",
+        "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}",
+        "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}",
+        "!**/{appveyor.yml,.travis.yml,circle.yml}",
+        "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}",
+        "!**/.env",
+        "!scripts",
+        "!*.otf",
+        "dnd.traineddata",
+        "!**/*.dylib",
+        "!**/*.so.*",
+        "!**/*.so"
+      ]
+    },
     "mac": {
       "category": "public.app-category.utilities",
       "hardenedRuntime": true,
@@ -25,25 +49,59 @@
       "entitlementsInherit": "entitlements.mac.plist",
       "target": [
         "dmg"
+      ],
+      "files": [
+        "**/*",
+        "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+        "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+        "!**/node_modules/*.d.ts",
+        "!**/node_modules/.bin",
+        "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
+        "!.editorconfig",
+        "!**/._*",
+        "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}",
+        "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}",
+        "!**/{appveyor.yml,.travis.yml,circle.yml}",
+        "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}",
+        "!**/.env",
+        "!scripts",
+        "!*.otf",
+        "!dnd.traineddata",
+        "!**/*.dll",
+        "!**/*.so.*",
+        "!**/*.so"
       ]
     },
-    "files": [
-      "**/*",
-      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
-      "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
-      "!**/node_modules/*.d.ts",
-      "!**/node_modules/.bin",
-      "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
-      "!.editorconfig",
-      "!**/._*",
-      "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}",
-      "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}",
-      "!**/{appveyor.yml,.travis.yml,circle.yml}",
-      "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}",
-      "!**/.env",
-      "!**/scripts",
-      "!**/*.otf",
-      "!**/dnd.traineddata"
+    "linux": {
+      "target": [
+          "deb",
+          "tar.gz"
+      ],
+      "files": [
+        "**/*",
+        "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+        "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+        "!**/node_modules/*.d.ts",
+        "!**/node_modules/.bin",
+        "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
+        "!.editorconfig",
+        "!**/._*",
+        "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}",
+        "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}",
+        "!**/{appveyor.yml,.travis.yml,circle.yml}",
+        "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}",
+        "!**/.env",
+        "!scripts",
+        "!*.otf",
+        "!dnd.traineddata",
+        "!**/dnd.traineddata",
+        "!**/*.dylib",
+        "!**/*.dll"
+      ]
+    },
+    "asarUnpack": [
+      "**/node_modules/sharp/**",
+      "**/node_modules/opencv4nodejs-prebuilt/**"
     ],
     "extraResources": [
       "*.otf",
@@ -51,7 +109,10 @@
     ],
     "afterSign": "scripts/notarize.js"
   },
-  "author": "Robert George",
+  "author": {
+    "name": "Robert George",
+    "email": "rrgeorge@rrgeorge.com"
+  },
   "license": "MIT",
   "dependencies": {
     "@journeyapps/sqlcipher": "^5.2.0",
