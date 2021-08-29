@@ -74,8 +74,8 @@
     },
     "linux": {
       "target": [
-          "deb",
-          "tar.gz"
+        "deb",
+        "tar.gz"
       ],
       "files": [
         "**/*",
@@ -134,7 +134,7 @@
     "ws": "^7.4.5"
   },
   "devDependencies": {
-    "electron": "^12.0.8",
+    "electron": "^13.2.3",
     "electron-builder": "^22.11.7",
     "electron-notarize": "^1.1.0",
     "electron-rebuild": "^3.2.1"
