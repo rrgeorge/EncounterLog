@@ -1671,7 +1671,7 @@ function displayModal(path,id) {
                     prog.detail = "Searching for Maps"
                     if (this.maps == "markers") {
                         this.gVisionClient = new vision.ImageAnnotatorClient({
-                            keyFile: 'gkey.json'
+                            keyFile: '.gkey.json'
                         });
                     }
                     var mapJobs = []
