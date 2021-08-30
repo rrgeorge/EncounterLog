@@ -11,9 +11,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build-mac": "security unlock;electron-builder build --mac",
-    "build-win": "electron-builder build --win",
-    "build-deb": "electron-builder build --linux deb",
-    "build": "security unlock;electron-builder build -mwl",
+    "build-win": "npm_config_platform=win32 npm_config_arch=x64 yarn add opencv4nodejs-prebuilt sharp; electron-builder build --win;yarn add opencv4nodejs-prebuilt sharp",
+    "build-deb": "npm_config_platform=linux npm_config_arch=x64 yarn add opencv4nodejs-prebuilt sharp; electron-builder build --linux deb;yarn add opencv4nodejs-prebuilt sharp",
+    "build": "yarn build-mac;yarn build-win;yarn build-deb",
     "postinstall": "electron-builder install-app-deps",
     "app": "electron ."
   },
@@ -114,6 +114,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@google-cloud/vision": "^2.3.8",
     "@journeyapps/sqlcipher": "^5.2.0",
     "adm-zip": "^0.5.5",
     "build": "^0.1.4",
@@ -127,7 +128,6 @@
     "opencv4nodejs-prebuilt": "^5.3.3",
     "sharp": "^0.29.0",
     "slugify": "^1.5.3",
-    "tesseract.js": "^2.1.5",
     "tmp": "^0.2.1",
     "uuid": "^8.3.2",
     "ws": "^7.4.5"

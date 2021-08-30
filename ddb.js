@@ -13,8 +13,7 @@ const sqlite3 = require('@journeyapps/sqlcipher').verbose()
 const tmp = require('tmp')
 const path = require('path')
 const url = require('url')
-const {createScheduler,createWorker,PSM} = require('tesseract.js')
-const os = require('os')
+const vision = require('@google-cloud/vision');
 
 function slugify(str) {
     return Slugify(str,{ lower: true, strict: true })
@@ -1671,32 +1670,9 @@ function displayModal(path,id) {
                     const getGrid = require('./getgrid')
                     prog.detail = "Searching for Maps"
                     if (this.maps == "markers") {
-                        this.tesseract = createScheduler();
-                        console.log(path.join(__dirname, 'lang_data'))
-                        for (let i=0;i<(os.cpus().length-1||1);i++) {
-                            let worker = createWorker({
-                                cacheMethod: 'readOnly',
-                                langPath: path.join(__dirname,".."),
-                                gzip: false,
-                                logger: m => {
-                                    if (m["jobId"]) {
-                                        let progress = parseInt(m["progress"]*100)
-                                        if (this.tesseract?.getQueueLen() >= 1) {
-                                            progress = parseInt(progress/(1+this.tesseract?.getQueueLen()))
-                                        }
-                                        prog.detail = `Scanning Map for markers ${m["jobId"]} ${progress}%`
-                                    }
-                                }
-                            });
-                            await worker.load()
-                            await worker.loadLanguage('dnd')
-                            await worker.initialize('dnd')
-                            await worker.setParameters({
-                                tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
-                                tessedit_pageseg_mode: PSM.SPARSE_TEXT,
-                            })
-                            this.tesseract.addWorker(worker)
-                        }
+                        this.gVisionClient = new vision.ImageAnnotatorClient({
+                            keyFile: 'gkey.json'
+                        });
                     }
                     var mapJobs = []
                     const mapgroup = uuid5(`https://www.dndbeyond.com/${book.sourceURL}/maps`,uuid5.URL)
@@ -1711,9 +1687,9 @@ function displayModal(path,id) {
                                 ]
                             })
                     }
-                    var mapsort = 0;
                     for (const page of mod._content) {
                         if (!page.page) continue
+                        let mapsort = page.page._attrs.sort*100
                         mapJobs.push((async ()=>{
                         var mapRE = /<figure.*?id="([^"]*)"[^>]*>.*?<figcaption>(.*?) ?<a[^>]*href="(ddb:\/\/image\/[  ^\/]*?\/)?(.*?)\"[^>]*?>.*?[Pp]layer.*?<\/a>.*?<\/figure>/g
                         if (mapRE.test(page.page.content)) {
@@ -1741,24 +1717,51 @@ function displayModal(path,id) {
                                     playerMap._content.push( { scale: grid.scale } )
                                 }
                                 if (this.maps == "markers") {
-                                    prog.detail = `Searching for Maps - ${maps[2]} - preparing to scan for markers`
+                                    prog.detail = `Searching for Maps - ${maps[2]} - scanning for markers`
                                     let dmMap = (new RegExp(`<img.*?src="(.*?)".*?>`)).exec(maps[0])
                                     
-                                    if (dmMap && /<(h[1-9]).*?id="(.*?)".*?>(.+?\. .+?)<\/\1>/is.test(page.page.content)) {
-                                        const dmMapImg = await sharp(zip.readFile(dmMap[1])).blur().median(4).threshold(96).toBuffer()
-                                        const { data: { tsv } } = await this.tesseract.addJob('recognize',dmMapImg)
-                                        for(let row of tsv.split(/\n/)) {
-                                            let m = row.split(/\t/)
-                                            if (!m[11]) continue
-                                            let [x,y,w,h,txt] = [
-                                                parseInt(m[6]),
-                                                parseInt(m[7]),
-                                                parseInt(m[8]),
-                                                parseInt(m[9]),
-                                                m[11]]
-                                            txt = txt.trim()
-                                            let markerRE = new RegExp(`<(h[1-9]).*?id="(.*?)".*?>(${txt}\\. .+?)<\/\\1>`,'is')
-                                            let marker = markerRE.exec(page.page.content)
+                                    if (dmMap) {
+                                        const dmMapImg = await sharp(zip.readFile(dmMap[1])).toBuffer()
+                                        let tasks = []
+                                        const headings = [...page.page.content.matchAll(/<(h[1-9]).*?id="(.*?)".*?>((.+?)\. .+?)<\/\1>/gi)]
+                                        console.log("Submitting map to Google Vision");
+                                        const ocrResult = await this.gVisionClient.textDetection(dmMapImg)
+                                        ocrResult[0]?.textAnnotations?.forEach((word,i)=>{
+                                            let txt = word.description.replaceAll(/[\W_]+/g,'').trim();
+                                            let box = word.boundingPoly.vertices
+                                            let x = box[0].x, y = box[0].y
+                                            let x2=x, y2=y
+                                            for(let point of box) {
+                                                x = (point.x<x)?point.x:x
+                                                x2 = (point.x>x2)?point.x:x2
+                                                y = (point.y<y)?point.y:y
+                                                y2 = (point.y>y2)?point.y:y2
+                                            }
+                                            let w = x2-x, h = y2-y
+                                            let marker = null
+                                            let pageslug = page.page.slug
+                                            for (const heading of headings) {
+                                                if (heading[4].toLowerCase() == txt.toLowerCase()) {
+                                                    marker = heading
+                                                    break
+                                                }
+                                            }
+                                            if (!marker) {
+                                                for (const nextpage of mod._content) {
+                                                    if (!nextpage.page) continue
+                                                    if(mapsort > (nextpage.page._attrs.sort*100)) continue
+                                                    
+                                                    let nxtHeadings = [...nextpage.page.content.matchAll(/<(h[1-9]).*?id="(.*?)".*?>((.+?)\. .+?)<\/\1>/gi)]
+                                                    for (const heading of nxtHeadings) {
+                                                        if (heading[4].toLowerCase() == txt.toLowerCase()) {
+                                                            pageslug = nextpage.page.slug
+                                                            marker = heading
+                                                            break
+                                                        }
+                                                    }
+                                                    if (marker) break
+                                                }
+                                            }
                                             if (marker) {
                                                 console.log(`Adding marker for ${marker[3]} to ${maps[2]}`)
                                                 playerMap._content.push({
@@ -1772,13 +1775,13 @@ function displayModal(path,id) {
                                                         locked: "YES",
                                                         x: Math.round(x+(w/2)),
                                                         y: Math.round(y+(h/2)),
-                                                        content: {_attrs: { ref: `/page/${page.page.slug}#${marker[2]}` }}
+                                                        content: {_attrs: { ref: `/page/${pageslug}#${marker[2]}` }}
                                                     }
                                                 })
                                             } else {
-                                                console.log(`No heading found like: "${txt}. ..."`)
+                                                console.log(`No matching heading found for "${txt}"`)
                                             }
-                                        }
+                                        })
                                     }
                                 }
                                 prog.detail = `Adding Map: ${maps[2]}`
@@ -1789,8 +1792,7 @@ function displayModal(path,id) {
                         }
                         })())
                     }
-                    await Promise.all(mapJobs)
-                    if (this.maps == "markers") this.tesseract.terminate()
+                    if (mapJobs.length > 0) await Promise.all(mapJobs)
                 }
                 console.log("Storing module.xml")
                 prog.detail = "Writing Module XML"
