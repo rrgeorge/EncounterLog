@@ -63,9 +63,9 @@ const preferences = new ElectronPreferences({
                                         'options': [
                                             { 'label': 'Do not look for maps', 'value': 'nomaps' },
                                             { 'label': 'Look for maps', 'value': 'maps' },
-                                            { 'label': 'Look for maps and search for markers (slow)', 'value': 'markers' },
+                                            { 'label': 'Look for maps and search for markers with Google Vision', 'value': 'markers' },
                                         ],
-                                        'help': 'EncounterLog will attempt to identify and align the grid in discovered maps. If you choose to search for markers, EncounterLog will run the maps through OCR to try to find label text and match it to headers in the page. This can be *very slow* depending on the speed of your computer.'
+                                        'help': 'EncounterLog will attempt to identify and align the grid in discovered maps. If you choose to search for markers, EncounterLog will upload the maps to Google Vision to try to find label text and match it to headers in the page.'
                                     },
                                     {
 					'label': "Location for discovered maps",

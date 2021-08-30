@@ -1725,6 +1725,7 @@ function displayModal(path,id) {
                                         let tasks = []
                                         const headings = [...page.page.content.matchAll(/<(h[1-9]).*?id="(.*?)".*?>((.+?)\. .+?)<\/\1>/gi)]
                                         console.log("Submitting map to Google Vision");
+                                        prog.detail = `Searching for Maps - ${maps[2]} - uploading to Google Vision`
                                         const ocrResult = await this.gVisionClient.textDetection(dmMapImg)
                                         ocrResult[0]?.textAnnotations?.forEach((word,i)=>{
                                             let txt = word.description.replaceAll(/[\W_]+/g,'').trim();
