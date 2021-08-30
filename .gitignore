@@ -1,5 +1,6 @@
 /dist
 /test
 /scripts
+.gkey.json
 .env
 node_modules
