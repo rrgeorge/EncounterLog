@@ -13,7 +13,9 @@
     "build-mac": "security unlock;electron-builder build --mac",
     "build-win": "npm_config_platform=win32 npm_config_arch=x64 yarn add opencv4nodejs-prebuilt sharp; electron-builder build --win;yarn add opencv4nodejs-prebuilt sharp",
     "build-deb": "npm_config_platform=linux npm_config_arch=x64 yarn add opencv4nodejs-prebuilt sharp; electron-builder build --linux deb;yarn add opencv4nodejs-prebuilt sharp",
-    "build": "yarn build-mac;yarn build-win;yarn build-deb",
+    "build-all": "yarn build-mac;yarn build-win;yarn build-deb",
+    "publish": "electron-builder -p onTag",
+    "release": "yarn build-all",
     "postinstall": "electron-builder install-app-deps",
     "app": "electron ."
   },
@@ -106,7 +108,8 @@
       "*.otf",
       "dnd.traineddata"
     ],
-    "afterSign": "scripts/notarize.js"
+    "afterSign": "scripts/notarize.js",
+    "publish": [ "github" ]
   },
   "author": {
     "name": "Robert George",
@@ -135,7 +138,6 @@
   "devDependencies": {
     "electron": "^13.2.3",
     "electron-builder": "^22.11.7",
-    "electron-notarize": "^1.1.0",
-    "electron-rebuild": "^3.2.1"
+    "electron-notarize": "^1.1.0"
   }
 }
