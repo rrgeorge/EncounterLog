@@ -14,6 +14,7 @@ const tmp = require('tmp')
 const path = require('path')
 const url = require('url')
 const vision = require('@google-cloud/vision');
+const jsdom = require('jsdom');
 
 function slugify(str) {
     return Slugify(str,{ lower: true, strict: true })
@@ -1320,9 +1321,12 @@ h1 + p:not(.no-fancy)::first-letter {
                                 return `url(res/${resName})`
                             })
                 this.css.push("https://media.dndbeyond.com/ddb-compendium-client/compendium.590bdb9dc0538e3c4006.css")
+                prog.detail = `Retrieving and adding external resources`
                 for (let css of this.css) {
                     try {
                         console.log(`Retrieving ${css}`)
+                        if (prog.detail.endsWith("...")) prog.detail = `Retrieving and adding external resources`
+                        prog.detail += '.'
                         let cssBuf = await this.getImage(css).catch(e=>console.log(`Error retrieving ${css}: ${e}`))
                         let cssTxt = cssBuf
                             .toString('utf8').replaceAll(/url\((['"]?)((?:(?:https?:)?\/\/|\.\.).*?)(?:\1)\)/g,(m,m1,m2)=>{
@@ -1338,7 +1342,8 @@ h1 + p:not(.no-fancy)::first-letter {
                                 }
                                 let resName = uuid5(m2,uuid5.URL)
                                 if (path.extname(m2)) resName += path.extname(m2)
-                                prog.detail = `Adding resource ${m2}`
+                                if (prog.detail.endsWith("...")) prog.detail = `Retrieving and adding external resources`
+                                prog.detail += '.'
                                 this.getImage(m2).then(r=>zip.addFile(`assets/css/res/${resName}`,r)).catch(()=>{})
                                 return `url(res/${resName})`
                             }).replaceAll(/(background:.*) (114px)/g,"$1 0px").replace(/@media\(max-width:1023px\)\{\.tooltip/,"@media(max-width: 10px){.tooltip")
@@ -1689,25 +1694,31 @@ function displayModal(path,id) {
                     }
                     for (const page of mod._content) {
                         if (!page.page) continue
+                        const dom = new jsdom.JSDOM(page.page.content)
                         let mapsort = page.page._attrs.sort*100
                         mapJobs.push((async ()=>{
-                        var mapRE = /<figure.*?id="([^"]*)"[^>]*>.*?<figcaption>(.*?) ?<a[^>]*href="(ddb:\/\/image\/[  ^\/]*?\/)?(.*?)\"[^>]*?>.*?[Pp]layer.*?<\/a>.*?<\/figure>/g
-                        if (mapRE.test(page.page.content)) {
-                            mapRE.lastIndex = 0
-                            var maps
-                            while (maps = mapRE.exec(page.page.content)) {
+                        const figures = dom.window.document.querySelectorAll("figure")
+                        if (figures) {
+                            for (const figure of figures) {
+                                const caption = figure.querySelector("figcaption")
+                                if (!caption) continue
+                                if (!caption.querySelector("A")?.dataset["title"]?.match(/[Pp]layer/)) continue
+                                const mapTitle = [...caption.childNodes].filter(c=>c.data).map(c=>c.data).join(' ')
+                                const mapUrl = caption.querySelector("A").getAttribute('href')
+                                const dmMap = figure.querySelector("img").getAttribute('src')
+
                                 mapsort ++
-                                prog.detail = `Searching for Maps - ${maps[2]}`
-                                prog.detail = `Searching for Maps - ${maps[2]} - locating grid`
-                                const grid = await getGrid(await sharp(zip.readFile(maps[4])).toBuffer());
-                                console.log(`This might be a map: ${maps[4]}`)
+                                prog.detail = `Found Map - ${mapTitle}`
+                                prog.detail = `Found Map - ${mapTitle} - Analyzing grid`
+                                const grid = await getGrid(await sharp(zip.readFile(mapUrl)).toBuffer());
+                                console.log(`This might be a map: ${mapUrl}`)
                                 let playerMap = {
                                     _name: "map",
-                                    _attrs: { id: uuid5(`https://www.dndbeyond.com/${book.sourceURL}/image/${maps[1]}`, uuid5.URL), parent: (this.mapsloc!="group")? page.page._attrs.id : mapgroup, sort: mapsort},
+                                    _attrs: { id: uuid5(`https://www.dndbeyond.com/${book.sourceURL}/image/${figure.id}`, uuid5.URL), parent: (this.mapsloc!="group")? page.page._attrs.id : mapgroup, sort: mapsort},
                                     _content: [
-                                        { name: he.decode(maps[2]) },
-                                        { slug: slugify(maps[2]) },
-                                        { image: maps[4] }
+                                        { name: he.decode(mapTitle) },
+                                        { slug: slugify(mapTitle) },
+                                        { image: mapUrl }
                                     ]
                                 }
                                 if (grid.freq > 0) {
@@ -1717,15 +1728,13 @@ function displayModal(path,id) {
                                     playerMap._content.push( { scale: grid.scale } )
                                 }
                                 if (this.maps == "markers") {
-                                    prog.detail = `Searching for Maps - ${maps[2]} - scanning for markers`
-                                    let dmMap = (new RegExp(`<img.*?src="(.*?)".*?>`)).exec(maps[0])
+                                    prog.detail = `Found Map - ${mapTitle} - Scanning for markers`
                                     
                                     if (dmMap) {
-                                        const dmMapImg = await sharp(zip.readFile(dmMap[1])).toBuffer()
+                                        const dmMapImg = await sharp(zip.readFile(dmMap)).toBuffer()
                                         let tasks = []
-                                        const headings = [...page.page.content.matchAll(/<(h[1-9]).*?id="(.*?)".*?>((.+?)\. .+?)<\/\1>/gi)]
-                                        console.log("Submitting map to Google Vision");
-                                        prog.detail = `Searching for Maps - ${maps[2]} - uploading to Google Vision`
+                                        const headings = dom.window.document.querySelectorAll("h1, h2, h3, h4, h5, h6")
+                                        prog.detail = `Found Map - ${mapTitle} - Scanning for markers with Google Vision`
                                         const ocrResult = await this.gVisionClient.textDetection(dmMapImg)
                                         ocrResult[0]?.textAnnotations?.forEach((word,i)=>{
                                             let txt = word.description.replaceAll(/[\W_]+/g,'').trim();
@@ -1742,19 +1751,22 @@ function displayModal(path,id) {
                                             let marker = null
                                             let pageslug = page.page.slug
                                             for (const heading of headings) {
-                                                if (heading[4].toLowerCase() == txt.toLowerCase()) {
+                                                if (heading.textContent.match(new RegExp(`^${txt.toLowerCase()}\\. `,'i'))) {
                                                     marker = heading
                                                     break
                                                 }
                                             }
-                                            if (!marker) {
+                                            if (!marker && page.page._attrs.parent) {
+                                                console.log("Marker not found on this page. Looking on siblings")
                                                 for (const nextpage of mod._content) {
                                                     if (!nextpage.page) continue
-                                                    if(mapsort > (nextpage.page._attrs.sort*100)) continue
+                                                    if (nextpage.page._attrs.parent!=page.page._attrs.parent) continue
                                                     
-                                                    let nxtHeadings = [...nextpage.page.content.matchAll(/<(h[1-9]).*?id="(.*?)".*?>((.+?)\. .+?)<\/\1>/gi)]
+                                                    let nxtDom = new jsdom.JSDOM(nextpage.page.content)
+                                                    let nxtHeadings = nxtDom.window.document.querySelectorAll("h1, h2, h3, h4, h5, h6")
+
                                                     for (const heading of nxtHeadings) {
-                                                        if (heading[4].toLowerCase() == txt.toLowerCase()) {
+                                                        if (heading.textContent.match(new RegExp(`^${txt.toLowerCase()}\\. `,'i'))) {
                                                             pageslug = nextpage.page.slug
                                                             marker = heading
                                                             break
@@ -1764,11 +1776,12 @@ function displayModal(path,id) {
                                                 }
                                             }
                                             if (marker) {
-                                                console.log(`Adding marker for ${marker[3]} to ${maps[2]}`)
+                                                console.log(`Adding marker for ${marker.textContent} to ${mapTitle}`)
+                                                prog.detail = `Found Map - ${mapTitle} - Placing Marker for ${marker.textContent.substr(0,marker.textContent.indexOf('.'))}`
                                                 playerMap._content.push({
                                                     marker: {
-                                                        name: "",//marker[3],
-                                                        label: txt.toUpperCase(),
+                                                        name: "",
+                                                        label: marker.textContent.substr(0,marker.textContent.indexOf('.')),
                                                         color: "#ff0000",
                                                         shape: "circle",
                                                         size: "medium",
@@ -1776,7 +1789,7 @@ function displayModal(path,id) {
                                                         locked: "YES",
                                                         x: Math.round(x+(w/2)),
                                                         y: Math.round(y+(h/2)),
-                                                        content: {_attrs: { ref: `/page/${pageslug}#${marker[2]}` }}
+                                                        content: {_attrs: { ref: `/page/${pageslug}#${marker.id}` }}
                                                     }
                                                 })
                                             } else {
@@ -1785,9 +1798,9 @@ function displayModal(path,id) {
                                         })
                                     }
                                 }
-                                prog.detail = `Adding Map: ${maps[2]}`
-                                console.log(`Adding MAP: ${maps[2]}`)
-                                page.page.content = page.page.content.replaceAll(new RegExp(`href="${maps[3]??''}${maps[4]}"`,'g'),`href="/map/${playerMap._attrs.id}"`);
+                                prog.detail = `Adding Map: ${mapTitle}`
+                                console.log(`Adding MAP: ${mapTitle}`)
+                                page.page.content = page.page.content.replaceAll(new RegExp(`href="${mapUrl}"`,'g'),`href="/map/${playerMap._attrs.id}"`);
                                 mod._content.push(playerMap)
                             }
                         }
