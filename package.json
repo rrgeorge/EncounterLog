@@ -1,7 +1,7 @@
 {
   "name": "encounterlog",
   "productName": "EncounterLog",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Connect D&D Beyond to EncounterPlus",
   "repository": {
     "type": "git",
@@ -53,7 +53,8 @@
       "entitlements": "entitlements.mac.plist",
       "entitlementsInherit": "entitlements.mac.plist",
       "target": [
-        "dmg"
+        "dmg",
+        "zip"
       ],
       "files": [
         "**/*",
@@ -79,7 +80,8 @@
     },
     "linux": {
       "target": [
-        "deb"
+        "deb",
+        "AppImage"
       ],
       "files": [
         "**/*",
