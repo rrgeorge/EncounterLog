@@ -10,6 +10,8 @@ const AdmZip = require('adm-zip')
 const he = require('he')
 const DDB = require('./ddb')
 const fs = require('fs')
+const { autoUpdater } = require('electron-updater')
+
 var _ws = null
 var _win = null
 var ddb
@@ -94,6 +96,7 @@ const preferences = new ElectronPreferences({
 })
 encounterhost = preferences.value('main.encounterhost');
 app.on('ready', () => {
+        autoUpdater.checkForUpdatesAndNotify()
 	const win = new BrowserWindow({ show: false, width: 800, height: 600, webPreferences: {nodeIntegration: true, contextIsolation: false,nativeWindowOpen: true} })
 	_win = win
         ddb = new DDB()
@@ -122,6 +125,7 @@ app.on('ready', () => {
               {label: "Campaigns", id: 'campaignMenu', submenu: [ { label: "Loading...", enabled: false } ] },
               {label: "Compendium", id: 'compendium', submenu: [ {label: "Loading...", enabled: false } ] },
               {role: 'help', submenu: [
+                  { label: `${app.getName()} v${app.getVersion()}`, enabled: false }, 
                   { label: "About", click: () => shell.openExternal("https://github.com/rrgeorge/EncounterLog") },
                   { label: "Support this project", click: () => shell.openExternal("https://github.com/sponsors/rrgeorge") }
               ] },
@@ -468,7 +472,6 @@ app.on('ready', () => {
                                 Menu.setApplicationMenu(menu)
                             }).catch(e=>displayError(`Error populating sources: ${e}`))
                         ).catch(e=>displayError(`Error populating campaigns: ${e}`))
-                       
                     }
                 })
             }
