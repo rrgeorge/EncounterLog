@@ -1692,6 +1692,19 @@ function displayModal(path,id) {
                                 ]
                             })
                     }
+                    if (this.remoteMaps?.includes("remote")) {
+                        console.log("Checking to see if we can get remote images")
+                        const remotePage = await this.getImage(`https://www.dndbeyond.com/${book.sourceURL}`)
+                        const remoteDom = new jsdom.JSDOM(remotePage)
+                        for (const link of remoteDom.window.document.querySelectorAll("A")) {
+                            let linkMatch = /https:\/\/media.dndbeyond.com\/compendium-images\/[^\/]*\/[^\/]*\//.exec(link.href)
+                            if (linkMatch) {
+                                console.log(`Remote prefix: ${linkMatch[0]}`)
+                                book.remotePrefix = linkMatch[0]
+                                break
+                            }
+                        }
+                    }
                     for (const page of mod._content) {
                         if (!page.page) continue
                         const dom = new jsdom.JSDOM(page.page.content)
@@ -1710,7 +1723,26 @@ function displayModal(path,id) {
                                 mapsort ++
                                 prog.detail = `Found Map - ${mapTitle}`
                                 prog.detail = `Found Map - ${mapTitle} - Analyzing grid`
-                                const grid = await getGrid(await sharp(zip.readFile(mapUrl)).toBuffer());
+                                let { data: mapfile, info } = await sharp(zip.readFile(mapUrl)).toBuffer({resolveWithObject: true})
+                                if (book.remotePrefix) {
+                                    let remoteData = await this.getImage(`${book.remotePrefix}${mapUrl}`).catch(e=>console.log(`Could not load remote map: ${e}`))
+                                    if (remoteData) {
+                                        let { data: rFile, info: rInfo } = await sharp(remoteData).toBuffer({resolveWithObject: true}).catch(e=>console.log(e))
+                                        if (rInfo.width > info.width || rInfo.height > info.height) {
+                                            console.log("Remote map is larger, using remote map")
+                                            mapfile = rFile
+                                            zip.addFile(mapUrl,remoteData)
+                                            if (dmMap) {
+                                                let remoteData = await this.getImage(`${book.remotePrefix}${dmMap}`).catch(e=>console.log(`Could not load remote DM map: ${e}`))
+                                                if (remoteData) {
+                                                    console.log("Replacing DM Map too")
+                                                    zip.addFile(dmMap,remoteData)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                const grid = await getGrid(mapfile);
                                 console.log(`This might be a map: ${mapUrl}`)
                                 let playerMap = {
                                     _name: "map",
@@ -1731,11 +1763,11 @@ function displayModal(path,id) {
                                     prog.detail = `Found Map - ${mapTitle} - Scanning for markers`
                                     
                                     if (dmMap) {
-                                        const dmMapImg = await sharp(zip.readFile(dmMap)).toBuffer()
+                                        const dmMapImg = (book.remotePrefix)?`${book.remotePrefix}${dmMap}`:await sharp(zip.readFile(dmMap)).toBuffer()
                                         let tasks = []
                                         const headings = dom.window.document.querySelectorAll("h1, h2, h3, h4, h5, h6")
                                         prog.detail = `Found Map - ${mapTitle} - Scanning for markers with Google Vision`
-                                        const ocrResult = await this.gVisionClient.textDetection(dmMapImg)
+                                        const ocrResult = await this.gVisionClient.textDetection(dmMapImg).catch(e=>console.log(`Error submitting ${dmMap} (${typeof(dmMap)}) to Google Vision: ${e}`))
                                         ocrResult[0]?.textAnnotations?.forEach((word,i)=>{
                                             let txt = word.description.replaceAll(/[\W_]+/g,'').trim();
                                             let box = word.boundingPoly.vertices

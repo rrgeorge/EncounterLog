@@ -27,7 +27,8 @@ const preferences = new ElectronPreferences({
             'main': {
                 'art': [ 'artwork', 'tokens' ],
                 'maps': 'nomaps',
-                'mapsloc': 'group'
+                'mapsloc': 'group',
+                'remotemaps': [ ]
             }
         },
 	'sections': [ {
@@ -79,6 +80,14 @@ const preferences = new ElectronPreferences({
                                         ],
                                     },
                                     {
+					'label': "Check to see if a higher resolution maps exist on the site. This can make the module significantly larger, take a lot longer to process, and may not work with every module.",
+					'key': 'remotemaps',
+					'type': 'checkbox',
+                                        'options': [
+                                            { 'label': 'Check for higher resolution maps', 'value': 'remote' }
+                                        ]
+                                    },
+                                    {
 					'heading': "",
 					'key': 'prefs_okay',
                                         'type': 'message',
@@ -103,12 +112,15 @@ app.on('ready', () => {
         ddb.art = preferences.value('main.art');
         ddb.maps = preferences.value('main.maps') ?? "nomaps";
         ddb.mapsloc = preferences.value('main.mapsloc') ?? "group";
+        ddb.remotemaps = preferences.value('main.remotemaps');
+
         console.log(ddb.art,ddb.maps)
         preferences.on('save', (preferences) => {
                 encounterhost = preferences.main.encounterhost
                 ddb.art = preferences.main.art
                 ddb.maps = preferences.main.maps
                 ddb.mapsloc = preferences.main.mapsloc
+                ddb.remotemaps = preferences.main.remotemaps
         })
 	var menu = Menu.buildFromTemplate([
 	      {
