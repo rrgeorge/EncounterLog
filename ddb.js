@@ -1710,16 +1710,33 @@ function displayModal(path,id) {
                         const dom = new jsdom.JSDOM(page.page.content)
                         let mapsort = page.page._attrs.sort*100
                         mapJobs.push((async ()=>{
-                        const figures = dom.window.document.querySelectorAll("figure")
+                        let figures = dom.window.document.querySelectorAll("figure")
+                        if (figures.length<1) {
+                            figures = dom.window.document.querySelectorAll(".compendium-image-view-player")
+                        }
                         if (figures) {
-                            for (const figure of figures) {
-                                const caption = figure.querySelector("figcaption")
-                                if (!caption) continue
-                                if (!caption.querySelector("A")?.dataset["title"]?.match(/[Pp]layer/)) continue
-                                const mapTitle = [...caption.childNodes].filter(c=>c.data).map(c=>c.data).join(' ')
-                                const mapUrl = caption.querySelector("A").getAttribute('href')
-                                const dmMap = figure.querySelector("img").getAttribute('src')
-
+                            for (let figure of figures) {
+                                let mapTitle,mapUrl,dmMap
+                                if (figure.tagName == "P") {
+                                    const caption = figure.previousElementSibling
+                                    if (!figure.querySelector("A")?.textContent?.match(/[Pp]layer/s))
+                                    {
+                                        console.log(figure)
+                                        console.log(figure.querySelector("A").textContent)
+                                        continue
+                                    }
+                                    if (!figure.id) figure.id = caption.id
+                                    mapTitle = caption.textContent.trim()
+                                    mapUrl = figure.querySelector("A").getAttribute('href')
+                                    dmMap = caption.querySelector("img").getAttribute('src')
+                                } else {
+                                    const caption = figure.querySelector("figcaption")
+                                    if (!caption) continue
+                                    if (!caption.querySelector("A")?.dataset["title"]?.match(/[Pp]layer/)) continue
+                                    mapTitle = [...caption.childNodes].filter(c=>c.data).map(c=>c.data).join(' ')
+                                    mapUrl = caption.querySelector("A").getAttribute('href')
+                                    dmMap = figure.querySelector("img").getAttribute('src')
+                                }
                                 mapsort ++
                                 prog.detail = `Found Map - ${mapTitle}`
                                 prog.detail = `Found Map - ${mapTitle} - Analyzing grid`

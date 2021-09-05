@@ -1,7 +1,7 @@
 {
   "name": "encounterlog",
   "productName": "EncounterLog",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "Connect D&D Beyond to EncounterPlus",
   "repository": {
     "type": "git",
@@ -14,11 +14,11 @@
     "build-win": "npm_config_platform=win32 npm_config_arch=x64 yarn add opencv4nodejs-prebuilt@5.3.3 sharp; electron-builder build --win;yarn add opencv4nodejs-prebuilt@5.3.3 sharp",
     "build-deb": "npm_config_platform=linux npm_config_arch=x64 yarn add opencv4nodejs-prebuilt@5.3.3 sharp; electron-builder build --linux deb;yarn add opencv4nodejs-prebuilt@5.3.3 sharp",
     "build-all": "yarn build-mac;yarn build-win;yarn build-deb",
-    "publish-mac": "security unlock;electron-builder -p onTagOrDraft --mac",
-    "publish-win": "npm_config_platform=win32 npm_config_arch=x64 yarn add opencv4nodejs-prebuilt@5.3.3 sharp; electron-builder -p onTagOrDraft --win;yarn add opencv4nodejs-prebuilt@5.3.3 sharp",
-    "publish-deb": "npm_config_platform=linux npm_config_arch=x64 yarn add opencv4nodejs-prebuilt@5.3.3 sharp; electron-builder -p onTagOrDraft --linux;yarn add opencv4nodejs-prebuilt@5.3.3 sharp",
+    "publish-mac": "security unlock;electron-builder -p always --mac",
+    "publish-win": "npm_config_platform=win32 npm_config_arch=x64 yarn add opencv4nodejs-prebuilt@5.3.3 sharp; electron-builder -p always --win;yarn add opencv4nodejs-prebuilt@5.3.3 sharp",
+    "publish-deb": "npm_config_platform=linux npm_config_arch=x64 yarn add opencv4nodejs-prebuilt@5.3.3 sharp; electron-builder -p always --linux;yarn add opencv4nodejs-prebuilt@5.3.3 sharp",
     "publish-all": "yarn publish-mac;yarn publish-win;yarn publish-deb",
-    "release": "yarn build-all",
+    "release": "yarn publish-all",
     "postinstall": "electron-builder install-app-deps",
     "app": "electron ."
   },
@@ -136,7 +136,7 @@
     "jsdom": "^17.0.0",
     "jstoxml": "^2.0.6",
     "mac": "^0.4.0",
-    "opencv4nodejs-prebuilt": "^5.3.3",
+    "opencv4nodejs-prebuilt": "5.3.3",
     "sharp": "^0.29.0",
     "slugify": "^1.5.3",
     "tmp": "^0.2.1",
