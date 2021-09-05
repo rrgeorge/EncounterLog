@@ -1692,7 +1692,7 @@ function displayModal(path,id) {
                                 ]
                             })
                     }
-                    if (this.remoteMaps?.includes("remote")) {
+                    if (this.remotemaps?.includes("remote")) {
                         console.log("Checking to see if we can get remote images")
                         const remotePage = await this.getImage(`https://www.dndbeyond.com/${book.sourceURL}`)
                         const remoteDom = new jsdom.JSDOM(remotePage)
