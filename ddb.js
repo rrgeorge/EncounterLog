@@ -727,6 +727,7 @@ class DDB {
                     {skill: sanitize(monster.skillsHtml)},
                     {senses: sanitize(monster.sensesHtml)},
                     {passive: monster.passivePerception},
+                    {conditionImmune: sanitize(monster.conditionImmunitiesHtml)}
                 ] }
             var cr = this.ruledata.challengeRatings.find(s=>s.id===monster.challengeRatingId).value
             if (cr==0.125) {
@@ -746,6 +747,20 @@ class DDB {
                 monsterEntry._content.push({type: `${this.ruledata.monsterTypes.find(s=>s.id===monster.typeId)?.name||monster.typeId} (${subtypes.join(", ")})`})
             } else {
                 monsterEntry._content.push({type: this.ruledata.monsterTypes.find(s=>s.id===monster.typeId)?.name||monster.typeId})
+            }
+            if (monster.damageAdjustments?.length>0) {
+                let resist = monster.damageAdjustments
+                    .filter(s=>this.ruledata.damageAdjustments.find(d=>d.id===s&&d.type===1))
+                    .map(s=>this.ruledata.damageAdjustments.find(d=>d.id===s)?.name)
+                let immune = monster.damageAdjustments
+                    .filter(s=>this.ruledata.damageAdjustments.find(d=>d.id===s&&d.type===2))
+                    .map(s=>this.ruledata.damageAdjustments.find(d=>d.id===s)?.name)
+                let vuln = monster.damageAdjustments
+                    .filter(s=>this.ruledata.damageAdjustments.find(d=>d.id===s&&d.type===3))
+                    .map(s=>this.ruledata.damageAdjustments.find(d=>d.id===s)?.name)
+                if (resist.length>0) monsterEntry._content.push({resist: resist.join(", ")})
+                if (immune.length>0) monsterEntry._content.push({immune: immune.join(", ")})
+                if (vuln.length>0) monsterEntry._content.push({vulnerable: vuln.join(", ")})
             }
             var proficiency = this.ruledata.challengeRatings.find(s=>s.id===monster.challengeRatingId).proficiencyBonus
             monsterEntry._content.push({proficiency: proficiency})
