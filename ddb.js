@@ -1778,7 +1778,7 @@ function displayModal(path,id) {
                                 console.log(`This might be a map: ${mapUrl}`)
                                 let playerMap = {
                                     _name: "map",
-                                    _attrs: { id: uuid5(`https://www.dndbeyond.com/${book.sourceURL}/image/${figure.id}`, uuid5.URL), parent: (this.mapsloc!="group")? page.page._attrs.id : mapgroup, sort: mapsort},
+                                    _attrs: { id: uuid5(`https://www.dndbeyond.com/${book.sourceURL}/image/${figure.id||mapUrl}`, uuid5.URL), parent: (this.mapsloc!="group")? page.page._attrs.id : mapgroup, sort: mapsort},
                                     _content: [
                                         { name: he.decode(mapTitle) },
                                         { slug: slugify(mapTitle) },
