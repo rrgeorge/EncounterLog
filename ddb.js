@@ -1799,8 +1799,8 @@ function displayModal(path,id) {
                                         let tasks = []
                                         const headings = dom.window.document.querySelectorAll("h1, h2, h3, h4, h5, h6")
                                         prog.detail = `Found Map - ${mapTitle} - Scanning for markers with Google Vision`
-                                        const ocrResult = await this.gVisionClient.textDetection(dmMapImg).catch(e=>console.log(`Error submitting ${dmMap} (${typeof(dmMap)}) to Google Vision: ${e}`))
-                                        ocrResult[0]?.textAnnotations?.forEach((word,i)=>{
+                                        const [ocrResult] = await this.gVisionClient.textDetection(dmMapImg).catch(e=>console.log(`Error submitting ${dmMap} (${typeof(dmMap)}) to Google Vision: ${e}`))
+                                        ocrResult?.textAnnotations?.forEach((word,i)=>{
                                             let txt = word.description.replaceAll(/[\W_]+/g,'').trim();
                                             let box = word.boundingPoly.vertices
                                             let x = box[0].x, y = box[0].y
