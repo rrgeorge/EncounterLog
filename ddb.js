@@ -1017,6 +1017,14 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                             '</div></article></div>'
                     }
                 }
+                if (c.Slug=="table-of-contents") {
+                    const dom = new jsdom.JSDOM(page.page.content)
+                    const intro = dom.window.document.querySelector(".compendium-intro-text")
+                    if (intro?.textContent) {
+                        const desc = mod._content.find(c=>c.description)
+                        if (desc) desc.description = convert(intro.textContent)
+                    }
+                }
                 page.page.content = page.page.content.concat(`<script>window.thisSlug="${page.page.slug}"</script>`)
                 if (c.ParentSlug) {
                     page.page._attrs.parent = uuid5(`https://www.dndbeyond.com/${book.sourceURL}/${c.ParentSlug}`,uuid5.URL)
@@ -1394,7 +1402,7 @@ ${(await this.getImage("https://cdnjs.cloudflare.com/ajax/libs/uuid/8.1.0/uuidv5
 const knownIds = ${JSON.stringify(slugIdMap)}
 
 function makeRollLinks(el) {
-    const dice = new RegExp(/[0-9]*[dD][0-9]+( ?[-+] ?[0-9]+)?/,"g")
+    const dice = new RegExp(/[0-9]*[dD][0-9]+( ?[-+×÷*\/] ?[0-9,]+)?/,"g")
     if (el.childElementCount > 0) {
         for (var child of el.childNodes) {
             makeRollLinks(child)
@@ -1411,10 +1419,37 @@ function makeRollLinks(el) {
         }
         rolls.reverse()
         for (let roll of rolls) {
+            let parent = el;
+            let title = ""
+            while(parent = parent.parentElement) {
+                let sibling = parent;
+                let header;
+                while(sibling = sibling.previousElementSibling) {
+                    header = (sibling.tagName.match(/H[1-9]/))? sibling:parent.querySelector("h1,h2,h3,h4,h5,h6,h7,h8")
+                    if (header) break;
+                }
+                if (header) {
+                    title = header.innerText
+                    break;
+                }
+            }
+            if (el.parentElement.tagName == "TD") {
+                let colIdx = el.parentElement.cellIndex
+                let parentTable = el.parentNode;
+                while (parentTable = parentTable.parentNode) {
+                    if (parentTable.tagName == "TABLE") break;
+                }
+                if (parentTable.rows[0]) {
+                    title = parentTable.rows[0].cells[colIdx].innerText;
+                }
+            }
             let remainder = el.splitText(roll.index)
             remainder.data = remainder.data.substr(roll[0].length)
             let rollLink = document.createElement("A")
-            rollLink.href = \`/roll/\${roll[0]}\`
+            if (title)
+                rollLink.href = \`/roll/\${roll[0].replaceAll(/,/g,'')}/\${title}\`
+            else
+                rollLink.href = \`/roll/\${roll[0].replaceAll(/,/g,'')}\`
             rollLink.innerText = roll[0]
             el.parentNode.insertBefore(rollLink,remainder)
         }
@@ -1795,12 +1830,26 @@ function displayModal(path,id) {
                                     prog.detail = `Found Map - ${mapTitle} - Scanning for markers`
                                     
                                     if (dmMap) {
-                                        const dmMapImg = (book.remotePrefix)?`${book.remotePrefix}${dmMap}`:await sharp(zip.readFile(dmMap)).toBuffer()
+                                        const dmMapImg = await sharp(zip.readFile(dmMap)).toBuffer()
+                                            //(book.remotePrefix)?`${book.remotePrefix}${dmMap}`:await sharp(zip.readFile(dmMap)).toBuffer()
                                         let tasks = []
                                         const headings = dom.window.document.querySelectorAll("h1, h2, h3, h4, h5, h6")
                                         prog.detail = `Found Map - ${mapTitle} - Scanning for markers with Google Vision`
                                         const [ocrResult] = await this.gVisionClient.textDetection(dmMapImg).catch(e=>console.log(`Error submitting ${dmMap} (${typeof(dmMap)}) to Google Vision: ${e}`))
                                         ocrResult?.textAnnotations?.forEach((word,i)=>{
+                                            if (i === 0) {
+                                                const mapScale = /(1 square)? = ([0-9]+) (.+)/mi.exec(word.description)
+                                                if (mapScale) {
+                                                    console.log("Found map scale?",mapScale)
+                                                    let unit = mapScale[3]
+                                                    if (unit.toLowerCase() == "feet") unit = "ft"
+                                                    if (unit.toLowerCase() == "miles") unit = "mi"
+                                                    if (unit.toLowerCase() == "meters") unit = "m"
+                                                    if (mapScale[2]) playerMap._content.push( { gridScale: mapScale[2] } )
+                                                    if (unit) playerMap._content.push( { gridUnits: unit } )
+                                                }
+                                                return
+                                            }
                                             let txt = word.description.replaceAll(/[\W_]+/g,'').trim();
                                             let box = word.boundingPoly.vertices
                                             let x = box[0].x, y = box[0].y
@@ -1821,7 +1870,7 @@ function displayModal(path,id) {
                                                 }
                                             }
                                             if (!marker && page.page._attrs.parent) {
-                                                console.log("Marker not found on this page. Looking on siblings")
+                                                //console.log("Marker not found on this page. Looking on siblings")
                                                 for (const nextpage of mod._content) {
                                                     if (!nextpage.page) continue
                                                     if (nextpage.page._attrs.parent!=page.page._attrs.parent) continue
