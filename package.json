@@ -1,7 +1,7 @@
 {
   "name": "encounterlog",
   "productName": "EncounterLog",
-  "version": "2.1.8",
+  "version": "2.1.9",
   "description": "Connect D&D Beyond to EncounterPlus",
   "repository": {
     "type": "git",

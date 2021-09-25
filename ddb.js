@@ -1724,11 +1724,6 @@ function displayModal(path,id) {
                 if (this.maps && this.maps != "nomaps") {
                     const getGrid = require('./getgrid')
                     prog.detail = "Searching for Maps"
-                    if (this.maps == "markers") {
-                        this.gVisionClient = new vision.ImageAnnotatorClient({
-                            keyFile: path.join(__dirname,'.gkey.json')
-                        });
-                    }
                     var mapJobs = []
                     const mapgroup = uuid5(`https://www.dndbeyond.com/${book.sourceURL}/maps`,uuid5.URL)
                     if (this.mapsloc != "parent") {
@@ -1787,6 +1782,21 @@ function displayModal(path,id) {
                                     mapUrl = caption.querySelector("A").getAttribute('href')
                                     dmMap = figure.querySelector("img").getAttribute('src')
                                 }
+                                if (!mapTitle) {
+                                    let figParent = figure
+                                    while(figParent = figParent.parentElement) {
+                                        let sibling = figParent;
+                                        let header;
+                                        while(sibling = sibling.previousElementSibling) {
+                                            header = (sibling.tagName.match(/H[1-9]/))? sibling:figParent.querySelector("h1,h2,h3,h4,h5,h6,h7,h8")
+                                            if (header) break;
+                                        }
+                                        if (header) {
+                                            mapTitle = header.textContent
+                                            break;
+                                        }
+                                    }
+                                }
                                 mapsort ++
                                 prog.detail = `Found Map - ${mapTitle}`
                                 prog.detail = `Found Map - ${mapTitle} - Analyzing grid`
@@ -1821,30 +1831,32 @@ function displayModal(path,id) {
                                     ]
                                 }
                                 if (grid.freq > 0) {
+                                    prog.detail = `Found Map - ${mapTitle} - Analyzing grid: ${grid.size}px`
                                     playerMap._content.push( { gridSize: grid.size } )
                                     playerMap._content.push( { gridOffsetX: grid.x } )
                                     playerMap._content.push( { gridOffsetY: grid.y } )
                                     playerMap._content.push( { scale: grid.scale } )
                                 }
                                 if (this.maps == "markers") {
-                                    prog.detail = `Found Map - ${mapTitle} - Scanning for markers`
-                                    
                                     if (dmMap) {
                                         const dmMapImg = await sharp(zip.readFile(dmMap)).toBuffer()
                                             //(book.remotePrefix)?`${book.remotePrefix}${dmMap}`:await sharp(zip.readFile(dmMap)).toBuffer()
                                         let tasks = []
                                         const headings = dom.window.document.querySelectorAll("h1, h2, h3, h4, h5, h6")
                                         prog.detail = `Found Map - ${mapTitle} - Scanning for markers with Google Vision`
-                                        const [ocrResult] = await this.gVisionClient.textDetection(dmMapImg).catch(e=>console.log(`Error submitting ${dmMap} (${typeof(dmMap)}) to Google Vision: ${e}`))
+                                        const gVisionClient = new vision.ImageAnnotatorClient({
+                                            keyFile: path.join(__dirname,'.gkey.json')
+                                        });
+                                        const [ocrResult] = await gVisionClient.textDetection(dmMapImg).catch(e=>console.log(`Error submitting ${dmMap} (${typeof(dmMap)}) to Google Vision: ${e}`))
                                         ocrResult?.textAnnotations?.forEach((word,i)=>{
                                             if (i === 0) {
                                                 const mapScale = /(1 square)? = ([0-9]+) (.+)/mi.exec(word.description)
                                                 if (mapScale) {
-                                                    console.log("Found map scale?",mapScale)
                                                     let unit = mapScale[3]
                                                     if (unit.toLowerCase() == "feet") unit = "ft"
                                                     if (unit.toLowerCase() == "miles") unit = "mi"
                                                     if (unit.toLowerCase() == "meters") unit = "m"
+                                                    console.log(`Setting map scale to ${mapScale[2]} ${unit}`)
                                                     if (mapScale[2]) playerMap._content.push( { gridScale: mapScale[2] } )
                                                     if (unit) playerMap._content.push( { gridUnits: unit } )
                                                 }
@@ -1909,6 +1921,7 @@ function displayModal(path,id) {
                                                 console.log(`No matching heading found for "${txt}"`)
                                             }
                                         })
+                                        gVisionClient.close()
                                     }
                                 }
                                 prog.detail = `Adding Map: ${mapTitle}`
