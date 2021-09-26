@@ -15,6 +15,7 @@ const path = require('path')
 const url = require('url')
 const vision = require('@google-cloud/vision');
 const jsdom = require('jsdom');
+const cv = require('opencv4nodejs-prebuilt');
 
 function slugify(str) {
     return Slugify(str,{ lower: true, strict: true })
@@ -1723,7 +1724,8 @@ function displayModal(path,id) {
                 zip.addFile('assets/js/custom.js',customjs)
                 if (this.maps && this.maps != "nomaps") {
                     const getGrid = require('./getgrid')
-                    prog.detail = "Searching for Maps"
+                    prog.text = "Searching for Maps..."
+                    prog.detail = "Scanning pages..."
                     var mapJobs = []
                     const mapgroup = uuid5(`https://www.dndbeyond.com/${book.sourceURL}/maps`,uuid5.URL)
                     if (this.mapsloc != "parent") {
@@ -1759,10 +1761,17 @@ function displayModal(path,id) {
                         if (figures.length<1) {
                             figures = dom.window.document.querySelectorAll(".compendium-image-view-player")
                         }
+                        if (figures.length<1) {
+                            figures = dom.window.document.querySelectorAll(".compendium-image-with-subtitle-center")
+                        }
                         if (figures) {
                             for (let figure of figures) {
                                 let mapTitle,mapUrl,dmMap
-                                if (figure.tagName == "P") {
+                                if (figure.classList.contains("compendium-image-with-subtitle-center")) {
+                                    mapTitle = figure.textContent.trim()
+                                    mapUrl = figure.querySelector("img")?.getAttribute('src')
+                                    dmMap = mapUrl
+                                } else if (figure.tagName == "P") {
                                     const caption = figure.previousElementSibling
                                     if (!figure.querySelector("A")?.textContent?.match(/[Pp]layer/s))
                                     {
@@ -1773,7 +1782,7 @@ function displayModal(path,id) {
                                     if (!figure.id) figure.id = caption.id
                                     mapTitle = caption.textContent.trim()
                                     mapUrl = figure.querySelector("A").getAttribute('href')
-                                    dmMap = caption.querySelector("img").getAttribute('src')
+                                    dmMap = caption.querySelector("img")?.getAttribute('src')
                                 } else {
                                     const caption = figure.querySelector("figcaption")
                                     if (!caption) continue
@@ -1798,8 +1807,7 @@ function displayModal(path,id) {
                                     }
                                 }
                                 mapsort ++
-                                prog.detail = `Found Map - ${mapTitle}`
-                                prog.detail = `Found Map - ${mapTitle} - Analyzing grid`
+                                prog.detail = `Found: ${mapTitle}`
                                 let { data: mapfile, info } = await sharp(zip.readFile(mapUrl)).toBuffer({resolveWithObject: true})
                                 if (book.remotePrefix) {
                                     let remoteData = await this.getImage(`${book.remotePrefix}${mapUrl}`).catch(e=>console.log(`Could not load remote map: ${e}`))
@@ -1831,7 +1839,7 @@ function displayModal(path,id) {
                                     ]
                                 }
                                 if (grid.freq > 0) {
-                                    prog.detail = `Found Map - ${mapTitle} - Analyzing grid: ${grid.size}px`
+                                    prog.detail = `${mapTitle} - Analyzing grid: ${grid.size}px`
                                     playerMap._content.push( { gridSize: grid.size } )
                                     playerMap._content.push( { gridOffsetX: grid.x } )
                                     playerMap._content.push( { gridOffsetY: grid.y } )
@@ -1839,17 +1847,46 @@ function displayModal(path,id) {
                                 }
                                 if (this.maps == "markers") {
                                     if (dmMap) {
-                                        const dmMapImg = await sharp(zip.readFile(dmMap)).toBuffer()
+                                        let {data:dmMapImg,info:dmMapInfo} = await sharp(zip.readFile(dmMap)).toBuffer({resolveWithObject: true})
+                                        let markerOffset = {x:0,y:0}
+                                        if (dmMapInfo.width!=info.width||dmMapInfo.height!=info.height) {
+                                            let dmImage = cv.imdecode(dmMapImg)
+                                            let pcImage = cv.imdecode(mapfile)
+                                            if (dmMapInfo.width>info.width||dmMapInfo.height>info.height) {
+                                                let res = dmImage.matchTemplate(pcImage,cv.TM_CCOEFF)
+                                                let loc = res.minMaxLoc()
+                                                markerOffset.x -= loc.maxLoc.x
+                                                markerOffset.y -= loc.maxLoc.y
+                                            } else {
+                                                let res = pcImage.matchTemplate(dmImage,cv.TM_CCOEFF)
+                                                let loc = res.minMaxLoc()
+                                                markerOffset.x += loc.maxLoc.x
+                                                markerOffset.y += loc.maxLoc.y
+                                            }
+                                            console.log(`${mapTitle} DM Map differs, offsetting markers by ${markerOffset.x},${markerOffset.y}`)
+                                        }
+                                        if (dmMapImg.length > 10485760) dmMapImg = await sharp(dmMapImg).webp().toBuffer()
                                             //(book.remotePrefix)?`${book.remotePrefix}${dmMap}`:await sharp(zip.readFile(dmMap)).toBuffer()
                                         let tasks = []
-                                        const headings = dom.window.document.querySelectorAll("h1, h2, h3, h4, h5, h6")
-                                        prog.detail = `Found Map - ${mapTitle} - Scanning for markers with Google Vision`
+                                        const headings = Array.from(dom.window.document.querySelectorAll("h1, h2, h3, h4, h5, h6"))
+                                        let siblingHeadings = []
+                                        if (page.page._attrs.parent) {
+                                            for (let nextpage of mod._content.filter(p=>p.page&&p.page._attrs.parent==page.page._attrs.parent)) {
+                                                let nxtDom = new jsdom.JSDOM(nextpage.page.content)
+                                                let nxtHeadings = Array.from(nxtDom.window.document.querySelectorAll("h1, h2, h3, h4, h5, h6"))
+                                                siblingHeadings.push({slug:nextpage.page.slug,headings:nxtHeadings})
+                                            }
+                                        }
+                                        prog.detail = `${mapTitle} - Scanning for markers with Google Vision`
                                         const gVisionClient = new vision.ImageAnnotatorClient({
                                             keyFile: path.join(__dirname,'.gkey.json')
                                         });
-                                        const [ocrResult] = await gVisionClient.textDetection(dmMapImg).catch(e=>console.log(`Error submitting ${dmMap} (${typeof(dmMap)}) to Google Vision: ${e}`))
+                                        const [ocrResult] = await gVisionClient.textDetection(dmMapImg).catch(e=>console.log(`Error submitting ${dmMap} to Google Vision: ${e}`)) || [null]
+                                        gVisionClient.close()
+                                        console.log(`Processing markers for ${mapTitle}...`)
                                         ocrResult?.textAnnotations?.forEach((word,i)=>{
                                             if (i === 0) {
+                                                prog.detail = `${mapTitle} - Matching markers (0%)`
                                                 const mapScale = /(1 square)? = ([0-9]+) (.+)/mi.exec(word.description)
                                                 if (mapScale) {
                                                     let unit = mapScale[3]
@@ -1862,7 +1899,9 @@ function displayModal(path,id) {
                                                 }
                                                 return
                                             }
+                                            prog.detail = `${mapTitle} - Matching markers (${(100*(i+1)/(ocrResult.textAnnotations.length)).toFixed(0)}%) ${prog.detail.substr(prog.detail.indexOf(')')+1)}`
                                             let txt = word.description.replaceAll(/[\W_]+/g,'').trim();
+                                            if (!txt) return
                                             let box = word.boundingPoly.vertices
                                             let x = box[0].x, y = box[0].y
                                             let x2=x, y2=y
@@ -1875,34 +1914,20 @@ function displayModal(path,id) {
                                             let w = x2-x, h = y2-y
                                             let marker = null
                                             let pageslug = page.page.slug
-                                            for (const heading of headings) {
-                                                if (heading.textContent.match(new RegExp(`^${txt.toLowerCase()}\\. `,'i'))) {
-                                                    marker = heading
-                                                    break
-                                                }
-                                            }
-                                            if (!marker && page.page._attrs.parent) {
-                                                //console.log("Marker not found on this page. Looking on siblings")
-                                                for (const nextpage of mod._content) {
-                                                    if (!nextpage.page) continue
-                                                    if (nextpage.page._attrs.parent!=page.page._attrs.parent) continue
-                                                    
-                                                    let nxtDom = new jsdom.JSDOM(nextpage.page.content)
-                                                    let nxtHeadings = nxtDom.window.document.querySelectorAll("h1, h2, h3, h4, h5, h6")
-
-                                                    for (const heading of nxtHeadings) {
-                                                        if (heading.textContent.match(new RegExp(`^${txt.toLowerCase()}\\. `,'i'))) {
-                                                            pageslug = nextpage.page.slug
-                                                            marker = heading
-                                                            break
-                                                        }
+                                            const markerRegex = new RegExp(`^${txt.toLowerCase()}\\. `,'i')
+                                            marker = headings.find(h=>h.textContent.match(markerRegex))
+                                            if (!marker && siblingHeadings) {
+                                                for(let sibling of siblingHeadings) {
+                                                    marker = sibling.headings.find(h=>h.textContent.match(markerRegex))
+                                                    if (marker) {
+                                                        pageslug = sibling.slug
+                                                        break
                                                     }
-                                                    if (marker) break
                                                 }
                                             }
                                             if (marker) {
                                                 console.log(`Adding marker for ${marker.textContent} to ${mapTitle}`)
-                                                prog.detail = `Found Map - ${mapTitle} - Placing Marker for ${marker.textContent.substr(0,marker.textContent.indexOf('.'))}`
+                                                prog.detail = `${prog.detail.substr(0,prog.detail.indexOf(')')+1)} ${marker.textContent.substr(0,marker.textContent.indexOf('.'))}`
                                                 playerMap._content.push({
                                                     marker: {
                                                         name: "",
@@ -1912,8 +1937,8 @@ function displayModal(path,id) {
                                                         size: "medium",
                                                         hidden: "YES",
                                                         locked: "YES",
-                                                        x: Math.round(x+(w/2)),
-                                                        y: Math.round(y+(h/2)),
+                                                        x: Math.round(x+(w/2)+markerOffset.x),
+                                                        y: Math.round(y+(h/2)+markerOffset.y),
                                                         content: {_attrs: { ref: `/page/${pageslug}#${marker.id}` }}
                                                     }
                                                 })
@@ -1921,7 +1946,6 @@ function displayModal(path,id) {
                                                 console.log(`No matching heading found for "${txt}"`)
                                             }
                                         })
-                                        gVisionClient.close()
                                     }
                                 }
                                 prog.detail = `Adding Map: ${mapTitle}`
