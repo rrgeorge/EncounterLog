@@ -206,14 +206,30 @@ app.on('ready', () => {
                                 click: (m) => _win?.loadURL(`https://www.dndbeyond.com/my-campaigns`)
                             }))
                             campaignMenu.submenu.append(new MenuItem({type: 'separator'}))
-                            for (var campaign of ddb.campaigns) {
+                            for (const campaign of ddb.campaigns) {
                                 campaignMenu.submenu.append( new MenuItem({
                                     label: he.decode(campaign.name).replaceAll("&","&&"),
                                     id: campaign.id,
                                     toolTip: "Jump to campaign",
-                                    click: (m) => _win?.loadURL(`https://www.dndbeyond.com/campaigns/${m.id}`)
+                                    click: (m) => _win?.loadURL(`https://www.dndbeyond.com/campaigns/${m.id}`),
                                 }))
                             }
+                            campaignMenu.submenu.append(new MenuItem({type: 'separator'}))
+                            campaignMenu.submenu.append( new MenuItem({
+                                label: "Export All Encounters",
+                                toolTip: "Export all Encounters from the Encounter Builder",
+                                click: () => {
+                                    dialog.showSaveDialog(win,{
+                                        title: "Save Encounters",
+                                        filters: [ { name: "EncounterPlus Campaign", extensions: ["campaign"]} ],
+                                        defaultPath: `encounters.campaign`,
+                                    }).then((save) => {
+                                        if (save.filePath)
+                                            ddb.getEncounters(null,save.filePath).catch(e=>displayError(e))
+                                        }
+                                    )
+                                }
+                            }))
                             Menu.setApplicationMenu(menu)
                         }).then(
                             ddb.getSources().then(() => {
@@ -540,7 +556,7 @@ function requestCampaignChars(gameId,cobalt) {
                                 click: (m) => _win?.loadURL(`https://www.dndbeyond.com/my-campaigns`)
                             }))
                             campaignMenu.submenu.append(new MenuItem({type: 'separator'}))
-                            for (var campaign of ddb.campaigns) {
+                            for (const campaign of ddb.campaigns) {
                                 campaignMenu.submenu.append( new MenuItem({
                                     label: he.decode(campaign.name).replaceAll("&","&&"),
                                     id: campaign.id,
@@ -549,17 +565,47 @@ function requestCampaignChars(gameId,cobalt) {
                                 }))
                             }
                             campaignMenu.submenu.append(new MenuItem({type: 'separator'}))
+                            campaignMenu.submenu.append( new MenuItem({
+                                label: "Export All Encounters",
+                                toolTip: "Export all Encounters from the Encounter Builder",
+                                click: () => {
+                                    dialog.showSaveDialog(win,{
+                                        title: "Save Encounters",
+                                        filters: [ { name: "EncounterPlus Campaign", extensions: ["campaign"]} ],
+                                        defaultPath: `encounters.campaign`,
+                                    }).then((save) => {
+                                        if (save.filePath)
+                                            ddb.getEncounters(null,save.filePath).catch(e=>displayError(e))
+                                        }
+                                    )
+                                }
+                            }))
+                            campaignMenu.submenu.append(new MenuItem({type: 'separator'}))
                             campaignMenu.submenu.append(new MenuItem({
-                                label: "Convert These Characters for EncounterPlus",
+                                label: "Export this Campaign's Encounters",
+                                click: () => {
+                                    dialog.showSaveDialog(_win,{
+                                        title: "Save exported encounters",
+                                        filters: [ { name: "EncounterPlus Campaign", extensions: ["campaign"]} ],
+                                        defaultPath: `${thisCampaign.label.replaceAll("&&","&")}-encounters.campaign`,
+                                    }).then((save) => {
+                                        if (save.filePath) {
+                                            ddb.getEncounters(thisCampaign.id,save.filePath).catch(e=>displayError(e))
+                                        }
+                                    })
+                                }
+                            }))
+                            campaignMenu.submenu.append(new MenuItem({
+                                label: "Export this Campaign's Characters",
                                 click: () => {
                                     dialog.showSaveDialog(_win,{
                                         title: "Save exported characters",
                                         filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
-                                        defaultPath: `${thisCampaign.label}.compendium`,
+                                        defaultPath: `${thisCampaign.label.replaceAll("&&","&")}.compendium`,
                                     }).then((save) => {
                                         if (save.filePath) {
                                             const prog = new ProgressBar({title: "Converting campaign characters...", text: "Converting campaign characters...", detail: "Please wait..."})
-                                            download(_win,`https://w.bobg.us/ddb.php?tokenmap=true&circles=true&campaign=https://ddb.ac/characters/${campaignChars[0].id}`,{
+                                            download(_win,`https://play5e.online/ddb.php?tokenmap=true&circles=true&campaign=https://ddb.ac/characters/${campaignChars[0].id}`,{
                                                 filename: path.basename(save.filePath),
                                                 directory: path.dirname(save.filePath),
                                                 onStarted: () => prog.setCompleted()

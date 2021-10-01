@@ -209,6 +209,112 @@ class DDB {
         const res = await this.getRequest(url).catch(e => console.log(`Could not populate campaings: ${e}`))
         this.campaigns = res?.data || []
     }
+    async getEncounterCount(campaignIds=null) {
+        const url = "https://encounter-service.dndbeyond.com/v1/encounters"
+        const params = (campaignIds)? qs.stringify({ 'skip': 0, 'take': 1,campaignIds: campaignIds }) : qs.stringify({ 'skip': 0, 'take': 1 })
+        await this.getCobaltAuth()
+        const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting encounter count for source id ${source}: ${e}`))
+        return response.pagination.total
+    }
+    async getEncounters(campaignIds=null,filename = null,zip = null){
+        const url = "https://encounter-service.dndbeyond.com/v1/encounters"
+        let params
+        const count = await this.getEncounterCount(campaignIds).catch((e)=>console.log(e))
+        console.log(`There are ${count} encounters`)
+        let pos = 0
+        console.log("creating progress bar")
+        const prog = new ProgressBar({title: "Please wait...",text: "Exporting encounters...", detail: "Please wait...", indeterminate: false, maxValue: count})
+        //prog.on('progress', (v) => prog.detail = `Converting ${v} of ${prog.getOptions().maxValue}`)
+        console.log("creating zip file")
+        if (filename) zip = new AdmZip()
+        var campaign = { 
+            _name: "campaign",
+            _attrs: { id: uuid5("https://www.dndbeyond.com/my-encounters",uuid5.URL) },
+            _content: [
+                { name: "D&D Beyond Encounters" },
+                { description: "This campaign contains encounters imported from D&D Beyond" }
+            ]
+        }
+        console.log("begining retrieval")
+        while ( pos <= count ) {
+            console.log("Retrieving 100...")
+            params = (campaignIds)? qs.stringify({ 'skip': pos, 'take': 100,campaignIds: campaignIds }) : qs.stringify({ 'skip': pos, 'take': 100 })
+            const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting encounters ${pos}/${count}: ${e}`))
+            console.log(`Retrieved ${response.data.length}`)
+            let sort = 2000;
+            for (const encounter of response.data) {
+                //console.log(encounter)
+                let parentId = (encounter.campaign)? uuid5(`https://www.dndbeyond.com/campaigns/${encounter.campaign.id}`,uuid5.URL) : campaign._attrs.id
+                if (!campaign._content.find(g=>g.group&&g.group._attrs.id==parentId)) {
+                    let groupName = (encounter.campaign)? encounter.campaign.name : "No Campaign"
+                    campaign._content.push({
+                        group: {
+                            _attrs: { id: parentId, sort: sort-1000 },
+                            name: groupName,
+                            slug: slugify(groupName)
+                        }
+                    })
+                }
+                let enc = {
+                    _name: "encounter",
+                    _attrs: { sort: sort, parent: parentId, id: encounter.id },
+                    _content: [
+                        {name: encounter.name || "Untitled Encounter"},
+                        {description: `${encounter.flavorText+"\n"||""}\n${encounter.description||""}${(encounter.rewards)?`\nRewards: ${encounter.rewards}`:""}`}
+                    ]
+                }
+                let ids = encounter.monsters.map(m=>m.id)
+                            .filter((v,i,s)=>s.indexOf(v)===i)
+                const monsters = await this.getMonsterById(ids).catch(e=>`Error getting stat blocks ${e}`)
+                let labels = []
+                for (const monster of encounter.monsters) {
+                    let qty = monster.quantity
+                    let name = monster.name
+                    let slug = slugify(monsters.find(m=>m.id===monster.id)?.name)
+                    let namelabel = /(.*) \((.*)\)/.exec(monster.name)
+                    let combatant = {
+                        combatant: {
+                            name: name||monsters.find(m=>m.id===monster.id)?.name,
+                            role: "hostile",
+                            monster: { _attrs: {ref: `/monster/${slug}`} }
+                        }
+                    }
+                    if (namelabel) {
+                        combatant.combatant.name = (namelabel[2])? namelabel[1]: monster.name
+                        if (namelabel[2] && !labels.includes(namelabel[2])) {
+                            combatant.combatant.label = namelabel[2]
+                            labels.push(namelabel[2])
+                        }
+                    }
+                    if (!combatant.combatant.label) {
+                        let i = 1
+                        let label = combatant.combatant.name.substr(0,1) + i.toString()
+                        while(labels.includes(label)) {
+                            i++
+                            label = combatant.combatant.name.substr(0,1) + i.toString()
+                        }
+                        combatant.combatant.label = label
+                        labels.push(label)
+                    }
+                    enc._content.push(combatant)
+                }
+                campaign._content.push(enc)
+                sort += 1
+                prog.value += 1
+            }
+            pos += 100
+        }
+        if (filename) {
+            prog.detail = `Creating XML`
+            const campaignXML = toXML(campaign,{indent:'\t'})
+            await zip.addFile("campaign.xml",Buffer.from(campaignXML,'utf8'),null)
+            prog.detail = `Writing campaign file`
+            zip.writeZip(filename)
+            prog.detail = `Saved campaign`
+            setTimeout(()=>prog.setCompleted(),1000)
+        }
+        return campaign
+    }
     async getSources() {
         if (!this.cobaltsession) await this.setCobaltSession()
         const url = "https://www.dndbeyond.com/mobile/api/v6/available-user-content"
@@ -651,6 +757,13 @@ class DDB {
         await this.getCobaltAuth()
         const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting monster count for source id ${source}: ${e}`))
         return response.pagination.total
+    }
+    async getMonsterById(id) {
+        const url = "https://monster-service.dndbeyond.com/v1/Monster"
+        const params = qs.stringify({ 'ids': id })
+        await this.getCobaltAuth()
+        const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting monster count for source id ${source}: ${e}`))
+        return response.data
     }
     async getMonsters(source = 0,filename,zip=null,imageMap=null,prog=null,homebrew=false) {
         const url = "https://monster-service.dndbeyond.com/v1/Monster"
