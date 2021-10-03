@@ -604,12 +604,24 @@ function requestCampaignChars(gameId,cobalt) {
                                         defaultPath: `${thisCampaign.label.replaceAll("&&","&")}.compendium`,
                                     }).then((save) => {
                                         if (save.filePath) {
-                                            const prog = new ProgressBar({title: "Converting campaign characters...", text: "Converting campaign characters...", detail: "Please wait..."})
-                                            download(_win,`https://play5e.online/ddb.php?tokenmap=true&circles=true&campaign=https://ddb.ac/characters/${campaignChars[0].id}`,{
+                                            let prog = new ProgressBar({title: "Converting campaign characters...", text: "Converting campaign characters...", detail: "Please wait..."})
+                                            let dlProg
+                                            download(_win,`https://play5e.online/?api=true&tokenmap=true&circles=true&campaign=https://ddb.ac/characters/${campaignChars[0].id}`,{
                                                 filename: path.basename(save.filePath),
                                                 directory: path.dirname(save.filePath),
-                                                onStarted: () => prog.setCompleted()
-                                            })
+                                                onCompleted: (f) => {
+                                                    try {
+                                                        prog.setCompleted()
+                                                        new AdmZip(save.filePath)
+                                                    } catch (e) {
+                                                        prog.text = "Error"
+                                                        const err = fs.readFileSync(save.filePath).toString()
+                                                        prog.detail = err
+                                                        fs.rm(save.filePath,()=>{})
+                                                        dialog.showErrorBox("Error",`Could not convert characters:\n${err}`)
+                                                    }
+                                                }
+                                            }).catch(e=>console.log(e))
                                         }
                                     })
                                 }

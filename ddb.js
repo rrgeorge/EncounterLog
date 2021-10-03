@@ -790,7 +790,7 @@ class DDB {
             for (const monster of response.data) {
                 if (!monster.isReleased&&!monster.isHomebrew) {
                     prog.value += (!filename)? (15*(1/count)) : 1
-                    console.log(`Skipping ${monster.isReleased} ${monster.isHomebrew}`)
+                    console.log(`Skipping ${monster.name} ${monster.isReleased} ${monster.isHomebrew}`)
                     continue
                 }
                 if (monster.isHomebrew !== homebrew) {
@@ -861,6 +861,10 @@ class DDB {
                 monsterEntry._content.push({type: `${this.ruledata.monsterTypes.find(s=>s.id===monster.typeId)?.name||monster.typeId} (${subtypes.join(", ")})`})
             } else {
                 monsterEntry._content.push({type: this.ruledata.monsterTypes.find(s=>s.id===monster.typeId)?.name||monster.typeId})
+            }
+            if (monster.swarm) {
+                let type = monsterEntry._content.find(s=>s.type)
+                type.type = `swarm of ${this.ruledata.creatureSizes.find(s=>s.id===monster.swarm.sizeId).name} ${this.ruledata.monsterTypes.find(s=>s.id===monster.swarm.typeId)?.pluralizedName}`
             }
             if (monster.damageAdjustments?.length>0) {
                 let resist = monster.damageAdjustments
@@ -1047,6 +1051,11 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
             ]
         }
         var zip = AdmZip(filename)
+        let ddbVer = zip.readAsText("version.txt").trim()
+        let modVer = app.getVersion().split(".")
+        modVer.push(ddbVer)
+        modVer = modVer.map(Number)
+        mod._attrs.version = (modVer[0] * (1000**3)) + (modVer[1] * (1000**2)) + (modVer[2] * 1000) + (modVer[3])
         zip.extractEntryTo(`${book.name.toLowerCase()}.db3`,temp.name,false,true)
         var db = new sqlite3.Database(path.join(temp.name,`${book.name.toLowerCase()}.db3`))
         var imageMap = []
