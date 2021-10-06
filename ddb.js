@@ -2143,6 +2143,17 @@ function displayModal(path,id) {
                     }
                     if (mapJobs.length > 0) await Promise.all(mapJobs)
                 }
+                let modImg = mod._content.find(c=>c?.image)
+                if (zip.getEntry(modImg.image)) {
+                    prog.detail = "Setting cover image"
+                    let coverimg = await sharp(zip.readFile(modImg.image))
+                    let covermeta = await coverimg.metadata()
+                    console.log(`Cropping ${covermeta.width}x${covermeta.height} to ${covermeta.width}x${covermeta.width}`)
+                    coverimg = await coverimg.resize(covermeta.width,covermeta.width,{ position: "top" })
+                    console.log(await coverimg.metadata())
+                    zip.addFile(`images/${mod._attrs.id}_cover.jpg`,await coverimg.jpeg().toBuffer())
+                    modImg.image = `images/${mod._attrs.id}_cover.jpg`
+                }
                 console.log("Storing module.xml")
                 prog.detail = "Writing Module XML"
                 zip.addFile('module.xml',toXML(mod,{indent: '\t'}))
