@@ -2150,7 +2150,6 @@ function displayModal(path,id) {
                     let covermeta = await coverimg.metadata()
                     console.log(`Cropping ${covermeta.width}x${covermeta.height} to ${covermeta.width}x${covermeta.width}`)
                     coverimg = await coverimg.resize(covermeta.width,covermeta.width,{ position: "top" })
-                    console.log(await coverimg.metadata())
                     zip.addFile(`images/${mod._attrs.id}_cover.jpg`,await coverimg.jpeg().toBuffer())
                     modImg.image = `images/${mod._attrs.id}_cover.jpg`
                 }
