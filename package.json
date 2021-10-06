@@ -1,7 +1,7 @@
 {
   "name": "encounterlog",
   "productName": "EncounterLog",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "Connect D&D Beyond to EncounterPlus",
   "repository": {
     "type": "git",
@@ -18,7 +18,7 @@
     "publish-win": "npm_config_platform=win32 npm_config_arch=x64 yarn add opencv4nodejs-prebuilt@5.3.3 sharp; electron-builder -p always --win;yarn add opencv4nodejs-prebuilt@5.3.3 sharp",
     "publish-deb": "npm_config_platform=linux npm_config_arch=x64 yarn add opencv4nodejs-prebuilt@5.3.3 sharp; electron-builder -p always --linux;yarn add opencv4nodejs-prebuilt@5.3.3 sharp",
     "publish-all": "yarn publish-mac;yarn publish-win;yarn publish-deb",
-    "release": "security unlock;git push;git push --tags;yarn publish-all",
+    "release": "security unlock&&git tag \"v$(jq -r .version package.json)\"&&git push&&git push --tags&&yarn publish-all",
     "postinstall": "electron-builder install-app-deps",
     "app": "electron ."
   },
@@ -139,6 +139,7 @@
     "opencv4nodejs-prebuilt": "5.3.3",
     "sharp": "^0.29.1",
     "slugify": "^1.5.3",
+    "tiny-async-pool": "^1.2.0",
     "tmp": "^0.2.1",
     "uuid": "^8.3.2",
     "ws": "^7.4.5"

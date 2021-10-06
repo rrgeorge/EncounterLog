@@ -195,6 +195,28 @@ app.on('ready', () => {
                             _ws.close(1001,"Going away")
                     }
                     if (win.webContents.getURL().match(/dndbeyond.com\/my-campaigns/)) {
+                        let manifestVersion = 0
+                        if (fs.existsSync(path.join(app.getPath("userData"),"manifest.zip"))) {
+                            let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                            manifestVersion = parseInt(manifest.readAsText("version.txt").trim())
+                        }
+                        ddb.checkManifestVersion(manifestVersion).then(res=>{
+                            if (res?.data?.manifestUpdateAvailable) {
+                                let prog
+                                download(_win,"https://www.dndbeyond.com/mobile/api/v6/download-manifest",{
+                                    filename: "manifest.zip",
+                                    directory: app.getPath("userData"),
+                                    onStarted: (d) => {
+                                        prog = new ProgressBar({title: "Retrieving Manifest...", text: "Downloading latest manifest...", detail: "Retrieving manifest from D&D Beyond...",indeterminate: (d.getTotalBytes())?false:true,maxValue: 100})
+                                    },
+                                    onProgress: (p) => {if(!prog.isCompleted())prog.value=p.percent*100},
+                                    onCompleted: () => {
+                                        let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                                        manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
+                                    }
+                                }).catch(e=>console.log(e))
+                            } else { console.log(res) }
+                        })
                         const menu = Menu.getApplicationMenu()
                         ddb.populateCampaigns().then(() => {
                             const campaignMenu = menu.getMenuItemById('campaignMenu')

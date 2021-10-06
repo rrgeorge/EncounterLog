@@ -16,6 +16,8 @@ const url = require('url')
 const vision = require('@google-cloud/vision');
 const jsdom = require('jsdom');
 const cv = require('opencv4nodejs-prebuilt');
+const asyncPool = require('tiny-async-pool');
+const fs = require('fs');
 
 function slugify(str) {
     return Slugify(str,{ lower: true, strict: true })
@@ -26,17 +28,32 @@ function sanitize(text,rulesdata=null) {
         formatters: {
             'keepA': function (elem, walk, builder, formatOptions) {
                 if (rulesdata) {
-                    var ddburl = elem?.attribs?.href?.match(/https:\/\/(?:www\.)?dndbeyond\.com\/(sources\/[^\/]*)/)
-                    if (ddburl) {
-                        var source = rulesdata.sources?.find(s=>s.sourceURL==ddburl[1])
-                        if (source) {
-                            elem.attribs.href=elem.attribs.href.replaceAll(new RegExp(`https:\/\/(?:www\.)?dndbeyond\.com\/${source.sourceURL}`,'g'),`/module/${source.name.toLowerCase()}/page`)
+                    if (elem?.attribs?.href) {
+                        elem.attribs.href = elem.attribs.href.replace(/^https:\/\/dndbeyond.com\/linkout\?remoteUrl=/,'')
+                        if (elem.attribs.href.match(/^\/compendium\/rules\/basic-rules\/.*/)) {
+                            elem.attribs.href = elem.attribs.href.replace(/^\/compendium\/rules\//,"https://www.dndbeyond.com/sources/")
+                        }
+                        let ddburl = elem.attribs.href.match(/^https:\/\/(?:www\.)?dndbeyond\.com\/(sources\/[^\/]*)/)
+                        if (ddburl) {
+                            let source = rulesdata.sources?.find(s=>s.sourceURL.toLowerCase()==ddburl[1].toLowerCase())
+                            if (source) {
+                                elem.attribs.href=elem.attribs.href.replaceAll(new RegExp(`https:\/\/(?:www\.)?dndbeyond\.com\/${source.sourceURL}`,'ig'),`/module/${source.name.toLowerCase()}/page`)
+                            }
                         }
                     }
                 }
+                if (elem?.attribs?.href) {
+                    elem.attribs.href=elem.attribs.href.replace(/^\/(monsters|spells|armor|weapons|adventuring-gear|magic-items)\//,(_,p1)=>{
+                        switch(p1) {
+                            case "monsters": return "/monster/"; break;
+                            case "spells": return "/spell/"; break;
+                            default: return "/item/"; break;
+                        }
+                    })
+                }
                 builder.addInline(`<${elem.name} href="${elem.attribs.href}">`);
                 walk(elem.children, builder);
-                builder.addInline('</a>');
+                builder.addInline(`</${elem.name}>`);
             },
             'bold': function (elem, walk, builder, formatOptions) {
                 builder.addInline(`<b>`);
@@ -100,6 +117,13 @@ class DDB {
         const body = qs.stringify({ 'token': this.cobaltsession })
         const res = await this.postRequest(url,body).catch(e => console.log(`Could not populate userdata: ${e}`))
         this.userId = res?.userId
+    }
+    async checkManifestVersion(v=0) {
+        if (!this.cobaltsession) await this.setCobaltSession()
+        const url = "https://www.dndbeyond.com/mobile/api/v6/do-higher-versions-exist"
+        const body = qs.stringify({manifestVersion: v, token: this.cobaltsession})
+        const res = await this.postRequest(url,body).catch(e => console.log(`Could not check manifest update: ${e}`))
+        return res
     }
     async getRuleData() {
         //const url = "https://character-service.dndbeyond.com/character/v4/rule-data"
@@ -360,53 +384,34 @@ class DDB {
         this.books = books
         this.sharedBooks = shared
     }
-    async getClassList(prog=null) {
-        const cparams = qs.stringify({ 'sharingSetting': 2 })
-        const curl = "https://character-service.dndbeyond.com/character/v5/game-data/classes"
-        const classes = await this.getRequest(`${curl}?${cparams}`,true).catch((e)=>console.log(`Error getting classess: ${e}`))
-        var classlist = []
-        if (prog) {
-            prog.detail = `Retrieving class list`
-        }
-        if (classes?.data) {
-            for (const aClass of classes.data) {
-                if (aClass.canCastSpells) {
-                    if (prog) {
-                        prog.detail = `Retrieving class list ${aClass.name}`
-                    }
-                    classlist.push({
-                        id: aClass.id, name: aClass.name, prep: aClass.spellPrepareType
-                    })
-                }
-                const sparams = qs.stringify({ 'sharingSetting': 2, 'baseClassId': aClass.id })
-                const surl = "https://character-service.dndbeyond.com/character/v5/game-data/subclasses"
-                const subclasses = await this.getRequest(`${surl}?${sparams}`,true).catch((e)=>console.log(`Error getting ${aClass.name} subclassess: ${e}`))
-                if (subclasses?.data) {
-                    for (const subClass of subclasses.data) {
-                        if (aClass.canCastSpells || subClass.canCastSpells) {
-                            if (prog) {
-                                prog.detail = `Retrieving class list ${aClass.name}/${subClass.name}`
-                            }
-                            classlist.push({
-                                id: subClass.id, name: `${aClass.name}/${subClass.name}`, prep: subClass.spellPrepareType, baseClass: aClass.name
-                            })
-                        }
-                    }
-                }
+    async getClassList(prog=null,source=null) {
+        const classlist = await new Promise((resolve,reject)=>{
+            if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
             }
-        }
-        this.classlist = classlist
+            let classes = []
+            if (source == 10) source = 4
+            const db = new sqlite3.Database(path.join(app.getPath("userData"),"skeleton.db3"),()=>{
+                db.each(`SELECT C.ID AS ID, C.Name AS Name, SC.Name AS Parent FROM RPGSpell S LEFT JOIN RPGClassSpellMapping AS M ON S.ID = M.RPGSpellID LEFT JOIN RPGClass AS C ON M.RPGClassID = C.ID LEFT JOIN RPGClass AS SC ON SC.ID = C.ParentClassID ${(source)?` WHERE S.RPGSourceID=${source}`:''} GROUP BY C.ID`,(e,r)=>{
+                    prog.detail = `Retrieving class list ${(r.Parent)?`${r.Parent}/${r.Name}`:r.Name}`
+                    classes.push({
+                        id: r.ID, name: (r.Parent)?`${r.Parent}/${r.Name}`:r.Name, baseClass:(r.Parent)?r.Parent:undefined
+                    })
+                },()=>resolve(classes))
+            })
+        })
         return classlist
     }
-    async getAllSpells(prog=null) {
+    async getAllSpells(prog=null,source=null) {
         const urls = [ "https://character-service.dndbeyond.com/character/v5/game-data/spells",
             "https://character-service.dndbeyond.com/character/v5/game-data/always-known-spells",
             "https://character-service.dndbeyond.com/character/v5/game-data/always-prepared-spells"]
         if (!this.ruledata) await this.getRuleData()
         if (!this.cobaltauth) await this.getCobaltAuth()
         let allSpells = []
-        if (!this.classlist) await this.getClassList(prog)
-        for (const ddbClass of this.classlist) {
+        const classlist = await this.getClassList(prog,source)
+        for (const ddbClass of classlist) {
             if (prog) {
                 prog.detail = `Retrieving spells for ${ddbClass.name}`
             }
@@ -453,7 +458,7 @@ class DDB {
                 }
             }
             if (prog) {
-                prog.value += (1/this.classlist.length)*10
+                prog.value += (1/classlist.length)*10
             }
         }
         return allSpells
@@ -471,7 +476,8 @@ class DDB {
             { code: "T", name: "transmutation" }
         ]
         if(!prog) prog = new ProgressBar({title: "Please wait...", text: "Converting spells...", detail: "Please wait...", indeterminate: false, maxValue: 100})
-        const allSpells = await this.getAllSpells(prog)
+        let allSpells = []
+        allSpells = await this.getAllSpells(prog,source)
         const spells = allSpells.filter(s=>(source)?s.sources.some(b=>(source===10&&(b.sourceId===10||b.sourceId===4))||b.sourceId===source):!s.sources.some(b=>b.sourceId===29))
         if (filename) zip = new AdmZip()
         var compendium = { 
@@ -714,6 +720,12 @@ class DDB {
                                 zip.deleteFile(item.avatarUrl||item.largeAvatarUrl)
                             } else {
                                 let imagesrc = await this.getImage(item.largeAvatarUrl||item.avatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                                if (!imagesrc) {
+                                    let imgurl = item.largeAvatarUrl||item.avatarUrl
+                                    imgurl = `https://${url.parse(imgurl).host}${path.dirname(url.parse(imgurl).path).replace(/[0-9]+\/[0-9]+$/,'1000/1000')}/${path.basename(url.parse(imgurl).path)}`
+
+                                    imagesrc = await this.getImage(imgurl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                                }
                                 imageFile = `${path.basename(imageFile,path.extname(imageFile))}.webp`
                                 let image = await sharp(imagesrc).webp().toBuffer()
                                 await zip.addFile(`items/${imageFile}`,image)
@@ -747,6 +759,19 @@ class DDB {
         }
     }
     async getMonsterCount(source = 0,homebrew = false) {
+        if (!homebrew) {
+            const count = await new Promise((resolve,reject)=>{
+                if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                    let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                    manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
+                }
+                const db = new sqlite3.Database(path.join(app.getPath("userData"),"skeleton.db3"),()=>{
+                    db.all(`SELECT COUNT(*) AS C FROM RPGMonster${(source)?` WHERE RPGSourceID == ${source}`:''}`,
+                        (e,r)=>resolve(r?.[0]?.C))
+                })
+            })
+            return count
+        }
         const url = "https://monster-service.dndbeyond.com/v1/Monster"
         var params
         if (source) {
@@ -762,8 +787,8 @@ class DDB {
         const url = "https://monster-service.dndbeyond.com/v1/Monster"
         const params = qs.stringify({ 'ids': id })
         await this.getCobaltAuth()
-        const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting monster count for source id ${source}: ${e}`))
-        return response.data
+        const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting monster id ${id}: ${e}`))
+        return response?.data
     }
     async getMonsters(source = 0,filename,zip=null,imageMap=null,prog=null,homebrew=false) {
         const url = "https://monster-service.dndbeyond.com/v1/Monster"
@@ -778,36 +803,69 @@ class DDB {
             _name: "compendium",
             _content: []
         }
-        while ( pos <= count ) {
+        let monsters = []
+        while ( pos <= count && count > 0) {
             console.log("Retrieving 100...")
-            if (source) {
-                params = qs.stringify({ 'skip': pos, 'take': 100, 'sources': source })
+            if (!homebrew) {
+                const ids = await new Promise((resolve,reject)=>{
+                    if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                        let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                        manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
+                    }
+                    let ids = []
+                    const db = new sqlite3.Database(path.join(app.getPath("userData"),"skeleton.db3"),()=>{
+                        db.each(`SELECT ID FROM RPGMonster${(source)?` WHERE RPGSourceID == ${source}`:''}`,
+                            (e,r)=>r?.ID&&ids.push(r.ID),()=>resolve(ids))
+                    })
+                })
+                let id_chunks = []
+                for (let i=0;i<ids.length;i+=25) {
+                    id_chunks.push(ids.slice(i,i+25))
+                }
+                const getChunk = id => new Promise(resolve=>{
+                        this.getMonsterById(id).then(m=>{
+                            monsters = monsters.concat(m)
+                            prog.detail = `Retrieved ${monsters.length}/${count}...`
+                            resolve(monsters.length)
+                        })
+                    })
+                await asyncPool(10,id_chunks,getChunk)
+                break
             } else {
-                params = qs.stringify({ 'skip': pos, 'take': 100, 'showHomebrew': (homebrew)?'t':'f' })
+                if (source) {
+                    params = qs.stringify({ 'skip': pos, 'take': 100, 'sources': source })
+                } else {
+                    params = qs.stringify({ 'skip': pos, 'take': 100, 'showHomebrew': (homebrew)?'t':'f' })
+                }
+                const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting monster count for source id ${source}: ${e}`))
+                console.log(`Retrieved ${response.data.length}`)
+                monsters = monsters.concat(await this.getMonsterById(response.data.map(m=>m.id)))
+                pos += 100
             }
-            const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting monster count for source id ${source}: ${e}`))
-            console.log(`Retrieved ${response.data.length}`)
-            for (const monster of response.data) {
-                if (!monster.isReleased&&!monster.isHomebrew) {
-                    prog.value += (!filename)? (15*(1/count)) : 1
-                    console.log(`Skipping ${monster.name} ${monster.isReleased} ${monster.isHomebrew}`)
-                    continue
-                }
-                if (monster.isHomebrew !== homebrew) {
-                    prog.value += (!filename)? (15*(1/count)) : 1
-                    continue
-                }
-                if (source !== 29 && monster.sourceId === 29) {
-                    prog.value += (!filename)? (15*(1/count)) : 1
-                    continue
-                }
-                prog.detail = `${monster.name}`
-                monster.avatarUrl = imageMap?.find(s=>s.id===monster.id&&s.type===monster.entityTypeId)?.avatar || monster.avatarUrl
-                monster.basicAvatarUrl = imageMap?.find(s=>s.id===monster.id&&s.type===monster.entityTypeId)?.basicAvatar || monster.basicAvatarUrl
-                compendium._content.push(await this.getMonsterEntry(monster,zip))
+            prog.detail = `Retrieved ${monsters.length}/${count}...`
+        }
+        monsters = monsters.sort((a,b)=>a.name.normalize().localeCompare(b.name.normalize()))
+        for (const monster of monsters) {
+            if (!monster.isReleased&&!monster.isHomebrew) {
                 prog.value += (!filename)? (15*(1/count)) : 1
+                console.log(`Skipping ${monster.name} ${monster.isReleased} ${monster.isHomebrew}`)
+                continue
             }
-            pos += 100
+            if (monster.isHomebrew !== homebrew) {
+                prog.value += (!filename)? (15*(1/count)) : 1
+                continue
+            }
+            if (source !== 29 && monster.sourceId === 29) {
+                prog.value += (!filename)? (15*(1/count)) : 1
+                continue
+            }
+            monster.avatarUrl = imageMap?.find(s=>s.id===monster.id&&s.type===monster.entityTypeId)?.avatar || monster.avatarUrl
+            monster.basicAvatarUrl = imageMap?.find(s=>s.id===monster.id&&s.type===monster.entityTypeId)?.basicAvatar || monster.basicAvatarUrl
+            monster.avatarUrl = monster.avatarUrl?.replace("www.dndbeyond.com.com","www.dndbeyond.com")
+            monster.basicAvatarUrl = monster.basicAvatarUrl?.replace("www.dndbeyond.com.com","www.dndbeyond.com")
+            compendium._content.push(await this.getMonsterEntry(monster,zip))
+            prog.detail = `Converted ${monster.name}`
+            prog.value += (!filename)? (15*(1/count)) : 1
         }
         if (filename) {
             if (compendium._content.length === 0) {
@@ -838,10 +896,7 @@ class DDB {
                     {ac: `${monster.armorClass} ${monster.armorClassDescription}`},
                     {hp: `${monster.averageHitPoints} (${monster.hitPointDice.diceString})`},
                     {role: 'enemy'},
-                    {skill: sanitize(monster.skillsHtml)},
-                    {senses: sanitize(monster.sensesHtml)},
                     {passive: monster.passivePerception},
-                    {conditionImmune: sanitize(monster.conditionImmunitiesHtml)}
                 ] }
             var cr = this.ruledata.challengeRatings.find(s=>s.id===monster.challengeRatingId).value
             if (cr==0.125) {
@@ -866,6 +921,12 @@ class DDB {
                 let type = monsterEntry._content.find(s=>s.type)
                 type.type = `swarm of ${this.ruledata.creatureSizes.find(s=>s.id===monster.swarm.sizeId).name} ${this.ruledata.monsterTypes.find(s=>s.id===monster.swarm.typeId)?.pluralizedName}`
             }
+            if (monster.skills)
+                monsterEntry._content.push({skill: monster.skills.map(s=>`${this.ruledata.abilitySkills.find(r=>r.id===s.skillId).name} ${s.value>0?'+':''}${s.value}${s.additionalBonus?` ${s.additionalBonus}`:''}`).join(', ')})
+            if (monster.senses)
+                monsterEntry._content.push({senses: monster.senses.map(s=>`${this.ruledata.senses.find(r=>r.id===s.senseId).name} ${s.notes}`).join(', ')})
+            if (monster.conditionImmunities)
+                    monsterEntry._content.push({conditionImmune: monster.conditionImmunities.map(c=>this.ruledata.conditions.find(s=>s.definition.id===c).definition.name).join(", ")})
             if (monster.damageAdjustments?.length>0) {
                 let resist = monster.damageAdjustments
                     .filter(s=>this.ruledata.damageAdjustments.find(d=>d.id===s&&d.type===1))
@@ -882,11 +943,7 @@ class DDB {
             }
             var proficiency = this.ruledata.challengeRatings.find(s=>s.id===monster.challengeRatingId).proficiencyBonus
             monsterEntry._content.push({proficiency: proficiency})
-            var languages = []
-            for (let lang of monster.languages) {
-                languages.push((this.ruledata.languages.find(s=>s.id===lang.languageId)?.name||lang.languageId.toString())+((lang.notes)? lang.notes : ""))
-            }
-            monsterEntry._content.push({languages: languages.join(", ")})
+            monsterEntry._content.push({languages: monster.languages.map(l=>`${this.ruledata.languages.find(s=>s.id===l.languageId)?.name||l.languageId.toString()}${(l.notes)?` ${l.notes}`:""}`).join(", ")})
             var environments = []
             for (let environ of monster.environments) {
                 environments.push(this.ruledata.environments.find(s=>s.id===environ)?.name||environ.toString())
@@ -960,6 +1017,12 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                             zip.deleteFile(monster.basicAvatarUrl||monster.largeAvatarUrl)
                         } else if (!zip.getEntry(`monsters/${path.basename(imageFile,path.extname(imageFile))}.webp`)) {
                             let imagesrc = await this.getImage(monster.basicAvatarUrl||monster.largeAvatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                            if (!imagesrc) {
+                                let imgurl = monster.basicAvatarUrl||monster.largeAvatarUrl
+                                imgurl = `https://${url.parse(imgurl).host}${path.dirname(url.parse(imgurl).path).replace(/[0-9]+\/[0-9]+$/,'1000/1000')}/${path.basename(url.parse(imgurl).path)}`
+
+                                imagesrc = await this.getImage(imgurl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                            }
                             imageFile = `${path.basename(imageFile,path.extname(imageFile))}.webp`
                             let image = await sharp(imagesrc).webp().toBuffer()
                             await zip.addFile(`monsters/${imageFile}`,image)
