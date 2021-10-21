@@ -118,6 +118,16 @@ class DDB {
         const res = await this.postRequest(url,body).catch(e => console.log(`Could not populate userdata: ${e}`))
         this.userId = res?.userId
     }
+// https://character-service-scds.dndbeyond.com/v1/characters' -X POST -d'{"characterI  ds":[18412484]}'
+    //
+    async getCampaignCharacterStatus(characterIds) {
+        if (!this.cobaltsession) await this.setCobaltSession()
+        await this.getCobaltAuth()
+        const url = "https://character-service-scds.dndbeyond.com/v1/characters"
+        const body = JSON.stringify({ 'characterIds': characterIds })
+        const res = await this.postRequest(url,body,true).catch(e => console.log(`Could not retrieve character statuses: ${e}`))
+        return res?.foundCharacters
+    }
     async checkManifestVersion(v=0) {
         if (!this.cobaltsession) await this.setCobaltSession()
         const url = "https://www.dndbeyond.com/mobile/api/v6/do-higher-versions-exist"
@@ -127,7 +137,7 @@ class DDB {
     }
     async getRuleData() {
         //const url = "https://character-service.dndbeyond.com/character/v4/rule-data"
-        if (!this.cobaltauth) await this.getCobaltAuth()
+        await this.getCobaltAuth()
         const url = "https://www.dndbeyond.com/api/config/json"
         const res = await this.getRequest(url,true).catch(e => console.log(`Could not retrieve rule data: ${e}`))
         this.ruledata = res
@@ -408,7 +418,7 @@ class DDB {
             "https://character-service.dndbeyond.com/character/v5/game-data/always-known-spells",
             "https://character-service.dndbeyond.com/character/v5/game-data/always-prepared-spells"]
         if (!this.ruledata) await this.getRuleData()
-        if (!this.cobaltauth) await this.getCobaltAuth()
+        await this.getCobaltAuth()
         let allSpells = []
         const classlist = await this.getClassList(prog,source)
         for (const ddbClass of classlist) {

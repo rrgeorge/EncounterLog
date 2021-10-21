@@ -14,6 +14,7 @@ const { autoUpdater } = require('electron-updater')
 
 var _ws = null
 var _win = null
+var _dmScreen = null
 var ddb
 
 app.userAgentFallback = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:88.0) Gecko/20100101 Firefox/88.0'
@@ -162,22 +163,22 @@ app.on('ready', () => {
                     if (win.webContents.getURL().match(/dndbeyond.com\/campaigns\/[0-9]+/)) {
                             win.webContents.executeJavaScript(`
                                     const {ipcRenderer} = require('electron')
-                                    var characters = document.getElementsByClassName('ddb-campaigns-character-card')
-                                    for (var character of characters) {
-                                            var cHeader = character.getElementsByClassName('ddb-campaigns-character-card-header')[0]
-                                            var cFooter = character.getElementsByClassName('ddb-campaigns-character-card-footer')[0]
-                                            var cN = cHeader.getElementsByClassName('ddb-campaigns-character-card-header-upper-character-info-primary')[0].textContent.trim()
-                                            var cBox = document.createElement("INPUT")
+                                    let characters = document.getElementsByClassName('ddb-campaigns-character-card')
+                                    for (let character of characters) {
+                                            let cHeader = character.getElementsByClassName('ddb-campaigns-character-card-header')[0]
+                                            let cFooter = character.getElementsByClassName('ddb-campaigns-character-card-footer')[0]
+                                            let cN = cHeader.getElementsByClassName('ddb-campaigns-character-card-header-upper-character-info-primary')[0].textContent.trim()
+                                            let cBox = document.createElement("INPUT")
                                             cBox.setAttribute("type","checkbox")
                                             cBox.setAttribute("id","logfilter-"+cN)
                                             cBox.setAttribute("value",cN)
                                             cBox.setAttribute("checked",true)
                                             cBox.style.padding = "3px 3px"
-                                            var cLabel = document.createElement("LABEL")
+                                            let cLabel = document.createElement("LABEL")
                                             cLabel.setAttribute("for","logfilter-"+cN)
                                             cLabel.innerText = "Send Log Entries to Encounter Plus"
                                             cLabel.style.display = "inline"
-                                            var cDiv = document.createElement("DIV")
+                                            let cDiv = document.createElement("DIV")
                                             cDiv.appendChild(cBox)
                                             cDiv.appendChild(cLabel)
                                             cFooter.insertBefore(cDiv,cFooter.firstChild)
@@ -653,7 +654,7 @@ function requestCampaignChars(gameId,cobalt) {
 			  console.log(e.message)
 			  console.log(body)
 			}
-		    	resolve("ok")
+		    	resolve(campaignChars)
 		  })
 		})
 		request.end()
@@ -661,7 +662,233 @@ function requestCampaignChars(gameId,cobalt) {
 }
 async function connectGameLog(gameId,userId,campaignName) {
 	const cobalt = await ddb.getCobaltAuth()
-	requestCampaignChars(gameId,cobalt).catch((r) => console.log(`Unable to retrieve characters: ${r}`))
+	requestCampaignChars(gameId,cobalt).then(chars=>{
+            const charIds = chars.map(c=>c.id)
+            const updateChars = ()=>{
+                if (_dmScreen) clearTimeout(_dmScreen)
+                const screenTimeout = Math.floor(Math.random() * (70 - 50 + 1) + 50)
+                ddb.getCampaignCharacterStatus(charIds).then(found=>{
+                    _win.webContents.executeJavaScript(`(()=>{
+                        const {ipcRenderer} = require('electron')
+                        document.getElementById("campaign-status-timer")?.remove()
+                        let header = document.querySelector('.ddb-campaigns-detail-body-listing-header-secondary')
+                        let timer = document.createElement('div')
+                        let countdown = ${screenTimeout}
+                        timer.textContent = \`Refreshing...\`
+                        timer.id = "campaign-status-timer"
+                        timer.style.height = "25px"
+                        header.appendChild(timer)
+                        let interval = setInterval(()=>{
+                            countdown -= 1
+                            timer.innerHTML = \`Will refresh in \${countdown}s <button onclick="ipcRenderer.send('refreshCharacterStatus')">Refresh Now</button>\`
+                            if (countdown <= 0) {
+                                clearInterval(interval)
+                            }
+                        },1000)
+                        })()`).catch(e=>console.log(`Could not set timer: ${e}`))
+                    for(let f of found) {
+                        let conditions = f.conditions.map(c=>`i-condition-white-${c.name.toLowerCase()}`)
+                        let senses = f.senses.map(s=>`${s.name} ${s.distance}`)
+                        let exhaustion = f.conditions.find(c=>c.name.toLowerCase()=="exhaustion")?.level||0
+                        _win.webContents.executeJavaScript(`(()=>{
+                            let characters = document.querySelectorAll('.ddb-campaigns-character-card')
+                            for (let character of characters) {
+                                    let cHeader = character.querySelector('.ddb-campaigns-character-card-header')
+                                    let cDetail = cHeader.querySelector('.ddb-campaigns-character-card-header-upper')
+                                    let cInfo = cHeader.querySelector('.ddb-campaigns-character-card-header-upper-character-info')
+                                    let cFooter = character.querySelector('.ddb-campaigns-character-card-footer')
+                                    let viewLink = character.querySelector('.ddb-campaigns-character-card-footer-links-item-view')
+                                    if (!viewLink?.href.match(/\\/${f.characterId}$/)) continue
+                                    document.getElementById("${f.characterId}-status-health")?.remove()
+                                    document.getElementById("${f.characterId}-status-info")?.remove()
+                                    let health = document.createElement("div")
+                                    health.id = "${f.characterId}-status-health"
+                                    let hp = document.createElement("div")
+                                    hp.classList = "ddb-campaigns-character-card-header-upper-character-info-primary"
+                                    hp.style.minWidth = "100px"
+                                    hp.style.textAlign = "center"
+                                    hp.style.border = "1px solid ${(f.hitPointInfo.current<(f.hitPointInfo.maximum*.2))?"#bc0f0f":"#1d99f0"}"
+                                    hp.style.boxShadow = "inset 0 0 25px ${(f.hitPointInfo.current<(f.hitPointInfo.maximum*.2))?"#bc0f0f":"#1d99f0"}"
+                                    hp.style.borderRadius = "2px"
+                                    hp.style.padding = "2px"
+                                    hp.style.overflow = "visible"
+                                    //hp.innerHTML = '<span style="color: ${(f.hitPointInfo.current<(f.hitPointInfo.maximum*.2))?"#bc0f0f":"#1d99f0"}">${f.hitPointInfo.current}</span> / ${f.hitPointInfo.maximum}${(f.hitPointInfo.temp!=0)?` (${f.hitPointInfo.temp})`:''}'
+                                    hp.innerHTML = '${f.hitPointInfo.current} / ${f.hitPointInfo.maximum}${(f.hitPointInfo.temp!=0)?` (${f.hitPointInfo.temp})`:''}'
+                                    let hpLabel = document.createElement("div")
+                                    hpLabel.style.fontSize = "7px"
+                                    hpLabel.style.whiteSpace = "pre"
+                                    hpLabel.style.textTransform = "uppercase"
+                                    hpLabel.textContent = "Hit Points"
+                                    if (${f.hitPointInfo.current}<=0) {
+                                        hp.textContent = ""
+                                        hp.style.boxShadow = "inset 0 0 ${25+(f.deathSaveInfo.failCount*10)}px #bc0f0f"
+                                        let deathSave = document.createElement("div")
+                                        deathSave.style.display = "flex"
+                                        deathSave.style.width = "100%"
+                                        deathSave.style.alignItems = "center"
+                                        deathSave.style.justifyContent = "space-evenly"
+                                        let icon = document.createElement("div")
+                                        icon.classList = 'i-condition-white-unconscious'
+                                        deathSave.appendChild(icon)
+                                        let deathSaves = document.createElement("div")
+                                        deathSaves.style.display = "block"
+                                        let fails = document.createElement("div")
+                                        fails.style.display = "flex"
+                                        fails.style.width = "100%"
+                                        fails.style.justifyContent = "space-between"
+                                        fails.style.alignItems = "center"
+                                        let failLabel = document.createElement("div")
+                                        failLabel.style.whiteSpace = "pre"
+                                        failLabel.style.textTransform = "uppercase"
+                                        failLabel.textContent = "FAILURE"
+                                        failLabel.style.fontSize = "10px"
+                                        failLabel.style.width = "46px"
+                                        failLabel.style.textAlign = "left"
+                                        fails.appendChild(failLabel)    
+                                        for (let i = 1; i<=3; i++) {
+                                            let seg = document.createElement("div")
+                                            seg.style.backgroundColor = (i<=${f.deathSaveInfo.failCount})?"#ffffff":"#222222"
+                                            seg.style.width = "9px"
+                                            seg.style.height = "9px"
+                                            seg.style.border = "1px solid #555555"
+                                            seg.style.borderRadius = "100%"
+                                            fails.appendChild(seg)
+                                        }
+                                        deathSaves.appendChild(fails)
+                                        let saves = document.createElement("div")
+                                        saves.style.display = "flex"
+                                        saves.style.width = "100%"
+                                        saves.style.justifyContent = "space-between"
+                                        saves.style.alignItems = "center"
+                                        let saveLabel = document.createElement("div")
+                                        saveLabel.style.whiteSpace = "pre"
+                                        saveLabel.style.textTransform = "uppercase"
+                                        saveLabel.textContent = "SUCCESS"
+                                        saveLabel.style.fontSize = "10px"
+                                        saveLabel.style.width = "46px"
+                                        saveLabel.style.textAlign = "left"
+                                        saves.appendChild(saveLabel)
+                                        for (let i = 1; i<=3; i++) {
+                                            let seg = document.createElement("div")
+                                            seg.style.backgroundColor = (i<=${f.deathSaveInfo.successCount})?"#ffffff":"#222222"
+                                            seg.style.width = "9px"
+                                            seg.style.height = "9px"
+                                            seg.style.border = "1px solid #555555"
+                                            seg.style.borderRadius = "100%"
+                                            saves.appendChild(seg)
+                                        }
+                                        deathSaves.appendChild(saves)
+                                        deathSave.appendChild(deathSaves)
+                                        hp.appendChild(deathSave)
+                                        hpLabel.textContent = "Death Saves"
+                                    }
+                                    hp.appendChild(hpLabel)
+                                    health.appendChild(hp)
+                                    let exhaust = document.createElement("div")
+                                    exhaust.id = "${f.characterId}-status-exhaust"
+                                    exhaust.classList = "ddb-campaigns-character-card-header-upper-character-info-primary"
+                                    exhaust.style.textAlign = "center"
+                                    exhaust.style.overflow = "visible"
+                                    exhaust.textContent = "Exhaustion"
+                                    exhaust.style.fontSize = "7px"
+                                    exhaust.style.textTransform = "uppercase"
+                                    let segments = document.createElement("div")
+                                    segments.style.display = "flex"
+                                    for (let i = 1; i<=6; i++) {
+                                        let seg = document.createElement("div")
+                                        seg.style.backgroundColor = (i>${exhaustion})? "#bdbdbd" : "#ffffff"
+                                        seg.style.width = "100%"
+                                        seg.style.height = "2px"
+                                        seg.style.marginRight = "2px"
+                                        segments.appendChild(seg)
+                                    }
+                                    exhaust.appendChild(segments)
+                                    health.appendChild(exhaust)
+                                    let stats = document.createElement("div")
+                                    stats.id = "${f.characterId}-status-stats"
+                                    stats.classList = "ddb-campaigns-character-card-header-upper-character-info-primary"
+                                    stats.style.textAlign = "center"
+                                    stats.style.display = "flex"
+                                    stats.style.justifyContent = "space-between"
+                                    let pp = document.createElement("div")
+                                    pp.style.width = "15%"
+                                    pp.style.paddingBottom = "2px"
+                                    pp.textContent = "${f.passivePerception}"
+                                    let ppLabel = document.createElement("div")
+                                    ppLabel.style.fontSize = "7px"
+                                    ppLabel.style.whiteSpace = "pre"
+                                    ppLabel.style.textTransform = "uppercase"
+                                    ppLabel.textContent = "Passive\\nPerception"
+                                    pp.appendChild(ppLabel)
+                                    stats.appendChild(pp)
+                                    let piv = document.createElement("div")
+                                    piv.style.width = "15%"
+                                    piv.style.paddingBottom = "2px"
+                                    piv.textContent = "${f.passiveInvestigation}"
+                                    let pivLabel = document.createElement("div")
+                                    pivLabel.style.fontSize = "7px"
+                                    pivLabel.style.whiteSpace = "pre"
+                                    pivLabel.style.textTransform = "uppercase"
+                                    pivLabel.textContent = "Passive\\nInvestigation"
+                                    piv.appendChild(pivLabel)
+                                    stats.appendChild(piv)
+                                    let pis = document.createElement("div")
+                                    pis.style.width = "15%"
+                                    pis.style.paddingBottom = "2px"
+                                    pis.textContent = "${f.passiveInsight}"
+                                    let pisLabel = document.createElement("div")
+                                    pisLabel.style.fontSize = "7px"
+                                    pisLabel.style.whiteSpace = "pre"
+                                    pisLabel.style.textTransform = "uppercase"
+                                    pisLabel.textContent = "Passive\\nInsight"
+                                    pis.appendChild(pisLabel)
+                                    stats.appendChild(pis)
+                                    let ac = document.createElement("div")
+                                    ac.style.width = "15%"
+                                    ac.style.border = "1px solid white"
+                                    ac.style.borderRadius = "50% 50% 50% 50% / 12% 12% 88% 88%"
+                                    ac.style.boxShadow = "inset 0 0 25px #bdbdbd"
+                                    ac.style.paddingBottom = "2px"
+                                    ac.textContent = "${f.armorClass}"
+                                    let acLabel = document.createElement("div")
+                                    acLabel.style.fontSize = "7px"
+                                    acLabel.style.whiteSpace = "pre"
+                                    acLabel.style.textTransform = "uppercase"
+                                    acLabel.textContent = "Armor\\nClass"
+                                    ac.appendChild(acLabel)
+                                    stats.appendChild(ac)
+                                    let senses = document.createElement("div")
+                                    senses.id = "${f.characterId}-status-senses"
+                                    senses.classList = "ddb-campaigns-character-card-header-upper-character-info-secondary"
+                                    senses.textContent = ${JSON.stringify(senses)}.join(", ")
+                                    let conditions = document.createElement("div")
+                                    conditions.id = "${f.characterId}-status-conditions"
+                                    conditions.classList = "ddb-campaigns-character-card-header-upper-character-info-secondary"
+                                    conditions.style.height = "16px"
+                                    for (let condition of ${JSON.stringify(conditions)}) {
+                                        let icon = document.createElement("div")
+                                        icon.classList = condition
+                                        conditions.appendChild(icon)
+                                    }
+                                    cDetail.appendChild(health)
+                                    let info = document.createElement("div")
+                                    info.id = "${f.characterId}-status-info"
+                                    info.classList = "ddb-campaigns-character-card-header-upper"
+                                    info.style.display = "block"
+                                    info.appendChild(stats)
+                                    info.appendChild(senses)
+                                    info.appendChild(conditions)
+                                    cHeader.appendChild(info)
+                            }
+                            })()`).catch(e=>console.log(`Unable to set statuses: ${e}`))
+                    }
+                }).catch(e=>console.log(`Unable to retrieve character statuses: ${e}`))
+                    _dmScreen = setTimeout(updateChars,screenTimeout*1000)
+                    ipcMain.removeAllListeners("refreshCharacterStatus")
+                    ipcMain.once("refreshCharacterStatus", ()=>updateChars())
+                }
+                updateChars()
+        }).catch((r) => console.log(`Unable to retrieve characters: ${r}`))
 	var url = new URL("wss://game-log-api-live.dndbeyond.com/v1")
 	url.searchParams.append('gameId',gameId)
 	url.searchParams.append('userId',userId)
@@ -692,12 +919,13 @@ async function connectGameLog(gameId,userId,campaignName) {
 	})
 	ws.on('close',(code,reason) => {
 		console.log(`WebSocket closed: ${reason} (${code})`)
+                if (_dmScreen) clearTimeout(_dmScreen)
 		_win?.webContents?.executeJavaScript(`
 		if (document.getElementsByClassName('gamelog-button')[0]) {
 			document.getElementsByClassName('gamelog-button')[0].style.backgroundColor = 'Crimson';
 		}
 		`,true).catch((e) => console.log(e))
-		clearInterval(_ws.pingInterval);
+		if (_ws.pingInterval) clearInterval(_ws.pingInterval);
 		if (code == 1001 && !_ws.isDisconnecting) {
 			setTimeout(() => connectGameLog(gameId,userId,campaignName),1000)
 		}
