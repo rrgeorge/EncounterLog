@@ -2,5 +2,5 @@
 /test
 /scripts
 .gkey.json
-.env
+*.env
 node_modules
