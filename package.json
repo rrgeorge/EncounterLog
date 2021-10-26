@@ -1,7 +1,7 @@
 {
   "name": "encounterlog",
   "productName": "EncounterLog",
-  "version": "2.2.3",
+  "version": "2.2.4",
   "description": "Connect D&D Beyond to EncounterPlus",
   "repository": {
     "type": "git",
@@ -146,7 +146,7 @@
   },
   "devDependencies": {
     "electron": "13.2.3",
-    "electron-builder": "^22.11.7",
+    "electron-builder": "^22.13.1",
     "electron-notarize": "^1.1.0"
   }
 }

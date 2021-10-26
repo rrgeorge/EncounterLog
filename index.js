@@ -11,6 +11,7 @@ const he = require('he')
 const DDB = require('./ddb')
 const fs = require('fs')
 const { autoUpdater } = require('electron-updater')
+const { convert } = require('html-to-text')
 
 var _ws = null
 var _win = null
@@ -21,6 +22,16 @@ app.userAgentFallback = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:88.0) 
 var ignored = []
 var campaignChars = []
 var encounterhost = undefined
+
+function readableFileSize(size) {
+        var units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+        var i = 0;
+        while(size >= 1024) {
+                    size /= 1024;
+                    ++i;
+                }
+        return size.toFixed(1) + ' ' + units[i];
+}
 
 const preferences = new ElectronPreferences({
 	'dataStore': path.resolve(app.getPath('userData'), 'preferences.json'),
@@ -106,7 +117,33 @@ const preferences = new ElectronPreferences({
 })
 encounterhost = preferences.value('main.encounterhost');
 app.on('ready', () => {
-        autoUpdater.checkForUpdatesAndNotify()
+        autoUpdater.autoDownload = false
+        autoUpdater.on('update-available',update=>
+            dialog.showMessageBox(_win,{
+                title: "Update Available",
+                message: update.releaseName,
+                detail: convert(update.releaseNotes,{wordwrap: 0}),
+                defaultId: 0,
+                cancelId: 1,
+                buttons: ["Install Now","Remind me Later"]
+            }).then(msg=>{
+                if (msg.response === 0) {
+                    let progress = new ProgressBar({title: "Downloading Update", text: `Downloading ${update.releaseName}`, detail: "",indeterminate:false,maxValue: 100})
+                    autoUpdater.on('download-progress',dl=>{
+                        if (!progress.isCompleted()) {
+                            progress.value = dl.percent
+                            progress.detail = `${readableFileSize(dl.transferred)}/${readableFileSize(dl.total)} ${readableFileSize(dl.bytesPerSecond)}/s`
+                        }
+                    })
+                    autoUpdater.on('update-downloaded',()=>{
+                        if (!progress?.isCompleted()) progress.setCompleted()
+                    })
+                    setImmediate(()=>autoUpdater.quitAndInstall(false,true))
+                    autoUpdater.downloadUpdate()
+                }
+            })
+        )
+        autoUpdater.checkForUpdates()
 	const win = new BrowserWindow({ show: false, width: 800, height: 600, webPreferences: {nodeIntegration: true, contextIsolation: false,nativeWindowOpen: true} })
 	_win = win
         ddb = new DDB()
@@ -200,6 +237,12 @@ app.on('ready', () => {
                         if (fs.existsSync(path.join(app.getPath("userData"),"manifest.zip"))) {
                             let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
                             manifestVersion = parseInt(manifest.readAsText("version.txt").trim())
+                            if (fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                                const stat = fs.statSync(path.join(app.getPath("userData"),"skeleton.db3"))
+                                const mstat = fs.statSync(path.join(app.getPath("userData"),"manifest.zip"))
+                                if (mstat.mtime > stat.mtime) 
+                                    manifest.extractEntryTo("skeleton.db3",app.getPath("userData"),false,true)
+                            }
                         }
                         ddb.checkManifestVersion(manifestVersion).then(res=>{
                             if (res?.data?.manifestUpdateAvailable) {
@@ -213,7 +256,7 @@ app.on('ready', () => {
                                     onProgress: (p) => {if(!prog.isCompleted())prog.value=p.percent*100},
                                     onCompleted: () => {
                                         let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
-                                        manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
+                                        manifest.extractEntryTo("skeleton.db3",app.getPath("userData"),false,true)
                                     }
                                 }).catch(e=>console.log(e))
                             } else { console.log(res) }
