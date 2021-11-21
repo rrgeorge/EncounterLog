@@ -429,7 +429,7 @@ class DDB {
             //if (/(ua|archived)/i.test(ddbClass.name)) continue
             let requests = []
             for (const url of urls) {
-                const params = qs.stringify({ 'sharingSetting': 2, 'classId': ddbClass.id, "classLevel": 20 })
+                const params = (this.gameId)? qs.stringify({ 'sharingSetting': 2, 'classId': ddbClass.id, "classLevel": 20, 'campaignId': this.gameId }) : qs.stringify({ 'sharingSetting': 2, 'classId': ddbClass.id, "classLevel": 20 })
                 //const response = await 
                 requests.push(
                     this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting spells: ${e}`))
@@ -687,6 +687,9 @@ class DDB {
                     if (props.length > 0) itemEntry._content.push({property: props.join(",")})
                     if (item.damageType) {
                         itemEntry._content.push({dmgType: item.damageType[0] })
+                    }
+                    if (item.range) {
+                        itemEntry._content.push({range: (item.longRange)?`${item.range}/${item.longRange}`:item.range})
                     }
                 } else {
                     type = itemTypeCodes.find(s=>s.names.some(n=>n==item.type?.toLowerCase()||n==item.subType?.toLowerCase()))?.code || type

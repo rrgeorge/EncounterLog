@@ -705,6 +705,7 @@ function requestCampaignChars(gameId,cobalt) {
 }
 async function connectGameLog(gameId,userId,campaignName) {
 	const cobalt = await ddb.getCobaltAuth()
+        ddb.gameId = gameId
 	requestCampaignChars(gameId,cobalt).then(chars=>{
             const charIds = chars.map(c=>c.id)
             const updateChars = ()=>{
