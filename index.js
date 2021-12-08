@@ -17,8 +17,12 @@ var _ws = null
 var _win = null
 var _dmScreen = null
 var ddb
-
-app.userAgentFallback = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:88.0) Gecko/20100101 Firefox/88.0'
+let platform = require('os').platform()
+if (platform == 'darwin') {
+    app.userAgentFallback = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36'
+} else {
+    app.userAgentFallback = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36'
+}
 var ignored = []
 var campaignChars = []
 var encounterhost = undefined
@@ -144,7 +148,18 @@ app.on('ready', () => {
             })
         )
         autoUpdater.checkForUpdates()
-	const win = new BrowserWindow({ show: false, width: 800, height: 600, webPreferences: {nodeIntegration: true, contextIsolation: false,nativeWindowOpen: true} })
+	const win = new BrowserWindow({
+            show: false,
+            width: 800,
+            height: 600,
+            webPreferences: {
+                nodeIntegration: false,
+                contextIsolation: true,
+                nativeWindowOpen: true,
+                webSecurity: false,
+                preload: path.join(__dirname,'preload.js')
+            }
+        })
 	_win = win
         ddb = new DDB()
         ddb.art = preferences.value('main.art');
@@ -172,12 +187,20 @@ app.on('ready', () => {
 		      	{role:'quit'}
 		  ]
 	      },
+              {role: 'editMenu'},
               {label: "Campaigns", id: 'campaignMenu', submenu: [ { label: "Loading...", enabled: false } ] },
               {label: "Compendium", id: 'compendium', submenu: [ {label: "Loading...", enabled: false } ] },
               {role: 'help', submenu: [
                   { label: `${app.getName()} v${app.getVersion()}`, enabled: false }, 
                   { label: "About", click: () => shell.openExternal("https://github.com/rrgeorge/EncounterLog") },
-                  { label: "Support this project", click: () => shell.openExternal("https://github.com/sponsors/rrgeorge") }
+                  { label: "Support this project", click: () => shell.openExternal("https://github.com/sponsors/rrgeorge") },
+                  {
+                      'click': function() {
+                          win.webContents.session.clearStorageData().then(()=>
+                              dialog.showMessageBox(_win,{title:"Data Cleared",message: "All cache and cookies have been cleared."}).then(()=>_win.loadURL("http://www.dndbeyond.com")))
+                      },
+                      'label': "Clear all Cache and Cookies",
+                  },
               ] },
 	  ])
 	Menu.setApplicationMenu(menu);
@@ -194,12 +217,27 @@ app.on('ready', () => {
             win.show()
         })
         globalShortcut.register('CommandOrControl+R', () => win.reload())
+        globalShortcut.register('CommandOrControl+D', () => win.loadURL("https://www.dndbeyond.com"))
+        globalShortcut.register('CommandOrControl+Shift+Alt+D', () => win.webContents.openDevTools())
+        win.webContents.on('will-navigate',(e,u)=>{
+            if (u.match(/^https:\/\/www.dndbeyond.com\/sign-in/)) {
+                e.preventDefault()
+                const loginWin = new BrowserWindow()
+                loginWin.webContents.on('will-navigate',(e,u)=>{
+                    if (u.match(/^https:\/\/(www\.)?dndbeyond\.com\/(?!sign-in).*/)) {
+                        e.preventDefault()
+                        loginWin.close()
+                        win.loadURL(u)
+                    }
+                })
+                loginWin.loadURL(u,{userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:88.0) Gecko/20100101 Firefox/88.0'})
+            }
+        })
         win.webContents.on('did-navigate',(e,u,r,m) => {
             if (r==200) {
             win.webContents.once('did-finish-load',()=> {
                     if (win.webContents.getURL().match(/dndbeyond.com\/campaigns\/[0-9]+/)) {
                             win.webContents.executeJavaScript(`
-                                    const {ipcRenderer} = require('electron')
                                     let characters = document.getElementsByClassName('ddb-campaigns-character-card')
                                     for (let character of characters) {
                                             let cHeader = character.getElementsByClassName('ddb-campaigns-character-card-header')[0]
@@ -219,7 +257,7 @@ app.on('ready', () => {
                                             cDiv.appendChild(cBox)
                                             cDiv.appendChild(cLabel)
                                             cFooter.insertBefore(cDiv,cFooter.firstChild)
-                                            cBox.addEventListener('change',e => ipcRenderer.send("changefilter",[e.target.value,e.target.checked]))
+                                            cBox.addEventListener('change',e => window.EncounterLog.Filter([e.target.value,e.target.checked]))
                                     }
                                     [
                                     document.getElementById('message-broker-client').dataset.gameid,
@@ -574,6 +612,7 @@ app.on('ready', () => {
 	ipcMain.on("changefilter", (event,data) => {
 		let name = data[0];
 		let filter = data[1];
+                console.log(data)
 		if (ignored.includes(name) && filter) {
 			ignored = ignored.filter((v,i,a) => {return v != name})
 		} else if (!filter && !ignored.includes(name)) {
@@ -713,7 +752,6 @@ async function connectGameLog(gameId,userId,campaignName) {
                 const screenTimeout = Math.floor(Math.random() * (70 - 50 + 1) + 50)
                 ddb.getCampaignCharacterStatus(charIds).then(found=>{
                     _win.webContents.executeJavaScript(`(()=>{
-                        const {ipcRenderer} = require('electron')
                         document.getElementById("campaign-status-timer")?.remove()
                         let header = document.querySelector('.ddb-campaigns-detail-body-listing-header-secondary')
                         let timer = document.createElement('div')
@@ -724,7 +762,7 @@ async function connectGameLog(gameId,userId,campaignName) {
                         header.appendChild(timer)
                         let interval = setInterval(()=>{
                             countdown -= 1
-                            timer.innerHTML = \`Will refresh in \${countdown}s <button onclick="ipcRenderer.send('refreshCharacterStatus')">Refresh Now</button>\`
+                            timer.innerHTML = \`Will refresh in \${countdown}s <button onclick="window.EncounterLog.Refresh()">Refresh Now</button>\`
                             if (countdown <= 0) {
                                 clearInterval(interval)
                             }
@@ -969,7 +1007,7 @@ async function connectGameLog(gameId,userId,campaignName) {
 			document.getElementsByClassName('gamelog-button')[0].style.backgroundColor = 'Crimson';
 		}
 		`,true).catch((e) => console.log(e))
-		if (_ws.pingInterval) clearInterval(_ws.pingInterval);
+		if (_ws?.pingInterval) clearInterval(_ws.pingInterval);
 		if (code == 1001 && !_ws.isDisconnecting) {
 			setTimeout(() => connectGameLog(gameId,userId,campaignName),1000)
 		}

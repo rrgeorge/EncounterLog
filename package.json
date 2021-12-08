@@ -1,7 +1,7 @@
 {
   "name": "encounterlog",
   "productName": "EncounterLog",
-  "version": "2.2.5",
+  "version": "2.2.6",
   "description": "Connect D&D Beyond to EncounterPlus",
   "repository": {
     "type": "git",
@@ -137,7 +137,7 @@
     "jstoxml": "^2.0.6",
     "mac": "^0.4.0",
     "opencv4nodejs-prebuilt": "5.3.3",
-    "sharp": "^0.29.2",
+    "sharp": "^0.29.3",
     "slugify": "^1.5.3",
     "tiny-async-pool": "^1.2.0",
     "tmp": "^0.2.1",

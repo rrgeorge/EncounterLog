@@ -130,6 +130,7 @@ class DDB {
     }
     async checkManifestVersion(v=0) {
         if (!this.cobaltsession) await this.setCobaltSession()
+        if (!this.cobaltauth) await this.getCobaltAuth()
         const url = "https://www.dndbeyond.com/mobile/api/v6/do-higher-versions-exist"
         const body = qs.stringify({manifestVersion: v, token: this.cobaltsession})
         const res = await this.postRequest(url,body).catch(e => console.log(`Could not check manifest update: ${e}`))
