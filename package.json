@@ -1,7 +1,7 @@
 {
   "name": "encounterlog",
   "productName": "EncounterLog",
-  "version": "2.2.6",
+  "version": "2.3.0",
   "description": "Connect D&D Beyond to EncounterPlus",
   "repository": {
     "type": "git",
@@ -12,17 +12,25 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "build-mac": "security unlock;electron-builder build --mac",
     "build-win": "npm_config_platform=win32 npm_config_arch=x64 yarn add opencv4nodejs-prebuilt@5.3.3 sharp; electron-builder build --win;yarn add opencv4nodejs-prebuilt@5.3.3 sharp",
-    "build-deb": "npm_config_platform=linux npm_config_arch=x64 yarn add opencv4nodejs-prebuilt@5.3.3 sharp; electron-builder build --linux deb;yarn add opencv4nodejs-prebuilt@5.3.3 sharp",
-    "build-all": "yarn build-mac;yarn build-win;yarn build-deb",
+    "build-linux": "npm_config_platform=linux npm_config_arch=x64 yarn add opencv4nodejs-prebuilt@5.3.3 sharp; electron-builder build --linux;yarn add opencv4nodejs-prebuilt@5.3.3 sharp",
+    "build-all": "yarn build-mac;yarn build-win;yarn build-linux",
     "publish-mac": "electron-builder -p always --mac",
     "publish-win": "npm_config_platform=win32 npm_config_arch=x64 yarn add opencv4nodejs-prebuilt@5.3.3 sharp; electron-builder -p always --win;yarn add opencv4nodejs-prebuilt@5.3.3 sharp",
-    "publish-deb": "npm_config_platform=linux npm_config_arch=x64 yarn add opencv4nodejs-prebuilt@5.3.3 sharp; electron-builder -p always --linux;yarn add opencv4nodejs-prebuilt@5.3.3 sharp",
-    "publish-all": "yarn publish-mac;yarn publish-win;yarn publish-deb",
+    "publish-linux": "npm_config_platform=linux npm_config_arch=x64 yarn add opencv4nodejs-prebuilt@5.3.3 sharp; electron-builder -p always --linux;yarn add opencv4nodejs-prebuilt@5.3.3 sharp",
+    "publish-all": "yarn publish-mac;yarn publish-win;yarn publish-linux",
     "release": "source electron-builder.env;security unlock&&git tag -f \"v$(jq -r .version package.json)\"&&git push&&git push --tags&&yarn publish-all",
     "postinstall": "electron-builder install-app-deps",
     "app": "electron ."
   },
   "build": {
+    "protocols": [
+      {
+        "name": "EncounterLog",
+        "schemes": [
+          "encounterlog"
+        ]
+      }
+    ],
     "appId": "online.play5e.EncounterLog",
     "win": {
       "files": [

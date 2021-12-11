@@ -17,16 +17,27 @@ var _ws = null
 var _win = null
 var _dmScreen = null
 var ddb
-let platform = require('os').platform()
-if (platform == 'darwin') {
-    app.userAgentFallback = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36'
-} else {
-    app.userAgentFallback = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36'
-}
+let platform = app.userAgentFallback.match(/\(([^)]+)\)/)[1]
+const firefox = `Mozilla/5.0 (${platform}; rv:94.0) Gecko/20100101 Firefox/94.0`
+const chrome = `Mozilla/5.0 (${platform}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.472.164 Safari/537.36`
+app.userAgentFallback = chrome
 var ignored = []
 var campaignChars = []
 var encounterhost = undefined
-
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+    app.quit()
+}
+app.setAsDefaultProtocolClient('encounterlog')
+app.on('second-instance', (e,argv)=>{
+    _win?.isMinimized() && _win.restore()
+    _win?.focus()
+    openURL(argv.find((arg) => arg.startsWith('encounterlog://')))
+})
+app.on('open-url', (e, u) => {
+    e.preventDefault()
+    openURL(u)
+})
 function readableFileSize(size) {
         var units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
         var i = 0;
@@ -119,6 +130,26 @@ const preferences = new ElectronPreferences({
             height: 400,
             }
 })
+function openURL(u) {
+    const url = u.replace(/(https?)\/\//,"$1://")
+    if (url.match(/dndbeyond.com/)) {
+        const ddburl = url.replace(/encounterlog:\/?\/?/,'')
+        app.whenReady().then(()=>
+            _win.loadURL((ddburl.startsWith("http"))?ddburl:`https://${ddburl}`)
+        )
+    } else {
+        const epurl = url.replace(/encounterlog:\/?\/?(https?:\/\/)?([^?]*)(?:\/?\?remoteHost=(.*))?.*/,(_,p1,p2,p3)=>{
+            if (p3) return (p3.startsWith('http'))?p3:`http://${p3}`
+            let host = (p1)?`${p1}${p2}`:`http://${p2}`
+            return host.replace(/(\/client)?\/?$/,'')
+        })
+        app.whenReady().then(()=>{
+            dialog.showMessageBox(_win,{ title: 'EncounterPlus Host', message: `EncounterPlus Server has been set to: ${epurl}`})
+            preferences.value('main.encounterhost',epurl)
+            preferences.save()
+        })
+    }
+}
 encounterhost = preferences.value('main.encounterhost');
 app.on('ready', () => {
         autoUpdater.autoDownload = false
@@ -156,7 +187,7 @@ app.on('ready', () => {
                 nodeIntegration: false,
                 contextIsolation: true,
                 nativeWindowOpen: true,
-                webSecurity: false,
+                sandbox: true,
                 preload: path.join(__dirname,'preload.js')
             }
         })
@@ -204,6 +235,12 @@ app.on('ready', () => {
               ] },
 	  ])
 	Menu.setApplicationMenu(menu);
+        session.defaultSession.webRequest.onBeforeRequest((d,c)=>{
+            if (d.url.match(/logx.optimizely.com/))
+                c({cancel:true})
+            else
+                c({})
+        })
         session.defaultSession.webRequest.onCompleted(
             {urls: [
                 'https://*.dndbeyond.com/*css',
@@ -219,19 +256,19 @@ app.on('ready', () => {
         globalShortcut.register('CommandOrControl+R', () => win.reload())
         globalShortcut.register('CommandOrControl+D', () => win.loadURL("https://www.dndbeyond.com"))
         globalShortcut.register('CommandOrControl+Shift+Alt+D', () => win.webContents.openDevTools())
-        win.webContents.on('will-navigate',(e,u)=>{
-            if (u.match(/^https:\/\/www.dndbeyond.com\/sign-in/)) {
-                e.preventDefault()
-                const loginWin = new BrowserWindow()
-                loginWin.webContents.on('will-navigate',(e,u)=>{
-                    if (u.match(/^https:\/\/(www\.)?dndbeyond\.com\/(?!sign-in).*/)) {
-                        e.preventDefault()
-                        loginWin.close()
-                        win.loadURL(u)
-                    }
-                })
-                loginWin.loadURL(u,{userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:88.0) Gecko/20100101 Firefox/88.0'})
-            }
+        win.webContents.setWindowOpenHandler(d=>{
+            app.userAgentFallback = firefox
+            session.defaultSession.setUserAgent(firefox)
+            return {action: 'allow'}
+        })
+        win.webContents.on('did-create-window',(w,d)=>{
+            app.userAgentFallback = firefox
+            session.defaultSession.setUserAgent(firefox)
+            w.webContents.setUserAgent(firefox)
+            w.on('closed',()=>{
+                app.userAgentFallback = chrome
+                session.defaultSession.setUserAgent(chrome)
+            })
         })
         win.webContents.on('did-navigate',(e,u,r,m) => {
             if (r==200) {
@@ -625,6 +662,7 @@ app.on('ready', () => {
 });
 function displayError(e) {
     _win.loadURL("http://www.dndbeyond.com/my-campaigns")
+    console.log(e)
     dialog.showErrorBox("Error",e)
 }
 app.on('will-quit', () => {
@@ -991,7 +1029,7 @@ async function connectGameLog(gameId,userId,campaignName) {
 		`,true).catch((e) => console.log(e))
 		let msgJson = {
 		    "source": "EncounterLog",
-		    "type":     "message",
+		    "type":     "chat",
 		    "content": "Connected to D&D Beyond GameLog for " + campaignName.trim()
 		};
 		const request = net.request({url: encounterhost+"/api/messages",method: "POST"})
@@ -1014,7 +1052,7 @@ async function connectGameLog(gameId,userId,campaignName) {
 		_ws = null
 		let msgJson = {
 		    "source": "EncounterLog",
-		    "type":     "message",
+		    "type":     "chat",
 		    "content": "Disconnected from D&D Beyond GameLog for " + campaignName.trim()
 		};
 		const request = net.request({url: encounterhost+"/api/messages",method: "POST"})

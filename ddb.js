@@ -838,9 +838,20 @@ class DDB {
                 }
                 const getChunk = id => new Promise(resolve=>{
                         this.getMonsterById(id).then(m=>{
-                            monsters = monsters.concat(m)
-                            prog.detail = `Retrieved ${monsters.length}/${count}...`
-                            resolve(monsters.length)
+                            if (m) {
+                                monsters = monsters.concat(m)
+                                prog.detail = `Retrieved ${monsters.length}/${count}...`
+                                resolve(monsters.length)
+                            } else {
+                                console.log(`Retrying ${id.length} monsters`)
+                                this.getMonsterById(id).then(m=>{
+                                    if (m) {
+                                        monsters = monsters.concat(m)
+                                        prog.detail = `Retrieved ${monsters.length}/${count}...`
+                                    }
+                                    resolve(monsters.length)
+                                })
+                            }
                         })
                     })
                 await asyncPool(10,id_chunks,getChunk)
