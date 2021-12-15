@@ -88,7 +88,7 @@ function sanitize(text,rulesdata=null) {
             {selector: 'u',format: 'underline'},
             {selector: 'blockquote',format: 'quote'}
         ]
-    })
+    }).replaceAll(/[\p{Pd}−]/gu, "-")
 }
 
 class DDB {
@@ -113,10 +113,16 @@ class DDB {
     }
     async getUserData() {
         if (!this.cobaltsession) await this.setCobaltSession()
+        if (!this.cobaltsession) throw("Not logged in")
+        await new Promise(resolve=>setTimeout(()=>resolve(),500))
         const url = "https://www.dndbeyond.com/mobile/api/v6/user-data"
         const body = qs.stringify({ 'token': this.cobaltsession })
-        const res = await this.postRequest(url,body).catch(e => console.log(`Could not populate userdata: ${e}`))
+        const res = await this.postRequest(url,body).catch(e =>{
+            console.log(`Could not populate userdata: ${e}`)
+            throw(e)
+        })
         this.userId = res?.userId
+        if (res?.status == "error") throw(res?.data)
     }
 // https://character-service-scds.dndbeyond.com/v1/characters' -X POST -d'{"characterI  ds":[18412484]}'
     //
@@ -353,7 +359,7 @@ class DDB {
     async getSources() {
         if (!this.cobaltsession) await this.setCobaltSession()
         const url = "https://www.dndbeyond.com/mobile/api/v6/available-user-content"
-        const body = qs.stringify({ 'token': this.cobaltsession })
+        const body = (this.cobaltsession)?qs.stringify({ 'token': this.cobaltsession }):''
         const sources = await this.postRequest(url,body).then(r => r.data).catch(e =>{ throw new Error(`Cannot retrieve avaialable sources: ${e}`)})
         if (!this.ruledata) await this.getRuleData().catch(e=>{throw new Error(e)})
         const books = sources.Licenses.filter(f => f.EntityTypeID == "496802664")
@@ -819,7 +825,6 @@ class DDB {
         }
         let monsters = []
         while ( pos <= count && count > 0) {
-            console.log("Retrieving 100...")
             if (!homebrew) {
                 const ids = await new Promise((resolve,reject)=>{
                     if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
@@ -841,6 +846,7 @@ class DDB {
                             if (m) {
                                 monsters = monsters.concat(m)
                                 prog.detail = `Retrieved ${monsters.length}/${count}...`
+                                console.log(`${monsters.length}`)
                                 resolve(monsters.length)
                             } else {
                                 console.log(`Retrying ${id.length} monsters`)
@@ -854,9 +860,12 @@ class DDB {
                             }
                         })
                     })
+                console.log(`Retreiving ${id_chunks.length} sets of 25/${count}`)
                 await asyncPool(10,id_chunks,getChunk)
+                console.log(`${monsters.length}`)
                 break
             } else {
+                console.log("Requesting up to 100...")
                 if (source) {
                     params = qs.stringify({ 'skip': pos, 'take': 100, 'sources': source })
                 } else {
@@ -904,6 +913,7 @@ class DDB {
             prog.detail = `Writing compendium file`
             zip.writeZip(filename)
             prog.detail = `Saved compendium`
+            console.log("Saved compendium.")
             setTimeout(()=>prog.setCompleted(),1000)
         }
         return compendium
@@ -2228,16 +2238,6 @@ function displayModal(path,id) {
         this.expiration = new Date().getTime()
         this.campaigns = []
         this.css = []
-        console.log(`Expiration is ${this.expiration}`)
-        /*
-        this.setCobaltSession().then(
-            this.getUserData().then(
-                this.populateCampaigns().then(
-                    this.getRuleData()
-                )
-            )
-        )
-        */
     }
 }
 
