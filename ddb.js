@@ -622,7 +622,7 @@ class DDB {
                 } else if (item.baseTypeId==this.ruledata.baseTypeArmorId) {
                     itemurl += "armor"
                 } else if (item.baseTypeId==this.ruledata.baseTypeWeaponId) {
-                    itemurl += "weapon"
+                    itemurl += "weapons"
                 } else {
                     itemurl += "adventuring-gear"
                 }
@@ -699,7 +699,10 @@ class DDB {
                         itemEntry._content.push({range: (item.longRange)?`${item.range}/${item.longRange}`:item.range})
                     }
                 } else {
-                    type = itemTypeCodes.find(s=>s.names.some(n=>n==item.type?.toLowerCase()||n==item.subType?.toLowerCase()))?.code || type
+                    type = itemTypeCodes.find(s=>s.names.some(n=>
+                        n==this.ruledata.gearTypes.find(g=>g.id===item.gearTypeId)?.name?.toLowerCase()
+                        ||n==item.type?.toLowerCase()
+                        ||n==item.subType?.toLowerCase()))?.code || type
                 }
                 itemEntry._content.push({type: type})
                 let description = sanitize(item.description,this.ruledata)
