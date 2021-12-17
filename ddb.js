@@ -700,7 +700,7 @@ class DDB {
                     }
                 } else {
                     type = itemTypeCodes.find(s=>s.names.some(n=>
-                        n==this.ruledata.gearTypes.find(g=>g.id===item.gearTypeId)?.name?.toLowerCase()
+                        (!item.magic&&n==this.ruledata.gearTypes.find(g=>g.id===item.gearTypeId)?.name?.toLowerCase())
                         ||n==item.type?.toLowerCase()
                         ||n==item.subType?.toLowerCase()))?.code || type
                 }
