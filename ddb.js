@@ -51,7 +51,7 @@ function sanitize(text,rulesdata=null) {
                         }
                     })
                 }
-                builder.addInline(`<${elem.name} href="${elem.attribs.href}">`);
+                builder.addInline(`<${elem.name} href="${elem.attribs.href}">`)
                 walk(elem.children, builder);
                 builder.addInline(`</${elem.name}>`);
             },
@@ -1846,7 +1846,7 @@ window.addEventListener('click', function(e) {
                 window.location = \`https://encounter.plus/spell/\${uuidv5(link, uuidv5.URL)}\`
             } else if (ddburl.host == "monsters") {
                 window.location = \`https://encounter.plus/monster/\${uuidv5(link, uuidv5.URL)}\`
-            } else if (["magicitems","adventuring-gear","weapon","armor"].includes(ddburl.host)) {
+            } else if (["magicitems","adventuring-gear","weapons","armor"].includes(ddburl.host)) {
                 window.location = \`https://encounter.plus/item/\${uuidv5(link, uuidv5.URL)}\`
             } else {
                 displayModal(ddburl.host,ddburl.pathname.replace(/^\\//,''))
