@@ -1,8 +1,7 @@
 {
   "name": "encounterlog",
   "productName": "EncounterLog",
-  "version": "2.3.3",
-  "description": "Connect D&D Beyond to EncounterPlus",
+  "version": "2.3.4"
   "repository": {
     "type": "git",
     "url": "https://github.com/rrgeorge/encounterlog"
@@ -150,7 +149,7 @@
     "tiny-async-pool": "^1.2.0",
     "tmp": "^0.2.1",
     "uuid": "^8.3.2",
-    "ws": "^7.4.5"
+    "ws": "^8.4.0"
   },
   "devDependencies": {
     "electron": "13.2.3",

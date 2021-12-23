@@ -1,4 +1,4 @@
-const {app, session, BrowserWindow, ipcMain, net, Menu, MenuItem, dialog, shell, globalShortcut} = require('electron')
+const {app, session, BrowserWindow, ipcMain, net, Menu, MenuItem, dialog, shell} = require('electron')
 const ElectronPreferences = require('electron-preferences')
 const WebSocket = require('ws')
 const path = require('path')
@@ -220,8 +220,10 @@ app.on('ready', () => {
 		  ]
 	      },
               {role: 'editMenu'},
+              {role: 'viewMenu'},
               {label: "Campaigns", id: 'campaignMenu', submenu: [ { label: "Please Login", enabled: false } ] },
               {label: "Compendium", id: 'compendium', submenu: [ {label: "Loading...", enabled: false } ] },
+              {role: 'windowMenu'},
               {role: 'help', submenu: [
                   { label: `${app.getName()} v${app.getVersion()}`, enabled: false }, 
                   { label: "About", click: () => shell.openExternal("https://github.com/rrgeorge/EncounterLog") },
@@ -261,12 +263,14 @@ app.on('ready', () => {
         const checkLogin = (e,u,r,m) => {
             if (r == 200) {
                 ddb.getUserData()
-                    .then(()=>{
-                        updateManifest()
-                        populateCampaignMenu()
-                        populateCompendiumMenu()
-                        win.webContents.off('did-navigate',checkLogin)
-                    })
+                    .then(()=>
+                        updateManifest().then(()=>
+                            populateCompendiumMenu().then(()=>{
+                                populateCampaignMenu()
+                                win.webContents.off('did-navigate',checkLogin)
+                            })
+                        )
+                    )
                     .catch(e=>{
                         if (Menu.getApplicationMenu().getMenuItemById('compendium').submenu.items.length<=1) populateCompendiumMenu()
                         console.log(`Unable to get userdata: ${e}`)
@@ -276,25 +280,6 @@ app.on('ready', () => {
         }
         win.webContents.on('did-navigate',checkLogin)
         win.loadURL('https://www.dndbeyond.com/my-campaigns',{httpReferrer: "https://www.dndbeyond.com"})
-        globalShortcut.register('CommandOrControl+R', () => win.reload())
-        globalShortcut.register('CommandOrControl+D', () => win.loadURL("https://www.dndbeyond.com"))
-        globalShortcut.register('CommandOrControl+Shift+Alt+D', () => win.webContents.openDevTools())
-    /*
-        win.webContents.setWindowOpenHandler(d=>{
-            app.userAgentFallback = firefox
-            session.defaultSession.setUserAgent(firefox)
-            return {action: 'allow'}
-        })
-        win.webContents.on('did-create-window',(w,d)=>{
-            app.userAgentFallback = firefox
-            session.defaultSession.setUserAgent(firefox)
-            w.webContents.setUserAgent(firefox)
-            w.on('closed',()=>{
-                app.userAgentFallback = chrome
-                session.defaultSession.setUserAgent(chrome)
-            })
-        })
-        */
         win.webContents.on('did-navigate',(e,u,r,m) => {
             if (r==200) {
             win.webContents.once('did-finish-load',()=> {
@@ -365,33 +350,39 @@ app.on('will-quit', () => {
 		}
 	})
 function updateManifest() {
-    let manifestVersion = 0
-    if (fs.existsSync(path.join(app.getPath("userData"),"manifest.zip"))) {
-        let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
-        manifestVersion = parseInt(manifest.readAsText("version.txt").trim())
-        if (fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
-            const stat = fs.statSync(path.join(app.getPath("userData"),"skeleton.db3"))
-            const mstat = fs.statSync(path.join(app.getPath("userData"),"manifest.zip"))
-            if (mstat.mtime > stat.mtime) 
-                manifest.extractEntryTo("skeleton.db3",app.getPath("userData"),false,true)
-        }
-    }
-    ddb.checkManifestVersion(manifestVersion).then(res=>{
-        if (res?.data?.manifestUpdateAvailable) {
-            let prog
-            download(_win,"https://www.dndbeyond.com/mobile/api/v6/download-manifest",{
-                filename: "manifest.zip",
-                directory: app.getPath("userData"),
-                onStarted: (d) => {
-                    prog = new ProgressBar({title: "Retrieving Manifest...", text: "Downloading latest manifest...", detail: "Retrieving manifest from D&D Beyond...",indeterminate: (d.getTotalBytes())?false:true,maxValue: 100})
-                },
-                onProgress: (p) => {if(!prog.isCompleted())prog.value=p.percent*100},
-                onCompleted: () => {
-                    let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+    return new Promise((resolve,reject)=>{
+        let manifestVersion = 0
+        if (fs.existsSync(path.join(app.getPath("userData"),"manifest.zip"))) {
+            let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+            manifestVersion = parseInt(manifest.readAsText("version.txt").trim())
+            if (fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                const stat = fs.statSync(path.join(app.getPath("userData"),"skeleton.db3"))
+                const mstat = fs.statSync(path.join(app.getPath("userData"),"manifest.zip"))
+                if (mstat.mtime > stat.mtime) 
                     manifest.extractEntryTo("skeleton.db3",app.getPath("userData"),false,true)
-                }
-            }).catch(e=>console.log(e))
-        } else { console.log(res) }
+            }
+        }
+        ddb.checkManifestVersion(manifestVersion).then(res=>{
+            if (res?.data?.manifestUpdateAvailable) {
+                let prog
+                download(_win,"https://www.dndbeyond.com/mobile/api/v6/download-manifest",{
+                    filename: "manifest.zip",
+                    directory: app.getPath("userData"),
+                    onStarted: (d) => {
+                        prog = new ProgressBar({title: "Retrieving Manifest...", text: "Downloading latest manifest...", detail: "Retrieving manifest from D&D Beyond...",indeterminate: (d.getTotalBytes())?false:true,maxValue: 100})
+                    },
+                    onProgress: (p) => {if(!prog.isCompleted())prog.value=p.percent*100},
+                    onCompleted: () => {
+                        let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                        manifest.extractEntryTo("skeleton.db3",app.getPath("userData"),false,true)
+                        resolve("Updated")
+                    }
+                }).catch(e=>{console.log(e);reject(e)})
+            } else {
+                console.log(res)
+                resolve(res)
+            }
+        })
     })
 }
 function populateCampaignMenu() {
@@ -435,130 +426,23 @@ function populateCampaignMenu() {
     ).catch(e=>displayError(`Error populating campaigns: ${e}`))
 }
 function populateCompendiumMenu() {
-    const menu = Menu.getApplicationMenu()
-    ddb.getSources().then(() => {
-        const compendiumMenu = menu.getMenuItemById('compendium')
-        while (compendiumMenu.submenu.items.length > 0) {
-            compendiumMenu.submenu.items.pop()
-        }
-        compendiumMenu.submenu.clear()
-        for (const book of ddb.books.sort((a, b) => a.id-b.id)) {
-          let categoryMenu = menu.getMenuItemById(`category-${book.category}`)
-          if (!categoryMenu) {
-              categoryMenu = new MenuItem({
-                  id: `category-${book.category}`,
-                  label: he.decode(ddb.ruledata.sourceCategories.find(s=>book.category===s.id)?.name||"Unknown Category").replaceAll("&","&&"),
-                  submenu: []
-              })
-              compendiumMenu.submenu.append(categoryMenu)
-          }
-          if (book.bookCode.toLowerCase() == 'tftyp') {
-              var tftypMenu = menu.getMenuItemById(`tftyp-menu`)
-              if (!tftypMenu) {
-                  tftypMenu = new MenuItem({
-                      id: 'tftyp-menu',
-                      label: he.decode("Tales from the Yawning Portal").replaceAll("&","&&"),
-                      toolTip: he.decode("TftYP"),
-                      submenu: []
-                  })
-                  categoryMenu.submenu.append(tftypMenu)
-              }
-              continue
-          } else if (book.url.startsWith('https://www.dndbeyond.com/sources/tftyp/')) {
-              var tftypMenu = menu.getMenuItemById(`tftyp-menu`)
-              if (!tftypMenu) {
-                  tftypMenu = new MenuItem({
-                      id: 'tftyp-menu',
-                      label: he.decode("Tales from the Yawning Portal").replaceAll("&","&&"),
-                      toolTip: he.decode("TftYP"),
-                      submenu: []
-                  })
-                  categoryMenu.submenu.append(tftypMenu)
-              }
-              categoryMenu = tftypMenu
-          }
-          categoryMenu.submenu.append( new MenuItem({
-              label: he.decode(book.book).replaceAll("&","&&"),
-              toolTip: he.decode(book.bookCode),
-              submenu: [
-                  new MenuItem({
-                      label: "Open",
-                      click: () => _win.loadURL(book.url,{httpReferrer: "https://www.dndbeyond.com"}),
-                  }),
-                  new MenuItem({ type: 'separator' }),
-                  new MenuItem({
-                      label: "Download Module",
-                      click: () => {
-                        dialog.showSaveDialog(_win,{
-                            title: "Save Book",
-                            filters: [ { name: "EncounterPlus Module", extensions: ["module"]} ],
-                            defaultPath: `${book.bookCode.toLowerCase()}.module`,
-                        }).then((save) => {
-                            if (save.filePath)
-                                ddb.getModule(book.id,save.filePath,_win).catch(e=>displayError(e))
-                            }
-                        )
-                      }
-                  }),
-                  new MenuItem({
-                      label: "Download Only Monsters",
-                      click: () => {
-                        dialog.showSaveDialog(_win,{
-                            title: "Save monsters compendium",
-                            filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
-                            defaultPath: `${book.bookCode.toLowerCase()}-monsters.compendium`,
-                        }).then((save) => {
-                            if (save.filePath)
-                                ddb.getMonsters(book.id,save.filePath)
-                            }
-                        )
-                      }
-                  }),
-                  new MenuItem({
-                      label: "Download Only Items",
-                      click: () => {
-                        dialog.showSaveDialog(_win,{
-                            title: "Save items compendium",
-                            filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
-                            defaultPath: `${book.bookCode.toLowerCase()}-items.compendium`,
-                        }).then((save) => {
-                            if (save.filePath)
-                                ddb.getItems(book.id,save.filePath)
-                            }
-                        )
-                      }
-                  }),
-                  new MenuItem({
-                      label: "Download Only Spells",
-                      click: () => {
-                        dialog.showSaveDialog(_win,{
-                            title: "Save spells compendium",
-                            filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
-                            defaultPath: `${book.bookCode.toLowerCase()}-spells.compendium`,
-                        }).then((save) => {
-                            if (save.filePath)
-                                ddb.getSpells(book.id,save.filePath)
-                            }
-                        )
-                      }
-                  })
-              ]
-          }))
-        }
-        compendiumMenu.submenu.append( new MenuItem({ type: 'separator' }))
-        if (ddb.sharedBooks.length > 0) {
-            compendiumMenu.submenu.append( new MenuItem({ type: 'separator' }))
-            sharedSubmenu = new MenuItem({ label: "Shared Books", submenu: [] })
-            compendiumMenu.submenu.append(sharedSubmenu)
-            for (const book of ddb.sharedBooks.sort((a, b) => a.id-b.id)) {
-              let categoryMenu = menu.getMenuItemById(`sharedCategory-${book.category}`)
+    return new Promise((resolve,reject)=>{
+        const menu = Menu.getApplicationMenu()
+        ddb.getSources().then(() => {
+            const compendiumMenu = menu.getMenuItemById('compendium')
+            while (compendiumMenu.submenu.items.length > 0) {
+                compendiumMenu.submenu.items.pop()
+            }
+            compendiumMenu.submenu.clear()
+            for (const book of ddb.books.sort((a, b) => a.id-b.id)) {
+              let categoryMenu = menu.getMenuItemById(`category-${book.category}`)
               if (!categoryMenu) {
                   categoryMenu = new MenuItem({
-                      id: `sharedCategory-${book.category}`,
+                      id: `category-${book.category}`,
                       label: he.decode(ddb.ruledata.sourceCategories.find(s=>book.category===s.id)?.name||"Unknown Category").replaceAll("&","&&"),
                       submenu: []
                   })
-                  sharedSubmenu.submenu.append(categoryMenu)
+                  compendiumMenu.submenu.append(categoryMenu)
               }
               if (book.bookCode.toLowerCase() == 'tftyp') {
                   var tftypMenu = menu.getMenuItemById(`tftyp-menu`)
@@ -586,13 +470,14 @@ function populateCompendiumMenu() {
                   categoryMenu = tftypMenu
               }
               categoryMenu.submenu.append( new MenuItem({
-                  label: book.book,
-                  toolTip: book.bookCode,
+                  label: he.decode(book.book).replaceAll("&","&&"),
+                  toolTip: he.decode(book.bookCode),
                   submenu: [
                       new MenuItem({
                           label: "Open",
                           click: () => _win.loadURL(book.url,{httpReferrer: "https://www.dndbeyond.com"}),
                       }),
+                      new MenuItem({ type: 'separator' }),
                       new MenuItem({
                           label: "Download Module",
                           click: () => {
@@ -607,102 +492,214 @@ function populateCompendiumMenu() {
                             )
                           }
                       }),
+                      new MenuItem({
+                          label: "Download Only Monsters",
+                          click: () => {
+                            dialog.showSaveDialog(_win,{
+                                title: "Save monsters compendium",
+                                filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
+                                defaultPath: `${book.bookCode.toLowerCase()}-monsters.compendium`,
+                            }).then((save) => {
+                                if (save.filePath)
+                                    ddb.getMonsters(book.id,save.filePath)
+                                }
+                            )
+                          }
+                      }),
+                      new MenuItem({
+                          label: "Download Only Items",
+                          click: () => {
+                            dialog.showSaveDialog(_win,{
+                                title: "Save items compendium",
+                                filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
+                                defaultPath: `${book.bookCode.toLowerCase()}-items.compendium`,
+                            }).then((save) => {
+                                if (save.filePath)
+                                    ddb.getItems(book.id,save.filePath)
+                                }
+                            )
+                          }
+                      }),
+                      new MenuItem({
+                          label: "Download Only Spells",
+                          click: () => {
+                            dialog.showSaveDialog(_win,{
+                                title: "Save spells compendium",
+                                filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
+                                defaultPath: `${book.bookCode.toLowerCase()}-spells.compendium`,
+                            }).then((save) => {
+                                if (save.filePath)
+                                    ddb.getSpells(book.id,save.filePath)
+                                }
+                            )
+                          }
+                      })
                   ]
               }))
             }
-        }
-        var homebrewSubMenu = []
-        homebrewSubMenu.push( new MenuItem({
-            label: "Download Homebrew Monsters",
-            click: () => {
-                dialog.showSaveDialog(_win,{
-                    title: "Save monsters compendium",
-                    filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
-                    defaultPath: `homebrew_monsters.compendium`,
-                }).then((save) => {
-                    if (save.filePath)
-                        ddb.getMonsters(null,save.filePath,null,null,null,true)
-                    }
-                )
+            compendiumMenu.submenu.append( new MenuItem({ type: 'separator' }))
+            if (ddb.sharedBooks.length > 0) {
+                compendiumMenu.submenu.append( new MenuItem({ type: 'separator' }))
+                sharedSubmenu = new MenuItem({ label: "Shared Books", submenu: [] })
+                compendiumMenu.submenu.append(sharedSubmenu)
+                for (const book of ddb.sharedBooks.sort((a, b) => a.id-b.id)) {
+                  let categoryMenu = menu.getMenuItemById(`sharedCategory-${book.category}`)
+                  if (!categoryMenu) {
+                      categoryMenu = new MenuItem({
+                          id: `sharedCategory-${book.category}`,
+                          label: he.decode(ddb.ruledata.sourceCategories.find(s=>book.category===s.id)?.name||"Unknown Category").replaceAll("&","&&"),
+                          submenu: []
+                      })
+                      sharedSubmenu.submenu.append(categoryMenu)
+                  }
+                  if (book.bookCode.toLowerCase() == 'tftyp') {
+                      var tftypMenu = menu.getMenuItemById(`tftyp-menu`)
+                      if (!tftypMenu) {
+                          tftypMenu = new MenuItem({
+                              id: 'tftyp-menu',
+                              label: he.decode("Tales from the Yawning Portal").replaceAll("&","&&"),
+                              toolTip: he.decode("TftYP"),
+                              submenu: []
+                          })
+                          categoryMenu.submenu.append(tftypMenu)
+                      }
+                      continue
+                  } else if (book.url.startsWith('https://www.dndbeyond.com/sources/tftyp/')) {
+                      var tftypMenu = menu.getMenuItemById(`tftyp-menu`)
+                      if (!tftypMenu) {
+                          tftypMenu = new MenuItem({
+                              id: 'tftyp-menu',
+                              label: he.decode("Tales from the Yawning Portal").replaceAll("&","&&"),
+                              toolTip: he.decode("TftYP"),
+                              submenu: []
+                          })
+                          categoryMenu.submenu.append(tftypMenu)
+                      }
+                      categoryMenu = tftypMenu
+                  }
+                  categoryMenu.submenu.append( new MenuItem({
+                      label: book.book,
+                      toolTip: book.bookCode,
+                      submenu: [
+                          new MenuItem({
+                              label: "Open",
+                              click: () => _win.loadURL(book.url,{httpReferrer: "https://www.dndbeyond.com"}),
+                          }),
+                          new MenuItem({
+                              label: "Download Module",
+                              click: () => {
+                                dialog.showSaveDialog(_win,{
+                                    title: "Save Book",
+                                    filters: [ { name: "EncounterPlus Module", extensions: ["module"]} ],
+                                    defaultPath: `${book.bookCode.toLowerCase()}.module`,
+                                }).then((save) => {
+                                    if (save.filePath)
+                                        ddb.getModule(book.id,save.filePath,_win).catch(e=>displayError(e))
+                                    }
+                                )
+                              }
+                          }),
+                      ]
+                  }))
+                }
             }
-            }))
-        homebrewSubMenu.push( new MenuItem({
-            label: "Download Homebrew Items",
-            click: () => {
-                dialog.showSaveDialog(_win,{
-                    title: "Save items compendium",
-                    filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
-                    defaultPath: `homebrew_items.compendium`,
-                }).then((save) => {
-                    if (save.filePath)
-                        ddb.getItems(null,save.filePath,null,null,null,true)
-                    }
-                )
-            }
-            }))
-        homebrewSubMenu.push( new MenuItem({
-            label: "Download Homebrew Spells",
-            click: () => {
-                dialog.showSaveDialog(_win,{
-                    title: "Save spells compendium",
-                    filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
-                    defaultPath: `homebrew_spells.compendium`,
-                }).then((save) => {
-                    if (save.filePath)
-                        ddb.getSpells(null,save.filePath,null,null,true)
-                    }
-                )
-            }
-            }))
-        compendiumMenu.submenu.append(
-            new MenuItem({ label: "Homebrew Collection", submenu: homebrewSubMenu })
-        )
-        compendiumMenu.submenu.append( new MenuItem({ type: 'separator' }))
-        compendiumMenu.submenu.append( new MenuItem({
-            label: "Download All Monsters",
-            click: () => {
-                dialog.showSaveDialog(_win,{
-                    title: "Save monsters compendium",
-                    filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
-                    defaultPath: `monsters.compendium`,
-                }).then((save) => {
-                    if (save.filePath)
-                        ddb.getMonsters(null,save.filePath)
-                    }
-                )
-            }
-            }))
-        compendiumMenu.submenu.append( new MenuItem({
-            label: "Download All Items",
-            click: () => {
-                dialog.showSaveDialog(_win,{
-                    title: "Save items compendium",
-                    filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
-                    defaultPath: `items.compendium`,
-                }).then((save) => {
-                    if (save.filePath)
-                        ddb.getItems(null,save.filePath)
-                    }
-                )
-            }
-            }))
-        compendiumMenu.submenu.append( new MenuItem({
-            label: "Download All Spells",
-            click: () => {
-                dialog.showSaveDialog(_win,{
-                    title: "Save spells compendium",
-                    filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
-                    defaultPath: `spells.compendium`,
-                }).then((save) => {
-                    if (save.filePath)
-                        ddb.getSpells(null,save.filePath)
-                    }
-                )
-            }
-            }))
-        compendiumMenu.enabled = true
-        Menu.setApplicationMenu(menu)
-    }).catch(e=>displayError(`Error populating sources: ${e}`))
+            var homebrewSubMenu = []
+            homebrewSubMenu.push( new MenuItem({
+                label: "Download Homebrew Monsters",
+                click: () => {
+                    dialog.showSaveDialog(_win,{
+                        title: "Save monsters compendium",
+                        filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
+                        defaultPath: `homebrew_monsters.compendium`,
+                    }).then((save) => {
+                        if (save.filePath)
+                            ddb.getMonsters(null,save.filePath,null,null,null,true)
+                        }
+                    )
+                }
+                }))
+            homebrewSubMenu.push( new MenuItem({
+                label: "Download Homebrew Items",
+                click: () => {
+                    dialog.showSaveDialog(_win,{
+                        title: "Save items compendium",
+                        filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
+                        defaultPath: `homebrew_items.compendium`,
+                    }).then((save) => {
+                        if (save.filePath)
+                            ddb.getItems(null,save.filePath,null,null,null,true)
+                        }
+                    )
+                }
+                }))
+            homebrewSubMenu.push( new MenuItem({
+                label: "Download Homebrew Spells",
+                click: () => {
+                    dialog.showSaveDialog(_win,{
+                        title: "Save spells compendium",
+                        filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
+                        defaultPath: `homebrew_spells.compendium`,
+                    }).then((save) => {
+                        if (save.filePath)
+                            ddb.getSpells(null,save.filePath,null,null,true)
+                        }
+                    )
+                }
+                }))
+            compendiumMenu.submenu.append(
+                new MenuItem({ label: "Homebrew Collection", submenu: homebrewSubMenu })
+            )
+            compendiumMenu.submenu.append( new MenuItem({ type: 'separator' }))
+            compendiumMenu.submenu.append( new MenuItem({
+                label: "Download All Monsters",
+                click: () => {
+                    dialog.showSaveDialog(_win,{
+                        title: "Save monsters compendium",
+                        filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
+                        defaultPath: `monsters.compendium`,
+                    }).then((save) => {
+                        if (save.filePath)
+                            ddb.getMonsters(null,save.filePath)
+                        }
+                    )
+                }
+                }))
+            compendiumMenu.submenu.append( new MenuItem({
+                label: "Download All Items",
+                click: () => {
+                    dialog.showSaveDialog(_win,{
+                        title: "Save items compendium",
+                        filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
+                        defaultPath: `items.compendium`,
+                    }).then((save) => {
+                        if (save.filePath)
+                            ddb.getItems(null,save.filePath)
+                        }
+                    )
+                }
+                }))
+            compendiumMenu.submenu.append( new MenuItem({
+                label: "Download All Spells",
+                click: () => {
+                    dialog.showSaveDialog(_win,{
+                        title: "Save spells compendium",
+                        filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
+                        defaultPath: `spells.compendium`,
+                    }).then((save) => {
+                        if (save.filePath)
+                            ddb.getSpells(null,save.filePath)
+                        }
+                    )
+                }
+                }))
+            compendiumMenu.enabled = true
+            Menu.setApplicationMenu(menu)
+            resolve(menu)
+        }).catch(e=>{
+            displayError(`Error populating sources: ${e}`)
+            reject(e)
+        })
+    })
 }
 
 
@@ -1097,7 +1094,16 @@ async function connectGameLog(gameId,userId,campaignName) {
 	ws.on('error',(e) => console.log(e))
 	ws.on('message',(data) => {
                 try {
-		    const msgData = JSON.parse(data)
+		    const msgData = JSON.parse(data.toString()
+                        .replaceAll(/\x18/g,"\u2018")
+                        .replaceAll(/\x19/g,"\u2019")
+                        .replaceAll(/\x1a/g,"\u201a")
+                        .replaceAll(/\x1b/g,"\u201b")
+                        .replaceAll(/\x1c/g,"\u201c")
+                        .replaceAll(/\x1d/g,"\u201d")
+                        .replaceAll(/\x1e/g,"\u201e")
+                        .replaceAll(/\x1f/g,"\u201f")
+                    )
                     if (msgData.eventType != "dice/roll/fulfilled") {
                         return
                     }
@@ -1135,7 +1141,10 @@ async function connectGameLog(gameId,userId,campaignName) {
                     }
                 } catch (e) {
                     console.log("Error",e.message)
-                    console.log(data)
+                    console.log(e)
+                    console.log(data.toString())
+                    console.log(Buffer.from(e.message).toString('hex'))
+                    console.log(Buffer.from(data).toString('hex'))
                     return
                 }
 

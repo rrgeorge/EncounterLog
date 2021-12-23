@@ -114,6 +114,7 @@ class DDB {
     async getUserData() {
         if (!this.cobaltsession) await this.setCobaltSession()
         if (!this.cobaltsession) throw("Not logged in")
+        if (!this.cobaltauth) await this.getCobaltAuth()
         await new Promise(resolve=>setTimeout(()=>resolve(),500))
         const url = "https://www.dndbeyond.com/mobile/api/v6/user-data"
         const body = qs.stringify({ 'token': this.cobaltsession })
@@ -1945,6 +1946,137 @@ function displayModal(path,id) {
 }
                 `
                 zip.addFile('assets/js/custom.js',customjs)
+                const dice = new RegExp(/[0-9]*[dD][0-9]+( ?[-+×÷*\/] ?[0-9,]+)?/)
+                let rollTables = []
+                for (const page of mod._content) {
+                    if (!page.page) continue
+                    const dom = new jsdom.JSDOM(page.page.content)
+                    const pageTables = dom.window.document.querySelectorAll('table')
+                    if (pageTables.length<1) continue
+                    for (const table of pageTables) {
+                        if (!table.rows[0]?.cells[0]?.textContent?.match(dice)) {
+                            continue
+                        }
+                        let parent = table;
+                        let title = ""
+                        if (table.previousElementSibling?.tagName == "STRONG") {
+                            title = table.previousElementSibling.textContent.trim()
+                        } else {
+                            while(parent) {
+                                let sibling = parent;
+                                let header;
+                                while(sibling = sibling.previousElementSibling) {
+                                    if (sibling.tagName.match(/H[1-9]/)) {
+                                        header = sibling
+                                        break
+                                    }
+                                }
+                                if (header) {
+                                    title = header.textContent.trim()
+                                    break;
+                                }
+                                parent = parent.parentElement
+                            }
+                        }
+                        if (!title) {
+                            continue
+                        }
+                        let rollTable = {
+                            name: title,
+                            slug: slugify(`Table ${rollTables.length+1}: ${title}`),
+                            id: uuid5(`https://www.dndbeyond.com/${book.sourceURL}/tables/${rollTables.length+1}`,uuid5.URL),
+                            source: mod._content.find(s=>s.code).code,
+                            columns: [],
+                            rows: []
+                        }
+                        let splitAt
+                        for (let i=0; i<table.rows[0].cells.length; i++) {
+                            let header = table.rows[0].cells[i]
+                            if (!rollTable.columns.find(c=>c.name == header.textContent.trim()))
+                                rollTable.columns.push({ name: header.textContent.trim() })
+                            else if (splitAt === undefined)
+                                splitAt = i
+                        }
+                        let subtable
+                        let rowSpan = 0
+                        let tableRows = [...table.rows].slice(1)
+                        for (let i=0; i<tableRows.length; i++ ) {
+                            let tableRow = tableRows[i]
+                            let row = []
+                            let subHeader = [...tableRow.cells].find(c=>c.colSpan>1)?.textContent.trim()
+                            if (!subHeader && tableRows[i+1]?.cells[0]?.textContent.trim() == "") {
+                                subHeader = tableRow.cells[1].textContent.trim()
+                            }
+                            if (subHeader && subHeader.match(dice)) {
+                                subtable = {
+                                    name: `${rollTable.name}; ${subHeader}`,
+                                    slug: slugify(`Table ${rollTables.length+2}: ${title}-${subHeader}`),
+                                    id: uuid5(`https://www.dndbeyond.com/${book.sourceURL}/tables/${rollTables.length+2}`,uuid5.URL),
+                                    source: mod._content.find(s=>s.code).code,
+                                    columns: [
+                                        { name: subHeader.match(dice)[0] },
+                                        { name: subHeader }
+                                    ],
+                                    rows: []
+                                }
+                                rollTable.rows.push([tableRow.cells[0].textContent.trim(),`<table>${subtable.name}</table>`])
+                                continue
+                            }
+                            for (let i=0; i<tableRow.cells.length; i++) {
+                                let thisCell = tableRow.cells[i]
+                                for (let link of thisCell.querySelectorAll("a")) {
+                                    if (link.href?.startsWith("ddb://")) {
+                                        let ddburl = new URL(link.href)
+                                        if (ddburl.host == "spells") {
+                                            link.href = `/spell/${uuid5(link.href, uuid5.URL)}`
+                                        } else if (ddburl.host == "monsters") {
+                                            link.href = `/monster/${uuid5(link.href, uuid5.URL)}`
+                                        } else if (["magicitems","adventuring-gear","weapons","armor"].includes(ddburl.host)) {
+                                            link.href = `/item/${uuid5(link.href, uuid5.URL)}`
+                                        }
+                                    } else {
+                                        if (link.previousSibling?.textContent?.match(/(times|once) on/i)) {
+                                            let tableElement = dom.window.document.createElement("table")
+                                            tableElement.textContent = link.textContent.trim()
+                                            link.replaceWith(tableElement)
+                                        }
+                                    }
+                                }
+                                if (subtable && (tableRow.cells[0].textContent.trim() == "" || rowSpan > 0)) {
+                                    if (i==0 && !rowSpan) {
+                                        if (thisCell.rowSpan) rowSpan = thisCell.rowSpan
+                                        continue
+                                    }
+                                    if (tableRow.cells.length-1<subtable.columns.length) {
+                                        let rowMatch = thisCell.innerHTML.match(/([\d\p{Pd}−]+) ?(.*)/u)
+                                        row.push(rowMatch[1].trim().replaceAll(/[\p{Pd}−]/gu, "-"),rowMatch[2])
+                                    } else {
+                                        row.push(thisCell.innerHTML)
+                                    }
+                                    continue
+                                } else if (subtable && (rowSpan <= 0 || tableRow.cells[0].textContent.trim() != "")) {
+                                    subtable.rows = subtable.rows.sort((a,b)=>parseInt(a[0])-parseInt(b[0]))
+                                    rollTables.push(subtable)
+                                    subtable = undefined
+                                }
+                                if (splitAt && i>0 && i%splitAt===0) {
+                                    rollTable.rows.push(row)
+                                    row = []
+                                }
+                                row.push(thisCell.innerHTML.trim().replaceAll(/[\p{Pd}−]/gu, "-"))
+                            }
+                            if (subtable) {
+                                if (rowSpan > 0) rowSpan --;
+                                subtable.rows.push(row)
+                            } else {
+                                rollTable.rows.push(row)
+                            }
+                        }
+                        rollTable.rows = rollTable.rows.sort((a,b)=>parseInt(a[0])-parseInt(b[0]))
+                        rollTables.push(rollTable)
+                    }
+                }
+                if (rollTables.length > 0) zip.addFile("tables.json",JSON.stringify(rollTables))
                 if (this.maps && this.maps != "nomaps") {
                     const getGrid = require('./getgrid')
                     prog.text = "Searching for Maps..."
