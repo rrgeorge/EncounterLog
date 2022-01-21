@@ -14,6 +14,8 @@ const { autoUpdater } = require('electron-updater')
 const { convert } = require('html-to-text')
 
 var _ws = null
+var _eWs = null
+var _eTokens = []
 var _win = null
 var _dmScreen = null
 var ddb
@@ -814,9 +816,10 @@ function requestCampaignChars(gameId,cobalt) {
 async function connectGameLog(gameId,userId,campaignName) {
 	const cobalt = await ddb.getCobaltAuth()
         ddb.gameId = gameId
+        let updateChars
 	requestCampaignChars(gameId,cobalt).then(chars=>{
             const charIds = chars.map(c=>c.id)
-            const updateChars = ()=>{
+            updateChars = ()=>{
                 if (_dmScreen) clearTimeout(_dmScreen)
                 const screenTimeout = Math.floor(Math.random() * (70 - 50 + 1) + 50)
                 ddb.getCampaignCharacterStatus(charIds).then(found=>{
@@ -841,6 +844,27 @@ async function connectGameLog(gameId,userId,campaignName) {
                         let conditions = f.conditions.map(c=>`i-condition-white-${c.name.toLowerCase()}`)
                         let senses = f.senses.map(s=>`${s.name} ${s.distance}`)
                         let exhaustion = f.conditions.find(c=>c.name.toLowerCase()=="exhaustion")?.level||0
+                       /* 
+                        const request = net.request({url: encounterhost+"/api/messages",method: "POST"})
+                        request.on('error',e => console.error(e))
+                        request.write(JSON.stringify(rollJson))
+                        request.end()
+                        */
+                        for (const token of _eTokens.filter(t=>t.reference.startsWith('/player/'))) {
+                            if (token.name == f.name && (token.health != (f.hitPointInfo.current+f.hitPointInfo.temp) || token.hitpoints != f.hitPointInfo.maximum)) {
+                                console.log(`Update ${f.name}`)
+                                const model = {
+                                    name: "updateModel",
+                                    model: "token",
+                                    data: {
+                                        id: token.id,
+                                        health: f.hitPointInfo.current+f.hitPointInfo.temp,
+                                        hitpoints: f.hitPointInfo.maximum
+                                    }
+                                }
+                                _eWs?.send(JSON.stringify(model))
+                            }
+                        }
                         _win.webContents.executeJavaScript(`(()=>{
                             let characters = document.querySelectorAll('.ddb-campaigns-character-card')
                             for (let character of characters) {
@@ -1038,7 +1062,6 @@ async function connectGameLog(gameId,userId,campaignName) {
                     ipcMain.removeAllListeners("refreshCharacterStatus")
                     ipcMain.once("refreshCharacterStatus", ()=>updateChars())
                 }
-                updateChars()
         }).catch((r) => console.log(`Unable to retrieve characters: ${r}`))
 	var url = new URL("wss://game-log-api-live.dndbeyond.com/v1")
 	url.searchParams.append('gameId',gameId)
@@ -1058,6 +1081,7 @@ async function connectGameLog(gameId,userId,campaignName) {
 			document.getElementsByClassName('gamelog-button')[0].style.backgroundColor = 'LimeGreen';
 		}
 		`,true).catch((e) => console.log(e))
+            /*
 		let msgJson = {
 		    "source": "EncounterLog",
 		    "type":     "chat",
@@ -1067,6 +1091,34 @@ async function connectGameLog(gameId,userId,campaignName) {
 		request.on('error',e => console.error(e))
 		request.write(JSON.stringify(msgJson))
 		request.end()
+                */
+            const connectEWS = () => {
+                getEAPI()
+                _eWs = (_eWs)? _eWs : new WebSocket(encounterhost.replace(/^http/,'ws') + "/ws")
+                _eWs.on('open',() => {
+                    _eWs.on('message',(data)=>{
+                        const msg = JSON.parse(data)
+                        if (msg?.name == 'tokensUpdated') {
+                            _eTokens = msg.data
+                        } else if (msg?.name == 'mapUpdated') {
+                            getEAPI()
+                        }
+                    })
+                    const msgJson = {
+                        "source": "EncounterLog",
+                        "type":     "chat",
+                        "content": "Connected to D&D Beyond GameLog for " + campaignName.trim()
+                    };
+                    _eWs.send(JSON.stringify({name: "createMessage", data: msgJson}))
+                })
+                _eWs.on('close',(code,reason) => {
+                    if (code == 1001 && _ws && !_ws?.isDisconnecting) {
+                            setTimeout(connectEWS,1000)
+                    }
+                })
+            }
+            connectEWS()
+            updateChars()
 	})
 	ws.on('close',(code,reason) => {
 		console.log(`WebSocket closed: ${reason} (${code})`)
@@ -1079,17 +1131,23 @@ async function connectGameLog(gameId,userId,campaignName) {
 		if (_ws?.pingInterval) clearInterval(_ws.pingInterval);
 		if (code == 1001 && !_ws.isDisconnecting) {
 			setTimeout(() => connectGameLog(gameId,userId,campaignName),1000)
-		}
+		} else {
+                    _eWs.close()
+                }
 		_ws = null
 		let msgJson = {
 		    "source": "EncounterLog",
 		    "type":     "chat",
 		    "content": "Disconnected from D&D Beyond GameLog for " + campaignName.trim()
 		};
-		const request = net.request({url: encounterhost+"/api/messages",method: "POST"})
-		request.on('error',e => console.error(e))
-		request.write(JSON.stringify(msgJson))
-		request.end()
+                if (_eWs) {
+                    _eWs.send(JSON.stringify({name: "createMessage", data: msgJson}))
+                } else {
+                    const request = net.request({url: encounterhost+"/api/messages",method: "POST"})
+                    request.on('error',e => console.error(e))
+                    request.write(JSON.stringify(msgJson))
+                    request.end()
+                }
 	})
 	ws.on('error',(e) => console.log(e))
 	ws.on('message',(data) => {
@@ -1133,10 +1191,14 @@ async function connectGameLog(gameId,userId,campaignName) {
                                     } else if (roll.rollType == "to hit") {
                                             rollJson.content.type = "attack";
                                     }
-                                    const request = net.request({url: encounterhost+"/api/messages",method: "POST"})
-                                    request.on('error',e => console.error(e))
-                                    request.write(JSON.stringify(rollJson))
-                                    request.end()
+                                    if (_eWs) {
+                                        _eWs?.send(JSON.stringify({name: "createMessage", data: rollJson}))
+                                    } else {
+                                        const request = net.request({url: encounterhost+"/api/messages",method: "POST"})
+                                        request.on('error',e => console.error(e))
+                                        request.write(JSON.stringify(rollJson))
+                                        request.end()
+                                    }
                             }
                     }
                 } catch (e) {
@@ -1149,4 +1211,28 @@ async function connectGameLog(gameId,userId,campaignName) {
                 }
 
 	})
+}
+
+function getEAPI () {
+    if (!encounterhost) return
+    const request = net.request({url: encounterhost+"/api",method: "GET"})
+    request.on('response',r=>{
+        if (r.statusCode == 200) {
+            let body = ''
+            r.on('end',()=>{
+                try {
+                    const eAPI = JSON.parse(body)
+                    _eTokens = eAPI?.map?.tokens || []
+                } catch (e) {
+                    console.log(`API Error: ${e}`)
+                    console.log(body)
+                    _eTokens = []
+                }
+            })
+            r.on('data',c=>body+=c.toString())
+        } else {
+            console.log(`API Error: ${r.statusMessage}`)
+        }
+    })
+    request.end()
 }
