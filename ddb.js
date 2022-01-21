@@ -2245,23 +2245,35 @@ function displayModal(path,id) {
                                 if (this.maps == "markers") {
                                     if (dmMap) {
                                         let {data:dmMapImg,info:dmMapInfo} = await sharp(zip.readFile(dmMap)).toBuffer({resolveWithObject: true})
-                                        let markerOffset = {x:0,y:0}
+                                        let markerOffset = {x:0,y:0,s:1}
                                         if (dmMapInfo.width!=info.width||dmMapInfo.height!=info.height) {
                                             let dmImage = cv.imdecode(dmMapImg)
-                                            let pcImage = cv.imdecode(mapfile)
+                                            let pcImage = cv.imdecode(mapfile).cvtColor(cv.COLOR_BGR2GRAY).canny(50,200)
+                                            let correlation = 0;
+                                            let rows = dmImage.rows
                                             if (dmMapInfo.width>info.width||dmMapInfo.height>info.height) {
-                                                let res = dmImage.matchTemplate(pcImage,cv.TM_CCOEFF)
-                                                let loc = res.minMaxLoc()
-                                                markerOffset.x -= loc.maxLoc.x
-                                                markerOffset.y -= loc.maxLoc.y
+                                                dmImage = dmImage.rescale(1.5)
+                                                while(dmImage.rows >= pcImage.rows && dmImage.cols >= pcImage.cols) {
+                                                    let res = dmImage.cvtColor(cv.COLOR_BGR2GRAY).canny(50,200).matchTemplate(pcImage,cv.TM_CCOEFF)
+                                                    let loc = res.minMaxLoc()
+                                                    if (loc.maxVal > correlation) {
+                                                        markerOffset.x = -1*loc.maxLoc.x
+                                                        markerOffset.y = -1*loc.maxLoc.y
+                                                        markerOffset.s = dmImage.rows/rows
+                                                        correlation = loc.maxVal
+                                                        console.log(`${playerMap._attrs.id}: Better correlation @ ${markerOffset.s}`)
+                                                    }
+                                                    dmImage = dmImage.rescale(.9)
+                                                }
                                             } else {
                                                 let res = pcImage.matchTemplate(dmImage,cv.TM_CCOEFF)
                                                 let loc = res.minMaxLoc()
-                                                markerOffset.x += loc.maxLoc.x
-                                                markerOffset.y += loc.maxLoc.y
+                                                markerOffset.x = loc.maxLoc.x
+                                                markerOffset.y = loc.maxLoc.y
                                             }
-                                            console.log(`${mapTitle} DM Map differs, offsetting markers by ${markerOffset.x},${markerOffset.y}`)
+                                            console.log(`${mapTitle} DM Map differs, offsetting markers by ${markerOffset.x},${markerOffset.y}${(markerOffset.s!=1)?`@${markerOffset.s}x`:''}`)
                                         }
+                                        prog.value += ((1/figures.length)*((1/mod._content.length)*2))
                                         if (dmMapImg.length > 10485760) dmMapImg = await sharp(dmMapImg).webp().toBuffer()
                                             //(book.remotePrefix)?`${book.remotePrefix}${dmMap}`:await sharp(zip.readFile(dmMap)).toBuffer()
                                         let tasks = []
@@ -2335,8 +2347,8 @@ function displayModal(path,id) {
                                                         size: "medium",
                                                         hidden: "YES",
                                                         locked: "YES",
-                                                        x: Math.round(x+(w/2)+markerOffset.x),
-                                                        y: Math.round(y+(h/2)+markerOffset.y),
+                                                        x: Math.round((x+(w/2)+markerOffset.x)*markerOffset.s),
+                                                        y: Math.round((y+(h/2)+markerOffset.y)*markerOffset.s),
                                                         content: {_attrs: { ref: `/page/${pageslug}#${marker.id}` }}
                                                     }
                                                 })
