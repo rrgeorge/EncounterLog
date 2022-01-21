@@ -175,6 +175,8 @@ class DDB {
                     request.on('response', (response) => {
                       let body = ''
                       if (response.statusCode != 200) {
+                          console.log(response)
+                          if (response.statusCode > 299)
                               reject(response.statusCode)
                       }
                       response.on('data', (chunk) => {

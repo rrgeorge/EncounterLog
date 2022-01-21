@@ -25,7 +25,7 @@ const chrome = `Mozilla/5.0 (${platform}) AppleWebKit/537.36 (KHTML, like Gecko)
 app.userAgentFallback = chrome
 var ignored = []
 var campaignChars = []
-var encounterhost = undefined
+var encounterhost = "http://localhost:8080"
 const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
     app.quit()
@@ -54,6 +54,7 @@ const preferences = new ElectronPreferences({
 	'dataStore': path.resolve(app.getPath('userData'), 'preferences.json'),
         'defaults': {
             'main': {
+                'encounterhost': 'http://localhost:8080',
                 'art': [ 'artwork', 'tokens' ],
                 'maps': 'nomaps',
                 'mapsloc': 'group',
@@ -281,6 +282,23 @@ app.on('ready', () => {
             }
         }
         win.webContents.on('did-navigate',checkLogin)
+        win.webContents.on('will-navigate',(e,u)=>{
+            if (u.match(/\/characters?\/[0-9]+/)) {
+                e.preventDefault()
+                const newWin = new BrowserWindow({
+                    show: true,
+                    width: 800,
+                    height: 600,
+                    webPreferences: {
+                        nodeIntegration: false,
+                        contextIsolation: true,
+                        nativeWindowOpen: true,
+                        sandbox: true,
+                    }
+                })
+                newWin.loadURL(u)
+            }
+        })
         win.loadURL('https://www.dndbeyond.com/my-campaigns',{httpReferrer: "https://www.dndbeyond.com"})
         win.webContents.on('did-navigate',(e,u,r,m) => {
             if (r==200) {
@@ -814,6 +832,7 @@ function requestCampaignChars(gameId,cobalt) {
 	})
 }
 async function connectGameLog(gameId,userId,campaignName) {
+        connectEWS()
 	const cobalt = await ddb.getCobaltAuth()
         ddb.gameId = gameId
         let updateChars
@@ -862,6 +881,7 @@ async function connectGameLog(gameId,userId,campaignName) {
                                         hitpoints: f.hitPointInfo.maximum
                                     }
                                 }
+                                console.log(model)
                                 _eWs?.send(JSON.stringify(model))
                             }
                         }
@@ -1092,32 +1112,12 @@ async function connectGameLog(gameId,userId,campaignName) {
 		request.write(JSON.stringify(msgJson))
 		request.end()
                 */
-            const connectEWS = () => {
-                getEAPI()
-                _eWs = (_eWs)? _eWs : new WebSocket(encounterhost.replace(/^http/,'ws') + "/ws")
-                _eWs.on('open',() => {
-                    _eWs.on('message',(data)=>{
-                        const msg = JSON.parse(data)
-                        if (msg?.name == 'tokensUpdated') {
-                            _eTokens = msg.data
-                        } else if (msg?.name == 'mapUpdated') {
-                            getEAPI()
-                        }
-                    })
-                    const msgJson = {
-                        "source": "EncounterLog",
-                        "type":     "chat",
-                        "content": "Connected to D&D Beyond GameLog for " + campaignName.trim()
-                    };
-                    _eWs.send(JSON.stringify({name: "createMessage", data: msgJson}))
-                })
-                _eWs.on('close',(code,reason) => {
-                    if (code == 1001 && _ws && !_ws?.isDisconnecting) {
-                            setTimeout(connectEWS,1000)
-                    }
-                })
-            }
-            connectEWS()
+                const msgJson = {
+                    "source": "EncounterLog",
+                    "type":     "chat",
+                    "content": "Connected to D&D Beyond GameLog for " + campaignName.trim()
+                };
+                _eWs?.send(JSON.stringify({name: "createMessage", data: msgJson}))
             updateChars()
 	})
 	ws.on('close',(code,reason) => {
@@ -1131,8 +1131,6 @@ async function connectGameLog(gameId,userId,campaignName) {
 		if (_ws?.pingInterval) clearInterval(_ws.pingInterval);
 		if (code == 1001 && !_ws.isDisconnecting) {
 			setTimeout(() => connectGameLog(gameId,userId,campaignName),1000)
-		} else {
-                    _eWs.close()
                 }
 		_ws = null
 		let msgJson = {
@@ -1235,4 +1233,34 @@ function getEAPI () {
         }
     })
     request.end()
+}
+function connectEWS() {
+    if (!encounterhost) {
+        dialog.showMessageBox(_win,{
+            title: "No Remote Host Set",
+            message: "EncounterPlus remote host not set.",
+            detail: "EncounterLog will not be able to send dice rolls or health updates to EncounterPlus.\nPlease set the EncounterPlus remote host in Preferences, then reload this page.",
+            type: "warning"
+        })
+        return
+    }
+    getEAPI()
+    if (!_eWs) {
+        _eWs = new WebSocket(encounterhost.replace(/^http/,'ws') + "/ws")
+        _eWs.on('open',() => {
+            _eWs.on('message',(data)=>{
+                const msg = JSON.parse(data)
+                if (msg?.name == 'tokensUpdated') {
+                    _eTokens = msg.data
+                } else if (msg?.name == 'mapUpdated') {
+                    getEAPI()
+                }
+            })
+        })
+        _eWs.on('close',(code,reason) => {
+            if (code == 1001 && _ws && !_ws?.isDisconnecting) {
+                    setTimeout(connectEWS,1000)
+            }
+        })
+    }
 }
