@@ -1727,10 +1727,32 @@ window.addEventListener('load', function() {
     }
     var tables = document.querySelectorAll('table')
     if (tables) {
-        for (var table of tables) {
-            var wrapper = document.createElement('div');
+        for (let table of tables) {
+            let wrapper = document.createElement('div');
             wrapper.className = "table-overflow-wrapper"
             table.parentNode.insertBefore(wrapper,table)
+            const dice = new RegExp(/[0-9]*[dD][0-9]+( ?[-+×÷*\/] ?[0-9,]+)?/)
+            if (table.rows[0]?.cells[0]?.textContent?.match(dice)) {
+                let rollButton = document.createElement('button');
+                rollButton.onclick = ()=>window.location.assign(\`https://encounter.plus/table-roll/\${table.dataset.contentChunkId}\`)
+                rollButton.style.backgroundColor="gray";
+                rollButton.style.color="white";
+                rollButton.style.border="0";
+                rollButton.style.borderRadius="20px";
+                rollButton.style.height="40px";
+                rollButton.style.padding="0 10px 0 10px";
+                rollButton.innerHTML = \`
+<svg width="25px" viewBox="0 0 25 25" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;vertical-align:middle">
+    <g transform="matrix(1,0,0,1,21.8613,7.4431)">
+        <g id="Layer-1" serif:id="Layer 1">
+            <path d="M0,10.095L-2.561,9.026C-2.636,9.001 -2.686,8.902 -2.66,8.802L0.124,1.89C0.149,1.84 0.224,1.865 0.224,1.915L0.224,9.946C0.224,10.071 0.1,10.145 0,10.095M-3.083,9.822L-0.671,10.816C-0.547,10.866 -0.522,11.039 -0.646,11.115L-7.211,14.894C-7.261,14.918 -7.31,14.868 -7.285,14.82L-3.282,9.871C-3.207,9.822 -3.133,9.796 -3.083,9.822M-15.44,9.871L-11.438,14.82C-11.413,14.868 -11.462,14.918 -11.512,14.894L-18.051,11.115C-18.176,11.039 -18.151,10.866 -18.026,10.816L-15.615,9.822C-15.565,9.796 -15.49,9.822 -15.44,9.871M-9.971,-1.641L-17.305,-1.268C-17.355,-1.268 -17.38,-1.343 -17.33,-1.367L-10.045,-5.545C-9.946,-5.619 -9.796,-5.52 -9.796,-5.395L-9.796,-1.79C-9.796,-1.716 -9.871,-1.641 -9.971,-1.641M-8.901,-1.79L-8.901,-5.42C-8.901,-5.545 -8.752,-5.619 -8.653,-5.57L-1.393,-1.367C-1.343,-1.343 -1.367,-1.268 -1.417,-1.268L-8.752,-1.641C-8.827,-1.641 -8.901,-1.716 -8.901,-1.79M-3.556,7.882L-8.379,-0.447C-8.454,-0.572 -8.354,-0.696 -8.23,-0.696L-0.224,-0.298C-0.1,-0.298 -0.05,-0.174 -0.074,-0.074L-3.282,7.858C-3.332,8.006 -3.506,8.006 -3.556,7.882M-4.5,9.946L-9.225,15.764C-9.299,15.838 -9.423,15.838 -9.473,15.764L-14.197,9.946C-14.272,9.846 -14.197,9.672 -14.073,9.672L-4.625,9.672C-4.5,9.672 -4.426,9.846 -4.5,9.946M-15.416,7.858L-18.623,-0.074C-18.673,-0.174 -18.598,-0.298 -18.474,-0.298L-10.468,-0.696C-10.343,-0.696 -10.244,-0.572 -10.318,-0.447L-15.142,7.882C-15.192,8.006 -15.366,8.006 -15.416,7.858M-4.401,8.752L-14.297,8.752C-14.421,8.752 -14.496,8.603 -14.446,8.503L-9.498,-0.074C-9.423,-0.174 -9.274,-0.174 -9.225,-0.074L-4.276,8.503C-4.202,8.628 -4.276,8.752 -4.401,8.752M-18.822,1.89L-16.037,8.802C-16.013,8.876 -16.037,8.976 -16.137,9.026L-18.698,10.095C-18.797,10.145 -18.921,10.071 -18.921,9.946L-18.921,1.915C-18.921,1.865 -18.847,1.84 -18.822,1.89M1.069,11.115C1.094,11.089 1.094,11.065 1.094,11.065L1.094,-0.87C1.094,-0.895 1.069,-0.895 1.069,-0.92L1.069,-0.945C1.069,-0.969 1.044,-0.969 1.044,-0.969L1.044,-0.994L1.02,-1.019C1.02,-1.019 0.994,-1.044 0.97,-1.044L0.944,-1.044L-9.125,-6.887C-9.274,-6.962 -9.448,-6.962 -9.573,-6.887L-19.593,-1.094C-19.618,-1.094 -19.618,-1.069 -19.643,-1.069L-19.667,-1.069L-19.767,-0.969L-19.792,-0.945L-19.792,-0.92C-19.792,-0.92 -19.792,-0.895 -19.817,-0.895L-19.817,10.941C-19.817,10.965 -19.792,10.991 -19.792,11.015C-19.792,11.039 -19.767,11.065 -19.742,11.089L-19.742,11.115C-19.742,11.164 -19.717,11.189 -19.692,11.189C-19.667,11.214 -19.667,11.214 -19.643,11.239L-19.593,11.239L-9.573,17.032C-9.573,17.032 -9.548,17.032 -9.548,17.057L-9.175,17.057C-9.175,17.057 -9.15,17.057 -9.15,17.032L0.87,11.239L0.92,11.239C0.92,11.239 0.944,11.239 0.944,11.214L0.97,11.189C0.97,11.189 0.994,11.189 0.994,11.164L1.02,11.139C1.02,11.139 1.02,11.115 1.044,11.115C1.044,11.139 1.044,11.115 1.069,11.115" style="fill-rule:nonzero;fill:white"/>
+        </g>
+    </g>
+</svg>
+<span>ROLL</span>
+                \`
+                wrapper.appendChild(rollButton)
+            }
             wrapper.appendChild(table)
         }
     }
@@ -1957,7 +1979,10 @@ function displayModal(path,id) {
                 zip.addFile('assets/js/custom.js',customjs)
                 const dice = new RegExp(/[0-9]*[dD][0-9]+( ?[-+×÷*\/] ?[0-9,]+)?/)
                 let rollTables = []
+                prog.text = "Searching for Roll Tables..."
+                prog.detail = "Scanning pages..."
                 for (const page of mod._content) {
+                    prog.value += ((1/mod._content.length)*4)
                     if (!page.page) continue
                     const dom = new jsdom.JSDOM(page.page.content)
                     const pageTables = dom.window.document.querySelectorAll('table')
@@ -1990,10 +2015,11 @@ function displayModal(path,id) {
                         if (!title) {
                             continue
                         }
+                        prog.detail = title
                         let rollTable = {
                             name: title,
-                            slug: slugify(`Table ${rollTables.length+1}: ${title}`),
-                            id: uuid5(`https://www.dndbeyond.com/${book.sourceURL}/tables/${rollTables.length+1}`,uuid5.URL),
+                            slug: slugify(`${mod._content.find(s=>s.code).code}-${rollTables.length+1}: ${title}`),
+                            id: table.dataset.contentChunkId || uuid5(`https://www.dndbeyond.com/${book.sourceURL}/tables/${rollTables.length+1}`,uuid5.URL),
                             source: mod._content.find(s=>s.code).code,
                             columns: [],
                             rows: []
@@ -2017,9 +2043,12 @@ function displayModal(path,id) {
                                 subHeader = tableRow.cells[1].textContent.trim()
                             }
                             if (subHeader && subHeader.match(dice)) {
+                                if (subtable) rollTables.push(subtable)
+                                prog.detail = `${rollTable.name}: ${subHeader}`
                                 subtable = {
-                                    name: `${rollTable.name}; ${subHeader}`,
-                                    slug: slugify(`Table ${rollTables.length+2}: ${title}-${subHeader}`),
+                                    name: `${subHeader}`,
+                                    descr: `Subtable of <a href="/table/${rollTable.id}">${rollTable.name}</a>`,
+                                    slug: slugify(`${mod._content.find(s=>s.code).code}-${rollTables.length+2}: ${subHeader}`),
                                     id: uuid5(`https://www.dndbeyond.com/${book.sourceURL}/tables/${rollTables.length+2}`,uuid5.URL),
                                     source: mod._content.find(s=>s.code).code,
                                     columns: [
@@ -2028,7 +2057,7 @@ function displayModal(path,id) {
                                     ],
                                     rows: []
                                 }
-                                rollTable.rows.push([tableRow.cells[0].textContent.trim(),`<table>${subtable.name}</table>`])
+                                rollTable.rows.push([tableRow.cells[0].textContent.trim(),`[${subtable.name}](/table/${subtable.id})`])
                                 continue
                             }
                             for (let i=0; i<tableRow.cells.length; i++) {
@@ -2081,6 +2110,7 @@ function displayModal(path,id) {
                                 rollTable.rows.push(row)
                             }
                         }
+                        if (subtable) rollTables.push(subtable)
                         rollTable.rows = rollTable.rows.sort((a,b)=>parseInt(a[0])-parseInt(b[0]))
                         rollTables.push(rollTable)
                     }
