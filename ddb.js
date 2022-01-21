@@ -817,7 +817,7 @@ class DDB {
     async getMonsters(source = 0,filename,zip=null,imageMap=null,prog=null,homebrew=false) {
         const url = "https://monster-service.dndbeyond.com/v1/Monster"
         var params
-        const count = await this.getMonsterCount(source,homebrew).catch((e)=>console.log(e))
+        const count = (source instanceof Array)?source.length:await this.getMonsterCount(source,homebrew).catch((e)=>console.log(e))
         console.log(`Source ${source} has ${count} monsters`)
         let pos = 0
         if(!prog) prog = new ProgressBar({title: "Please wait...",text: "Converting monsters...", detail: "Please wait...", indeterminate: false, maxValue: count})
@@ -830,7 +830,7 @@ class DDB {
         let monsters = []
         while ( pos <= count && count > 0) {
             if (!homebrew) {
-                const ids = await new Promise((resolve,reject)=>{
+                const ids = (source instanceof Array)?source:await new Promise((resolve,reject)=>{
                     if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
                         let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
                         manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
@@ -1210,6 +1210,14 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                     largeAvatar: (c.BFile)?`listing_images/${c.BFile}`:null
                 } )
             })
+            let monsterIds = []
+            db.each("SELECT * FROM RPGMonster",(e,c)=>{
+                if (e) {
+                    console.log(e)
+                    return
+                }
+                monsterIds.push(c.ID)
+            })
             prog.text = "Converting pages..."
             db.each("SELECT C.*,P.Slug AS ParentSlug FROM Content C LEFT JOIN Content P ON P.CobaltID = C.ParentID ORDER BY C.ParentID ASC, C.CobaltID ASC, C.ID ASC",(e,c)=>{
                 if (e) {
@@ -1266,7 +1274,7 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                     mod._content.push(page)
                 }
                 pos += 1
-                prog.value = 25+((pos/pageCount)*25)
+                prog.value = 25+((pos/pageCount)*5)
             },
             async () => {
                 prog.detail = "Writing stylesheets"
@@ -1601,6 +1609,7 @@ h1 + p:not(.no-fancy)::first-letter {
                     } catch (e) {
                         console.log(`Error loading css: ${e}`)
                     }
+                    prog.value += ((1/this.css.length)*2)
                 }
                 if (moduleId <= 2) {
                     let dwarfIntro = await this.getImage("https://media-waterdeep.cursecdn.com/attachments/thumbnails/0/619/850/190/dwarfintro.png").catch(e=>console.log(`Error retrieving missing dwarf intro: ${e}`))
@@ -2108,6 +2117,7 @@ function displayModal(path,id) {
                         }
                     }
                     for (const page of mod._content) {
+                        prog.value += ((1/mod._content.length))
                         if (!page.page) continue
                         const dom = new jsdom.JSDOM(page.page.content)
                         let mapsort = page.page._attrs.sort*100
@@ -2121,6 +2131,7 @@ function displayModal(path,id) {
                         }
                         if (figures) {
                             for (let figure of figures) {
+                                prog.value += ((1/figures.length)*((1/mod._content.length)*4))
                                 let mapTitle,mapUrl,dmMap
                                 if (figure.classList.contains("compendium-image-with-subtitle-center")) {
                                     mapTitle = figure.textContent.trim()
@@ -2183,6 +2194,7 @@ function displayModal(path,id) {
                                     }
                                 }
                                 const grid = await getGrid(mapfile);
+                                prog.value += ((1/figures.length)*((1/mod._content.length)*3))
                                 console.log(`This might be a map: ${mapUrl}`)
                                 let playerMap = {
                                     _name: "map",
@@ -2240,6 +2252,7 @@ function displayModal(path,id) {
                                         gVisionClient.close()
                                         console.log(`Processing markers for ${mapTitle}...`)
                                         ocrResult?.textAnnotations?.forEach((word,i)=>{
+                                            prog.value += ((1/ocrResult.textAnnotations.length)*((1/mod._content.length)))
                                             if (i === 0) {
                                                 prog.detail = `${mapTitle} - Matching markers (0%)`
                                                 const mapScale = /(1 square)? = ([0-9]+) (.+)/mi.exec(word.description)
@@ -2307,11 +2320,14 @@ function displayModal(path,id) {
                                 console.log(`Adding MAP: ${mapTitle}`)
                                 page.page.content = page.page.content.replaceAll(new RegExp(`href="${mapUrl}"`,'g'),`href="/map/${playerMap._attrs.id}"`);
                                 mod._content.push(playerMap)
+                                
                             }
                         }
+                        prog.value += ((1/mod._content.length)*3)
                         })())
                     }
                     if (mapJobs.length > 0) await Promise.all(mapJobs)
+                    prog.value = 50
                 }
                 let modImg = mod._content.find(c=>c?.image)
                 if (zip.getEntry(modImg.image)) {
@@ -2330,7 +2346,7 @@ function displayModal(path,id) {
                 prog.text = "Converting Monsters..."
                 prog.detail = "Retrieving Monsters..."
                 prog.value = 50
-                var compM = await this.getMonsters(moduleId,null,zip,imageMap,prog)||[]
+                var compM = await this.getMonsters(monsterIds,null,zip,imageMap,prog)||[]
                 console.log("Retrieving Items...")
                 prog.text = "Converting Items..."
                 prog.detail = "Retrieving Items..."
