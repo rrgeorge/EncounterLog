@@ -859,32 +859,30 @@ async function connectGameLog(gameId,userId,campaignName) {
                             }
                         },1000)
                         })()`).catch(e=>console.log(`Could not set timer: ${e}`))
+                    if (_eWs?.readyState !== WebSocket.open)
+                        connectEWS
                     for(let f of found) {
                         let conditions = f.conditions.map(c=>`i-condition-white-${c.name.toLowerCase()}`)
                         let senses = f.senses.map(s=>`${s.name} ${s.distance}`)
                         let exhaustion = f.conditions.find(c=>c.name.toLowerCase()=="exhaustion")?.level||0
-                       /* 
-                        const request = net.request({url: encounterhost+"/api/messages",method: "POST"})
-                        request.on('error',e => console.error(e))
-                        request.write(JSON.stringify(rollJson))
-                        request.end()
-                        */
-                        for (const token of _eTokens.filter(t=>t.reference.startsWith('/player/'))) {
-                            if (token.name == f.name && (token.health != (f.hitPointInfo.current+f.hitPointInfo.temp) || token.hitpoints != f.hitPointInfo.maximum)) {
-                                console.log(`Update ${f.name}`)
-                                const model = {
-                                    name: "updateModel",
-                                    model: "token",
-                                    data: {
-                                        id: token.id,
-                                        health: f.hitPointInfo.current+f.hitPointInfo.temp,
-                                        hitpoints: f.hitPointInfo.maximum
-                                    }
+                        const token = _eTokens.filter(t=>t.reference.startsWith('/player/')).find(t=>t.name==f.name)
+                        if (token && (token.health != (f.hitPointInfo.current+f.hitPointInfo.temp) || token.hitpoints != f.hitPointInfo.maximum)) {
+                            console.log(`Update ${f.name}`)
+                            const model = {
+                                name: "updateModel",
+                                model: "token",
+                                data: {
+                                    id: token.id,
+                                    health: f.hitPointInfo.current+f.hitPointInfo.temp,
+                                    hitpoints: f.hitPointInfo.maximum
                                 }
-                                console.log(model)
-                                _eWs?.send(JSON.stringify(model))
                             }
+                            if (_eWs?.readyState === WebSocket.OPEN)
+                                _eWs.send(JSON.stringify(model))
+                            else
+                                connectEWS(JSON.stringify(model))
                         }
+                        
                         _win.webContents.executeJavaScript(`(()=>{
                             let characters = document.querySelectorAll('.ddb-campaigns-character-card')
                             for (let character of characters) {
@@ -1117,7 +1115,10 @@ async function connectGameLog(gameId,userId,campaignName) {
                     "type":     "chat",
                     "content": "Connected to D&D Beyond GameLog for " + campaignName.trim()
                 };
-                _eWs?.send(JSON.stringify({name: "createMessage", data: msgJson}))
+                if (_eWs?.readyState === WebSocket.OPEN)
+                    _eWs.send(JSON.stringify({name: "createMessage", data: msgJson}))
+                else
+                    connectEWS(JSON.stringify({name: "createMessage", data: msgJson}))
             updateChars()
 	})
 	ws.on('close',(code,reason) => {
@@ -1138,13 +1139,10 @@ async function connectGameLog(gameId,userId,campaignName) {
 		    "type":     "chat",
 		    "content": "Disconnected from D&D Beyond GameLog for " + campaignName.trim()
 		};
-                if (_eWs) {
+                if (_eWs?.readyState === WebSocket.OPEN) {
                     _eWs.send(JSON.stringify({name: "createMessage", data: msgJson}))
                 } else {
-                    const request = net.request({url: encounterhost+"/api/messages",method: "POST"})
-                    request.on('error',e => console.error(e))
-                    request.write(JSON.stringify(msgJson))
-                    request.end()
+                    connectEWS(JSON.stringify({name: "createMessage", data: msgJson}))
                 }
 	})
 	ws.on('error',(e) => console.log(e))
@@ -1189,13 +1187,10 @@ async function connectGameLog(gameId,userId,campaignName) {
                                     } else if (roll.rollType == "to hit") {
                                             rollJson.content.type = "attack";
                                     }
-                                    if (_eWs) {
+                                    if (_eWs?.readyState === WebSocket.OPEN) {
                                         _eWs?.send(JSON.stringify({name: "createMessage", data: rollJson}))
                                     } else {
-                                        const request = net.request({url: encounterhost+"/api/messages",method: "POST"})
-                                        request.on('error',e => console.error(e))
-                                        request.write(JSON.stringify(rollJson))
-                                        request.end()
+                                        connectEWS(JSON.stringify({name: "createMessage", data: rollJson}))
                                     }
                             }
                     }
@@ -1214,6 +1209,7 @@ async function connectGameLog(gameId,userId,campaignName) {
 function getEAPI () {
     if (!encounterhost) return
     const request = net.request({url: encounterhost+"/api",method: "GET"})
+    request.on('error',e=>console.log(e))
     request.on('response',r=>{
         if (r.statusCode == 200) {
             let body = ''
@@ -1234,7 +1230,7 @@ function getEAPI () {
     })
     request.end()
 }
-function connectEWS() {
+function connectEWS(msg=null) {
     if (!encounterhost) {
         dialog.showMessageBox(_win,{
             title: "No Remote Host Set",
@@ -1245,13 +1241,18 @@ function connectEWS() {
         return
     }
     getEAPI()
-    if (!_eWs) {
+    if (!_eWs || _eWs.readyState !== WebSocket.OPEN) {
         _eWs = new WebSocket(encounterhost.replace(/^http/,'ws') + "/ws")
+        _eWs.on('error',e=>console.log(e,_eWs))
         _eWs.on('open',() => {
             _eWs.on('message',(data)=>{
                 const msg = JSON.parse(data)
                 if (msg?.name == 'tokensUpdated') {
                     _eTokens = msg.data
+                } else if (msg?.name == 'tokenUpdated') {
+                    let token = _eTokens.findIndex(t=>t.id==msg.data.id)
+                    if (token>=0)
+                        _eTokens[token] = msg.data
                 } else if (msg?.name == 'mapUpdated') {
                     getEAPI()
                 }
@@ -1262,5 +1263,7 @@ function connectEWS() {
                     setTimeout(connectEWS,1000)
             }
         })
+        if (msg)
+            _eWs.once('open',()=>_eWs.send(msg))
     }
 }

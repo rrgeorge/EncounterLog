@@ -2074,6 +2074,7 @@ function displayModal(path,id) {
                                         } else if (["magicitems","adventuring-gear","weapons","armor"].includes(ddburl.host)) {
                                             link.href = `/item/${uuid5(link.href, uuid5.URL)}`
                                         }
+                                        link.replaceWith(`[${link.textContent}](${link.href})`)
                                     } else {
                                         if (link.previousSibling?.textContent?.match(/(times|once) on/i)) {
                                             let tableElement = dom.window.document.createElement("table")
