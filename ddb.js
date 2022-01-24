@@ -1299,11 +1299,11 @@ body {
     padding: 0;
     margin: 0;
     color: black;
-    background: #fefefc;
 }
 #content {
     padding: 1.5rem 2rem;
     overflow: hidden;
+    background: none;
 }
 img {
     max-width: 100%;
@@ -1571,6 +1571,139 @@ h1 + p:not(.no-fancy)::first-letter {
     width: 50px;
     height: 50px;
 }
+/* start - flowchart styling */
+
+.Flowchart-Block {
+    border-width: 16px 16px 16px 16px !important;
+    border-style: solid !important;
+    border-color: transparent !important;
+    border-image-repeat: repeat !important;
+    border-image-slice: 16 16 16 16 fill !important;
+    background-color: transparent !important;
+    padding: 10px !important;
+    position: relative !important;
+    border-image-source: url(https://media-waterdeep.cursecdn.com/attachments/7/571/blockquote-flowchart.png) !important;
+    font-size: 14px;
+    line-height: 1.6 !important;
+    margin: 50px 0px 20px 0px !important;
+}
+.Flowchart-Block-Linked::before {
+    /* Adds a vertical line above and behind the current block */
+    content: '';
+    border-left: 3px solid #cdb078;
+    height: 100px;
+    left: 50%;
+    position: absolute;
+    margin-top: -80px;
+    z-index: -1;    /* this makes the line display BEHIND the boxes, so overlap is fine */
+}
+.Flowchart-Heading {
+    font-weight: bold;
+    text-transform: uppercase;
+    text-align: center;
+    font-size: 16px;
+    margin: 0px !important;
+}
+.Flowchart-Subheading {
+    font-style: italic;
+    text-align: center;
+    font-size: 16px;
+}
+/* end - flowchart styling */
+
+.compendium-image-subtitle { font-size: 14px; }
+.compendium-image-view-player { font-size: 16px; font-style: normal; }
+
+.Stat-Block-Styles_Stat-Block-Heading,
+.Stat-Block-Styles_Stat-Block-Heading--after-last-bar- {
+font-size: 16px !important;
+font-weight: bold;
+font-family: Roboto Condensed;
+}
+
+.Style-Group-3_Superscript {
+    vertical-align: super;
+    font-size: smaller;
+}
+
+th.compendium-small-column-width {
+width: 200px;
+}
+
+th.compendium-medium-column-width {
+width: 260px;
+}
+
+.random-encounters-table-auto {
+width: auto;
+}
+
+.image-float-clear {
+clear: both;
+}
+
+@media (min-width: 1024px) {
+    body {
+        background: url(https://media-waterdeep.cursecdn.com/attachments/6/480/ooxsq-diaint1k.jpg) no-repeat center 114px, url(https://media-waterdeep.cursecdn.com/attachments/0/84/background_texture.png) #f9f9f9;
+    }
+}
+
+@media (min-width: 1921px) {
+    body {
+        background: url(https://media-waterdeep.cursecdn.com/attachments/6/477/gbdtd-diaint2k.jpg) no-repeat center 114px, url(https://media-waterdeep.cursecdn.com/attachments/0/84/background_texture.png) #f9f9f9;
+    }
+}
+
+@media (min-width: 2561px) {
+    body {
+        background: url(https://media-waterdeep.cursecdn.com/attachments/6/479/mbupz-diaint4k.jpg) no-repeat center 114px, url(https://media-waterdeep.cursecdn.com/attachments/0/84/background_texture.png) #f9f9f9;
+    }
+}
+
+blockquote.adventure-read-aloud-text {
+    display: block !important;
+}
+
+.Serif-Character-Style_Italic-Serif, .Serif-Character-Style_Inline-Subhead-Serif, .Serif-Character-Style_Italic-Serif, .Serif-Character-Style_Bold-Italic-Serif, .Core-Styles_Core-Metadata, .Sans-Serif-Character-Styles_Bold-Italic-Sans-Serif {
+font-style: italic;
+}
+
+.Serif-Character-Style_Inline-Subhead-Serif, .Serif-Character-Style_Bold-Serif, .Serif-Character-Style_Bold-Italic-Serif, .CharOverride-2, .CharOverride-3, .Sans-Serif-Character-Styles_Boxed-Text-Title, .Sans-Serif-Character-Styles_Bold-Italic-Sans-Serif, .Table-Styles_Table-Title {
+font-weight: bold;
+}
+
+.CharOverride-2, .Sans-Serif-Character-Styles_Boxed-Text-Title {
+font-family: Roboto Condensed;
+}
+
+.Sans-Serif-Character-Styles_Boxed-Text-Title {
+font-size: 16px !important;
+margin-bottom: 5px !important;
+}
+
+.List-Styles_List-Item-Hanging, .List-Styles_List-Item-Hanging-Last {
+line-height: 1 !important;
+}
+
+.List-Styles_List-Item-Hanging-Last {
+padding-bottom: 20px;
+}
+
+.Core-Styles_Core-Hanging, .Core-Styles_Core-Hanging-Last, .Stat-Block-Styles_Stat-Block-Body--No-Space-After- {
+line-height: 1 !important;
+font-size: 15px !important;
+}
+
+.Core-Styles_Core-Metadata,
+.Serif-Character-Style_Inline-Subhead-Serif,
+.Serif-Character-Style_Italic-Serif, .Serif-Character-Style_Inline-Subhead-Serif {
+font-style: italic;
+}
+
+.Serif-Character-Style_Bold-Serif,
+.Serif-Character-Style_Inline-Subhead-Serif {
+font-weight: bold;
+}
 `.replaceAll(/url\((['"]?)((?:https?:)?\/\/.*?)(?:\1)\)/g,(m,m1,m2)=>{
                                 if (!m2.startsWith("http")) m2 = "https:" + m2
                                 let resName = uuid5(m2,uuid5.URL)
@@ -1602,7 +1735,8 @@ h1 + p:not(.no-fancy)::first-letter {
                                 if (path.extname(m2)) resName += path.extname(m2)
                                 if (prog.detail.endsWith("...")) prog.detail = `Retrieving and adding external resources`
                                 prog.detail += '.'
-                                this.getImage(m2).then(r=>zip.addFile(`assets/css/res/${resName}`,r)).catch(()=>{})
+                                if (!zip.getEntry(`assets/css/res/${resName}`))
+                                    this.getImage(m2).then(r=>zip.addFile(`assets/css/res/${resName}`,r)).catch((e)=>console.log(`${m2}-${e}`))
                                 return `url(res/${resName})`
                             }).replaceAll(/(background:.*) (114px)/g,"$1 0px").replace(/@media\(max-width:1023px\)\{\.tooltip/,"@media(max-width: 10px){.tooltip")
                         zip.addFile(`assets/css/${uuid5(css,uuid5.URL)}.css`,cssTxt)
@@ -2254,8 +2388,8 @@ function displayModal(path,id) {
                                             let pcImage = cv.imdecode(mapfile).cvtColor(cv.COLOR_BGR2GRAY).canny(50,200)
                                             let correlation = 0;
                                             let rows = dmImage.rows
+                                            dmImage = dmImage.rescale(1.5)
                                             if (dmMapInfo.width>info.width||dmMapInfo.height>info.height) {
-                                                dmImage = dmImage.rescale(1.5)
                                                 while(dmImage.rows >= pcImage.rows && dmImage.cols >= pcImage.cols) {
                                                     let res = dmImage.cvtColor(cv.COLOR_BGR2GRAY).canny(50,200).matchTemplate(pcImage,cv.TM_CCOEFF)
                                                     let loc = res.minMaxLoc()
@@ -2269,6 +2403,8 @@ function displayModal(path,id) {
                                                     dmImage = dmImage.rescale(.9)
                                                 }
                                             } else {
+                                                console.log("DM Map is significantly smaller than PC Map")
+                                                dmImage=dmImage.cvtColor(cv.COLOR_BGR2GRAY)
                                                 let res = pcImage.matchTemplate(dmImage,cv.TM_CCOEFF)
                                                 let loc = res.minMaxLoc()
                                                 markerOffset.x = loc.maxLoc.x
