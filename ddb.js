@@ -1796,6 +1796,7 @@ function makeRollLinks(el) {
                 let header;
                 while(sibling = sibling.previousElementSibling) {
                     header = (sibling.tagName.match(/H[1-9]/))? sibling:parent.querySelector("h1,h2,h3,h4,h5,h6,h7,h8")
+                    if (sibling.tagName == "STRONG" || (!sibling.tagName.match(/^t/i)&&sibling.className.toLowerCase().includes("table"))) header = sibling
                     if (header) break;
                 }
                 if (header) {
@@ -2129,7 +2130,9 @@ function displayModal(path,id) {
                         }
                         let parent = table;
                         let title = ""
-                        if (table.previousElementSibling?.tagName == "STRONG") {
+                        let headerId
+                        let heading
+                        if (table.previousElementSibling?.tagName == "STRONG" || (!table.previousElementSibling?.tagName.match(/^t/i)&&table.previousElementSibling?.className.toLowerCase().includes("table"))) {
                             title = table.previousElementSibling.textContent.trim()
                         } else {
                             while(parent) {
@@ -2137,8 +2140,22 @@ function displayModal(path,id) {
                                 let header;
                                 while(sibling = sibling.previousElementSibling) {
                                     if (sibling.tagName.match(/H[1-9]/)) {
-                                        header = sibling
+                                        if (!header)
+                                            header = sibling
+                                        if (!headerId) {
+                                            headerId = sibling.id
+                                            heading = sibling.textContent.trim()
+                                        }
                                         break
+                                    }
+                                    if (sibling.tagName == "STRONG" || (!sibling.tagName.match(/^t/i)&&sibling.className.toLowerCase().includes("table"))) {
+                                        if (!header) {
+                                            header = sibling
+                                            heading = sibling.textContent.trim()
+                                            headerId = header.id
+                                        }
+                                        if (headerId)
+                                            break
                                     }
                                 }
                                 if (header) {
@@ -2157,6 +2174,7 @@ function displayModal(path,id) {
                             slug: slugify(`${mod._content.find(s=>s.code).code}-${rollTables.length+1}: ${title}`),
                             id: table.dataset.contentChunkId || uuid5(`https://www.dndbeyond.com/${book.sourceURL}/tables/${rollTables.length+1}`,uuid5.URL),
                             source: mod._content.find(s=>s.code).code,
+                            descr: `<a href="/module/${mod._content.find(s=>s.code).code.toLowerCase()}/page/${page.page.slug}#${table.id||headerId||''}">${page.page.name}${(heading)?`: ${heading}`:''}</a>`,
                             columns: [],
                             rows: []
                         }
@@ -2210,7 +2228,19 @@ function displayModal(path,id) {
                                         }
                                         link.replaceWith(`[${link.textContent}](${link.href})`)
                                     } else {
-                                        if (link.previousSibling?.textContent?.match(/(times|once) on/i)) {
+                                        if (link.getAttribute("href")?.startsWith("#")) {
+                                            const linked = dom.window.document.querySelector(link.getAttribute("href"))
+                                            let tableLink
+                                            if (linked?.tagName == "TABLE") {
+                                                tableLink = linked
+                                            } else if  (linked?.nextElementSibling?.tagName == "TABLE" ) {
+                                                tableLink = linked.nextElementSibling
+                                            } else {
+                                                tableLink = linked?.querySelector("table") || linked?.nextElementSibling?.querySelector("table")
+                                            }
+                                            if (tableLink?.tagName == "TABLE")
+                                                link.replaceWith(`[${link.innerText}](/table/${tableLink.dataset.contentChunkId})`)
+                                        } else if (link.previousSibling?.textContent?.match(/(times|once) on/i)) {
                                             let tableElement = dom.window.document.createElement("table")
                                             tableElement.textContent = link.textContent.trim()
                                             link.replaceWith(tableElement)
