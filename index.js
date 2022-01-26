@@ -151,6 +151,7 @@ function openURL(u) {
             preferences.value('main.encounterhost',epurl)
             preferences.save()
             encounterhost = epurl
+            if (_eWs?.readyState === WebSocket.OPEN) _eWs.close(1001,"Going away")
         })
     }
 }
@@ -204,6 +205,8 @@ app.on('ready', () => {
 
         console.log(ddb.art,ddb.maps)
         preferences.on('save', (preferences) => {
+                if (encounterhost != preferences.main.encounterhos && _eWs?.readyState === WebSocket.OPEN)
+                    _eWs.close(1001,"Going away")
                 encounterhost = preferences.main.encounterhost
                 ddb.art = preferences.main.art
                 ddb.maps = preferences.main.maps
@@ -835,13 +838,13 @@ async function connectGameLog(gameId,userId,campaignName) {
         connectEWS()
 	const cobalt = await ddb.getCobaltAuth()
         ddb.gameId = gameId
-        let updateChars
+        let updateChars = () => {}
 	requestCampaignChars(gameId,cobalt).then(chars=>{
             const charIds = chars.map(c=>c.id)
-            updateChars = ()=>{
+            updateChars = (chars=charIds)=>{
                 if (_dmScreen) clearTimeout(_dmScreen)
-                const screenTimeout = Math.floor(Math.random() * (70 - 50 + 1) + 50)
-                ddb.getCampaignCharacterStatus(charIds).then(found=>{
+                const screenTimeout = Math.floor(Math.random() * (120 - 50 + 1) + 50)
+                ddb.getCampaignCharacterStatus(chars).then(found=>{
                     _win.webContents.executeJavaScript(`(()=>{
                         document.getElementById("campaign-status-timer")?.remove()
                         let header = document.querySelector('.ddb-campaigns-detail-body-listing-header-secondary')
@@ -1158,6 +1161,10 @@ async function connectGameLog(gameId,userId,campaignName) {
                         .replaceAll(/\x1e/g,"\u201e")
                         .replaceAll(/\x1f/g,"\u201f")
                     )
+                    if (msgData.eventType == "character-sheet/character-update/fulfilled") {
+                        if (msgData.data.characterId) updateChars([msgData.data.characterId])
+                        return;
+                    }
                     if (msgData.eventType != "dice/roll/fulfilled") {
                         return
                     }
@@ -1208,7 +1215,7 @@ async function connectGameLog(gameId,userId,campaignName) {
 
 function getEAPI () {
     if (!encounterhost) return
-    const request = net.request({url: encounterhost+"/api",method: "GET"})
+    const request = net.request({url: (new URL("api",encounterhost)).href,method: "GET"})
     request.on('error',e=>console.log(e))
     request.on('response',r=>{
         if (r.statusCode == 200) {
@@ -1242,7 +1249,9 @@ function connectEWS(msg=null) {
     }
     getEAPI()
     if (!_eWs || _eWs.readyState !== WebSocket.OPEN) {
-        _eWs = new WebSocket(encounterhost.replace(/^http/,'ws') + "/ws")
+        let epWs = new URL("ws",encounterhost)
+        epWs.protocol = epWs.protocol.replace("http","ws")
+        _eWs = new WebSocket(epWs.href)
         _eWs.on('error',e=>console.log(e,_eWs))
         _eWs.on('open',() => {
             _eWs.on('message',(data)=>{
