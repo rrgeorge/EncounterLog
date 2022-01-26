@@ -868,7 +868,7 @@ async function connectGameLog(gameId,userId,campaignName) {
                         let conditions = f.conditions.map(c=>`i-condition-white-${c.name.toLowerCase()}`)
                         let senses = f.senses.map(s=>`${s.name} ${s.distance}`)
                         let exhaustion = f.conditions.find(c=>c.name.toLowerCase()=="exhaustion")?.level||0
-                        const token = _eTokens.filter(t=>t.reference.startsWith('/player/')).find(t=>t.name==f.name)
+                        const token = _eTokens.filter(t=>t.reference.startsWith('/player/')).find(t=>t.name.trim()==f.name.trim())
                         if (token && (token.health != (f.hitPointInfo.current+f.hitPointInfo.temp) || token.hitpoints != f.hitPointInfo.maximum)) {
                             console.log(`Update ${f.name}`)
                             const model = {
@@ -1262,7 +1262,7 @@ function connectEWS(msg=null) {
                     let token = _eTokens.findIndex(t=>t.id==msg.data.id)
                     if (token>=0)
                         _eTokens[token] = msg.data
-                } else if (msg?.name == 'mapUpdated') {
+                } else if (msg?.name == 'mapUpdated' || msg?.name == 'mapLoaded') {
                     getEAPI()
                 }
             })
