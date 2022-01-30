@@ -2220,13 +2220,14 @@ function displayModal(path,id) {
                                     if (link.href?.startsWith("ddb://")) {
                                         let ddburl = new URL(link.href)
                                         if (ddburl.host == "spells") {
-                                            link.href = `/spell/${uuid5(link.href, uuid5.URL)}`
+                                            link.replaceWith(`[${link.textContent}](/spell/${uuid5(link.href, uuid5.URL)})`)
                                         } else if (ddburl.host == "monsters") {
-                                            link.href = `/monster/${uuid5(link.href, uuid5.URL)}`
+                                            link.replaceWith(`[${link.textContent}](/monster/${uuid5(link.href, uuid5.URL)})`)
                                         } else if (["magicitems","adventuring-gear","weapons","armor"].includes(ddburl.host)) {
-                                            link.href = `/item/${uuid5(link.href, uuid5.URL)}`
+                                            link.replaceWith(`[${link.textContent}](/item/${uuid5(link.href, uuid5.URL)})`)
+                                        } else {
+                                            link.replaceWith(link.textContent)
                                         }
-                                        link.replaceWith(`[${link.textContent}](${link.href})`)
                                     } else {
                                         if (link.getAttribute("href")?.startsWith("#")) {
                                             const linked = dom.window.document.querySelector(link.getAttribute("href"))
@@ -2239,7 +2240,7 @@ function displayModal(path,id) {
                                                 tableLink = linked?.querySelector("table") || linked?.nextElementSibling?.querySelector("table")
                                             }
                                             if (tableLink?.tagName == "TABLE")
-                                                link.replaceWith(`[${link.innerText}](/table/${tableLink.dataset.contentChunkId})`)
+                                                link.replaceWith(`[${link.textContent}](/table/${tableLink.dataset.contentChunkId})`)
                                         } else if (link.previousSibling?.textContent?.match(/(times|once) on/i)) {
                                             let tableElement = dom.window.document.createElement("table")
                                             tableElement.textContent = link.textContent.trim()
