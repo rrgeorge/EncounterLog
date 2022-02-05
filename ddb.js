@@ -37,7 +37,7 @@ function sanitize(text,rulesdata=null) {
                         if (ddburl) {
                             let source = rulesdata.sources?.find(s=>s.sourceURL.toLowerCase()==ddburl[1].toLowerCase())
                             if (source) {
-                                elem.attribs.href=elem.attribs.href.replaceAll(new RegExp(`https:\/\/(?:www\.)?dndbeyond\.com\/${source.sourceURL}`,'ig'),`/module/${source.name.toLowerCase()}/page`)
+                                elem.attribs.href=elem.attribs.href.replaceAll(new RegExp(`https:\/\/(?:www\.)?dndbeyond\.com\/${source.sourceURL}`,'ig'),`/module/${source.name.toLowerCase()}/page`).replaceAll(/\/page$/g,'/page/table-of-contents')
                             }
                         }
                     }
@@ -1184,7 +1184,7 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                 if (c.ID===moduleId) {
                     mod._content.find(s=>s.image).image = `listing_images/${c.AFile}`
                     mod._content.push({code: c.Name||''})
-                    mod._content.push({category: c.Type||''})
+                    mod._content.push({category: c.Type?.toLowerCase()||''})
                     mod._content.push({description: convert(c.ProductBlurb).trim()||''})
                 }
             })
@@ -1241,7 +1241,14 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                 <a href="images/cover.jpg">View Cover Art</a>
             </div>
                         `:'') +
-                        `<div id="content" class="site site-main container main content-container primary-content ${(c.Slug=='table-of-contents')?'body-category':'body-page'}"><article class="p-article p-article-a"><div class="p-article-content u-typography-format" id="mainpage">` +
+                        `<div id="content" class="site site-main container main content-container primary-content ${(c.Slug=='table-of-contents')?'body-category':'body-page'}"><article class="p-article p-article-a"><div class="p-article-content u-typography-format" id="mainpage">${(c.Slug=='table-of-contents')?`
+<script src="./assets/js/fuse.min.js"></script>
+<script src="./assets/js/search.js"></script>
+<div class="searchbox" style="text-align: center">
+<input type="search" placeholder="Search..." incremental onsearch="doSearch(this,'#searchResults')">
+<div id="searchResults" style="text-align: justify"></div>
+</div>
+`:''}` +
                         he.decode(c.RenderedHtml
                             .replaceAll(/ddb:\/\/compendium\/([^\/\"]*?)\"/g,"/module/$1/table-of-contents\"")
                             .replaceAll(/ddb:\/\/compendium\/([^\/\"]*?)\//g,"/module/$1/page/")
@@ -2116,12 +2123,33 @@ function displayModal(path,id) {
                 zip.addFile('assets/js/custom.js',customjs)
                 const dice = new RegExp(/[0-9]*[dD][0-9]+( ?[-+×÷*\/] ?[0-9,]+)?/)
                 let rollTables = []
+                let searchMap = []
                 prog.text = "Searching for Roll Tables..."
                 prog.detail = "Scanning pages..."
                 for (const page of mod._content) {
                     prog.value += ((1/mod._content.length)*4)
                     if (!page.page) continue
                     const dom = new jsdom.JSDOM(page.page.content)
+                    const idItems  = dom.window.document.querySelectorAll('[id]')
+                    let lastid, lasth
+                    for (const idItem of idItems) {
+                        lastid = idItem.id
+                        if (idItem.tagName.match(/h[1-6]/i)) lasth = idItem.textContent.trim()
+                        if (!lastid || !lasth) continue
+                        let index = {
+                            name: lasth,
+                            slug: page.page.slug,
+                            id: lastid,
+                            text: ""
+                        }
+                        let sibling = idItem
+                        while(sibling = sibling.nextElementSibling) {
+                            if (sibling.id) break
+                            if (!sibling.textContent.trim()) continue
+                            index.text += sibling.textContent.trim()+"\n"
+                        }
+                        searchMap.push(index)
+                    }
                     const pageTables = dom.window.document.querySelectorAll('table')
                     if (pageTables.length<1) continue
                     for (const table of pageTables) {
@@ -2284,6 +2312,58 @@ function displayModal(path,id) {
                     }
                 }
                 if (rollTables.length > 0) zip.addFile("tables.json",JSON.stringify(rollTables))
+                const searchIdx = require('fuse.js').createIndex(['name','text'],searchMap)
+//                zip.addFile("search.json",JSON.stringify({str:searchMap,idx:searchIdx}))
+                zip.addFile("assets/js/search.js",`
+var fuse;
+const search = ${JSON.stringify(searchMap)};
+const searchIdx = Fuse.parseIndex(${JSON.stringify(searchIdx)});
+const options = {
+        includeMatches: true,
+        minMatchCharLength: 3,
+        threshold: 0.2,
+        ignoreLocation: true,
+        keys: ['name','text']
+    };
+var fuse = new Fuse(search,options,searchIdx);
+function doSearch(el,resId) {
+    if (!fuse) {
+        document.querySelector(resId).innerText = "Search Index not loaded"
+        return 
+    } 
+    let result = fuse.search(el.value)
+    let resDiv = document.querySelector(resId)
+    if (result.length > 0) {
+        resDiv.innerText = ""
+        for (const item in result) {
+            const itm = result[item].item
+            resDiv.innerHTML += \`<a href="https://encounter.plus/page/\${itm.slug}#\${itm.id}">\${itm.name}</a>\`;
+            const match = result[item].matches.find(k=>k.key=="text")
+            const secReg = new RegExp(/[.?!\\n]/,"gms")
+            if (match) {
+                let idx,start,end;
+                for (idxs of match.indices) {
+                    if (!idx || idxs[1]-idxs[0] > idx[1]-idx[0]) idx = idxs
+                }
+                while(m = secReg.exec(itm.text)) {
+                    if (m.index < idx[0]) start = m.index + 1
+                    if (!end && m.index > idx[1]) {
+                        end = m.index + 1
+                        break
+                    }
+                }
+                if (!start) start = idx[0]
+                if (!end) end = idx[1]+1
+                resDiv.innerHTML += \`<br>\${itm.text.substring(start,end).trim()}<br>\`
+            } else {
+                resDiv.innerHTML += \`<br>\${itm.name.trim()}<br>\`
+            }
+        }
+    } else if (el.value.length > 0) {
+        resDiv.innerText = "Not found."
+    }
+}`)
+                zip.addLocalFile(path.join(require.resolve('fuse.js'),"../fuse.min.js"),"assets/js")
                 if (this.maps && this.maps != "nomaps") {
                     const getGrid = require('./getgrid')
                     prog.text = "Searching for Maps..."
