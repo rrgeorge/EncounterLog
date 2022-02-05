@@ -332,10 +332,10 @@ class DDB {
                     }
                     if (!combatant.combatant.label) {
                         let i = 1
-                        let label = combatant.combatant.name.substr(0,1) + i.toString()
+                        let label = combatant.combatant.name.substring(0,1) + i.toString()
                         while(labels.includes(label)) {
                             i++
-                            label = combatant.combatant.name.substr(0,1) + i.toString()
+                            label = combatant.combatant.name.substring(0,1) + i.toString()
                         }
                         combatant.combatant.label = label
                         labels.push(label)
@@ -1250,7 +1250,7 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
 </div>
 `:''}` +
                         he.decode(c.RenderedHtml
-                            .replaceAll(/ddb:\/\/compendium\/([^\/\"]*?)\"/g,"/module/$1/table-of-contents\"")
+                            .replaceAll(/ddb:\/\/compendium\/([^\/\"]*?)\"/g,"/module/$1/page/table-of-contents\"")
                             .replaceAll(/ddb:\/\/compendium\/([^\/\"]*?)\//g,"/module/$1/page/")
                             .replaceAll(/\/page\/([^\"]*#[^\"]*)/g,m=>m.replace(/#(?=.*?#)/g,'-'))
                             .replaceAll(new RegExp(`ddb:\/\/image\/${book.name.toLowerCase()}\/`,'g'),"")
@@ -1733,7 +1733,7 @@ font-weight: bold;
                                     if (m2.startsWith("../images/letters","/images/")) {
                                         m2 = m2.replace(/\/images\/letters\//,"/images/")
                                     }
-                                    if (zip.getEntry(m2.substr(3))) {
+                                    if (zip.getEntry(m2.substring(3))) {
                                         return `url("../${m2}")`
                                     }
                                     m2 = url.resolve(css,m2)
@@ -1822,7 +1822,7 @@ function makeRollLinks(el) {
                 }
             }
             let remainder = el.splitText(roll.index)
-            remainder.data = remainder.data.substr(roll[0].length)
+            remainder.data = remainder.data.substring(roll[0].length)
             let rollLink = document.createElement("A")
             if (title)
                 rollLink.href = \`/roll/\${roll[0].replaceAll(/,/g,'')}/\${title}\`
@@ -1862,9 +1862,9 @@ window.addEventListener('load', function() {
         makeRollLinks(el)
     }
     var frag = window.location.hash
-    if (frag && !document.getElementById(frag.substr(1))) {
+    if (frag && !document.getElementById(frag.substring(1))) {
         for (var slug of Object.keys(knownIds)) {
-            if ([pageId,window.parentUUID].includes(knownIds[slug].parent) && knownIds[slug].ids.includes(frag.substr(1))) {
+            if ([pageId,window.parentUUID].includes(knownIds[slug].parent) && knownIds[slug].ids.includes(frag.substring(1))) {
                 window.location.assign(\`https://encounter.plus/page/\${slug}\${frag}\`)
             }
         }
@@ -2010,9 +2010,9 @@ window.addEventListener('click', function(e) {
     var target = e.target.closest('a') || e.target;
     if (target.tagName === 'A') {
 	var link = target.getAttribute('href');
-	if (link.startsWith("#") && !document.getElementById(link.substr(1))) {
+	if (link.startsWith("#") && !document.getElementById(link.substring(1))) {
 	    for (var slug of Object.keys(knownIds)) {
-		if ([pageId,window.parentUUID].includes(knownIds[slug].parent) && knownIds[slug].ids.includes(link.substr(1))) {
+		if ([pageId,window.parentUUID].includes(knownIds[slug].parent) && knownIds[slug].ids.includes(link.substring(1))) {
                     e.preventDefault()
 		    window.location.assign(\`https://encounter.plus/page/\${slug}\${link}\`)
 		    return
@@ -2162,6 +2162,8 @@ function displayModal(path,id) {
                         let heading
                         if (table.previousElementSibling?.tagName == "STRONG" || (!table.previousElementSibling?.tagName.match(/^t/i)&&table.previousElementSibling?.className.toLowerCase().includes("table"))) {
                             title = table.previousElementSibling.textContent.trim()
+                            headerId = table.previousElementSibling.id
+                            heading = title
                         } else {
                             while(parent) {
                                 let sibling = parent;
@@ -2258,7 +2260,7 @@ function displayModal(path,id) {
                                         }
                                     } else {
                                         if (link.getAttribute("href")?.startsWith("#")) {
-                                            const linked = dom.window.document.querySelector(link.getAttribute("href"))
+                                            const linked = dom.window.document.querySelector(`[id='${link.getAttribute("href").substring(1)}']`)
                                             let tableLink
                                             if (linked?.tagName == "TABLE") {
                                                 tableLink = linked
@@ -2267,8 +2269,12 @@ function displayModal(path,id) {
                                             } else {
                                                 tableLink = linked?.querySelector("table") || linked?.nextElementSibling?.querySelector("table")
                                             }
-                                            if (tableLink?.tagName == "TABLE")
+                                            if (tableLink?.tagName == "TABLE") {
                                                 link.replaceWith(`[${link.textContent}](/table/${tableLink.dataset.contentChunkId})`)
+                                            } else {
+                                                const fullLink = `/module/${mod._content.find(s=>s.code).code.toLowerCase()}/page/${page.page.slug}${link.getAttribute("href")}`
+                                                link.replaceWith(`[${link.textContent}](${fullLink})`)
+                                            }
                                         } else if (link.previousSibling?.textContent?.match(/(times|once) on/i)) {
                                             let tableElement = dom.window.document.createElement("table")
                                             tableElement.textContent = link.textContent.trim()
@@ -2313,9 +2319,10 @@ function displayModal(path,id) {
                 }
                 if (rollTables.length > 0) zip.addFile("tables.json",JSON.stringify(rollTables))
                 const searchIdx = require('fuse.js').createIndex(['name','text'],searchMap)
-//                zip.addFile("search.json",JSON.stringify({str:searchMap,idx:searchIdx}))
                 zip.addFile("assets/js/search.js",`
-var fuse;
+//not sure why this is needed...
+window.e = undefined;
+
 const search = ${JSON.stringify(searchMap)};
 const searchIdx = Fuse.parseIndex(${JSON.stringify(searchIdx)});
 const options = {
@@ -2325,7 +2332,7 @@ const options = {
         ignoreLocation: true,
         keys: ['name','text']
     };
-var fuse = new Fuse(search,options,searchIdx);
+let fuse = new Fuse(search,options,searchIdx);
 function doSearch(el,resId) {
     if (!fuse) {
         document.querySelector(resId).innerText = "Search Index not loaded"
@@ -2337,7 +2344,7 @@ function doSearch(el,resId) {
         resDiv.innerText = ""
         for (const item in result) {
             const itm = result[item].item
-            resDiv.innerHTML += \`<a href="https://encounter.plus/page/\${itm.slug}#\${itm.id}">\${itm.name}</a>\`;
+            resDiv.innerHTML += \`<a href="/page/\${itm.slug}#\${itm.id}">\${itm.name}</a>\`;
             const match = result[item].matches.find(k=>k.key=="text")
             const secReg = new RegExp(/[.?!\\n]/,"gms")
             if (match) {
@@ -2559,7 +2566,7 @@ function doSearch(el,resId) {
                                                 }
                                                 return
                                             }
-                                            prog.detail = `${mapTitle} - Matching markers (${(100*(i+1)/(ocrResult.textAnnotations.length)).toFixed(0)}%) ${prog.detail.substr(prog.detail.indexOf(')')+1)}`
+                                            prog.detail = `${mapTitle} - Matching markers (${(100*(i+1)/(ocrResult.textAnnotations.length)).toFixed(0)}%) ${prog.detail.substring(prog.detail.indexOf(')')+1)}`
                                             let txt = word.description.replaceAll(/[\W_]+/g,'').trim();
                                             if (!txt) return
                                             let box = word.boundingPoly.vertices
@@ -2587,11 +2594,11 @@ function doSearch(el,resId) {
                                             }
                                             if (marker) {
                                                 console.log(`Adding marker for ${marker.textContent} to ${mapTitle}`)
-                                                prog.detail = `${prog.detail.substr(0,prog.detail.indexOf(')')+1)} ${marker.textContent.substr(0,marker.textContent.indexOf('.'))}`
+                                                prog.detail = `${prog.detail.substring(0,prog.detail.indexOf(')')+1)} ${marker.textContent.substring(0,marker.textContent.indexOf('.'))}`
                                                 playerMap._content.push({
                                                     marker: {
                                                         name: "",
-                                                        label: marker.textContent.substr(0,marker.textContent.indexOf('.')),
+                                                        label: marker.textContent.substring(0,marker.textContent.indexOf('.')),
                                                         color: "#ff0000",
                                                         shape: "circle",
                                                         size: "medium",
