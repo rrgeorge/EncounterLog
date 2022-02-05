@@ -2370,7 +2370,7 @@ function doSearch(el,resId) {
         resDiv.innerText = "Not found."
     }
 }`)
-                zip.addLocalFile(path.join(require.resolve('fuse.js'),"../fuse.min.js"),"assets/js")
+                zip.addFile("assets/js/fuse.min.js",fs.readFileSync(path.join(require.resolve('fuse.js'),"../fuse.min.js")))
                 if (this.maps && this.maps != "nomaps") {
                     const getGrid = require('./getgrid')
                     prog.text = "Searching for Maps..."
