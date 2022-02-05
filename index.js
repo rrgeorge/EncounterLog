@@ -15,7 +15,9 @@ const { convert } = require('html-to-text')
 
 var _ws = null
 var _eWs = null
+var _eCreatures = []
 var _eTokens = []
+var _knownConditions = []
 var _win = null
 var _dmScreen = null
 var ddb
@@ -54,7 +56,9 @@ const preferences = new ElectronPreferences({
 	'dataStore': path.resolve(app.getPath('userData'), 'preferences.json'),
         'defaults': {
             'main': {
-                'encounterhost': 'http://localhost:8080',
+                'encounerhost': 'http://localhost:8080',
+            },
+            'export': {
                 'art': [ 'artwork', 'tokens' ],
                 'maps': 'nomaps',
                 'mapsloc': 'group',
@@ -63,23 +67,54 @@ const preferences = new ElectronPreferences({
         },
 	'sections': [ {
 		'id': "main",
-		'label': "Settings",
-		'icon': "settings-gear-63",
+		'label': "EncounterPlus",
+		'icon': "multiple-11",
 		'form': {
 			'groups': [ {
+                                'label': "EncounterPlus Settings",
 				'fields': [
                                     {
 					'heading': "Preferences",
 					'key': 'prefs_message',
                                         'type': 'message',
-					'content': '<p>If you would like to forward dice rolls to EncounterPlus from a Campaign\'s Game Log, enter the EncounterPlus Server URL below. Then load a campaign page, and EncounterLog will automatically connect the Game Log to EncounterPlus</p>',
+					'content': '<p>If you would like to forward dice rolls to EncounterPlus from a Campaign\'s Game Log, update Token health and hitpoints, and notify of character statuses, enter the EncounterPlus Server URL below.<br>Then load a campaign page, and EncounterLog will automatically connect the Game Log to EncounterPlus</p>',
 				    },
                                     {
 					'label': "EncounterPlus Server URL",
 					'key': 'encounterhost',
 					'type': 'text',
 					'help': "Example: http://192.168.1.10:8080"
-                                    },
+				    },
+                                    {
+					'label': "During combat, you can have characters announce any current conditions set in D&D Beyond over chat. You can optionally have any condition changes announce as they happen.",
+					'key': 'chatconditions',
+					'type': 'checkbox',
+                                        'options': [
+                                            { 'label': 'Announce Conditions on Turn', 'value': 'turn' },
+                                            { 'label': 'Announce Conditions on Change', 'value': 'change' }
+                                        ]
+                                    }],
+                            },
+                            {
+                                'fields': [
+                                    {
+					'heading': "",
+					'key': 'prefs_okay',
+                                        'type': 'message',
+					'content': '<div align="right"><input type="submit" class="bt" onclick="window.close()" value="Okay"></div>',
+				    },
+                                ]
+			} ]
+                }
+            },
+            {
+		'id': "export",
+		'label': "Export Settings",
+		'icon': "archive-paper",
+		'form': {
+			'groups': [ {
+                                'label': "Export Settings",
+                                'fields': [
                                     {
 					'label': "Include compendium artwork",
 					'key': 'art',
@@ -116,7 +151,11 @@ const preferences = new ElectronPreferences({
                                         'options': [
                                             { 'label': 'Check for higher resolution maps', 'value': 'remote' }
                                         ]
-                                    },
+                                    }
+                                ],
+                            },
+                            {
+                                'fields': [
                                     {
 					'heading': "",
 					'key': 'prefs_okay',
@@ -129,8 +168,6 @@ const preferences = new ElectronPreferences({
 	} ],
         'browserWindowOverrides': {
             title: 'Preferences',
-            width: 800,
-            height: 400,
             }
 })
 function openURL(u) {
@@ -198,20 +235,40 @@ app.on('ready', () => {
         })
 	_win = win
         ddb = new DDB()
-        ddb.art = preferences.value('main.art');
-        ddb.maps = preferences.value('main.maps') ?? "nomaps";
-        ddb.mapsloc = preferences.value('main.mapsloc') ?? "group";
-        ddb.remotemaps = preferences.value('main.remotemaps');
+        if (preferences.value('main.art')) {
+            preferences.value('export.art',preferences.value('main.art'))
+            delete preferences.preferences.main.art
+            preferences.save()
+        }
+        if (preferences.value('main.maps') ) {
+            preferences.value('export.maps',preferences.value('main.maps'))
+            delete preferences.preferences.main.maps
+            preferences.save()
+        }
+        if (preferences.value('main.mapsloc')) {
+            preferences.value('export.mapsloc',preferences.value('main.mapsloc'))
+            delete preferences.preferences.main.mapsloc
+            preferences.save()
+        }
+        if (preferences.value('main.remotemaps')) {
+            preferences.value('export.remotemaps',preferences.value('main.remotemaps'))
+            delete preferences.preferences.main.remotemaps
+            preferences.save()
+        }
+        ddb.art = preferences.value('export.art');
+        ddb.maps = preferences.value('export.maps') ?? "nomaps";
+        ddb.mapsloc = preferences.value('export.mapsloc') ?? "group";
+        ddb.remotemaps = preferences.value('export.remotemaps');
 
         console.log(ddb.art,ddb.maps)
         preferences.on('save', (preferences) => {
-                if (encounterhost != preferences.main.encounterhos && _eWs?.readyState === WebSocket.OPEN)
+                if (encounterhost != preferences.main.encounterhost && _eWs?.readyState === WebSocket.OPEN)
                     _eWs.close(1001,"Going away")
                 encounterhost = preferences.main.encounterhost
-                ddb.art = preferences.main.art
-                ddb.maps = preferences.main.maps
-                ddb.mapsloc = preferences.main.mapsloc
-                ddb.remotemaps = preferences.main.remotemaps
+                ddb.art = preferences.export.art
+                ddb.maps = preferences.export.maps
+                ddb.mapsloc = preferences.export.mapsloc
+                ddb.remotemaps = preferences.export.remotemaps
         })
 	var menu = Menu.buildFromTemplate([
 	      {
@@ -268,6 +325,7 @@ app.on('ready', () => {
         })
         const checkLogin = (e,u,r,m) => {
             if (r == 200) {
+                (() => new Promise(resolve => setTimeout(resolve, 1000)))().then(
                 ddb.getUserData()
                     .then(()=>
                         updateManifest().then(()=>
@@ -282,6 +340,7 @@ app.on('ready', () => {
                         console.log(`Unable to get userdata: ${e}`)
                         win.webContents.on('did-navigate',checkLogin)
                     })
+                )
             }
         }
         win.webContents.on('did-navigate',checkLogin)
@@ -302,7 +361,6 @@ app.on('ready', () => {
                 newWin.loadURL(u)
             }
         })
-        win.loadURL('https://www.dndbeyond.com/my-campaigns',{httpReferrer: "https://www.dndbeyond.com"})
         win.webContents.on('did-navigate',(e,u,r,m) => {
             if (r==200) {
             win.webContents.once('did-finish-load',()=> {
@@ -341,7 +399,9 @@ app.on('ready', () => {
                             _ws.close(1001,"Going away")
                     }
                     if (win.webContents.getURL().match(/dndbeyond.com\/my-campaigns/)) {
-                        populateCampaignMenu()
+                        (() => new Promise(resolve => setTimeout(resolve, 500)))().then(
+                            populateCampaignMenu()
+                        )
                     }
                 })
             }
@@ -360,6 +420,7 @@ app.on('ready', () => {
 	if (encounterhost !== undefined) {
 	    console.log(`EncounterPlus URL: ${encounterhost}`)
 	}
+        win.loadURL('https://www.dndbeyond.com/my-campaigns',{httpReferrer: "https://www.dndbeyond.com"})
 });
 function displayError(e) {
     _win.loadURL("http://www.dndbeyond.com/my-campaigns",{httpReferrer: "https://www.dndbeyond.com"})
@@ -839,6 +900,7 @@ async function connectGameLog(gameId,userId,campaignName) {
 	const cobalt = await ddb.getCobaltAuth()
         ddb.gameId = gameId
         let updateChars = () => {}
+        _knownConditions = []
 	requestCampaignChars(gameId,cobalt).then(chars=>{
             const charIds = chars.map(c=>c.id)
             updateChars = (chars=charIds)=>{
@@ -880,12 +942,50 @@ async function connectGameLog(gameId,userId,campaignName) {
                                     hitpoints: f.hitPointInfo.maximum
                                 }
                             }
-                            if (_eWs?.readyState === WebSocket.OPEN)
+                            if (_eWs?.readyState === WebSocket.OPEN) {
                                 _eWs.send(JSON.stringify(model))
-                            else
+                            } else {
                                 connectEWS(JSON.stringify(model))
+                            }
                         }
-                        
+                        let knownCondition = _knownConditions.find(kc=>kc.name==f.name)
+                        if (!knownCondition) {
+                            _knownConditions.push({name: f.name.trim(), conditions: f.conditions})
+                            for (let c of f.conditions) {
+                                if (!knownCondition.conditions.find(nc=>nc.name==c.name&&nc.level==c.level)) {
+                                    const msgJson = {
+                                        "source": f.name.trim(),
+                                        "type":     "chat",
+                                        "content": `I am ${(c.name=="Exhaustion")?`Exhausted (${c.level})`:c.name}`
+                                    };
+                                    _eWs.send(JSON.stringify({name: "createMessage", data: msgJson}))
+                                }
+                            }
+                        } else {
+                            if (preferences.value("main.chatconditions")?.includes("change")) {
+                                for (let c of knownCondition.conditions) {
+                                    if (!f.conditions.find(nc=>nc.name==c.name&&nc.level==c.level)) {
+                                        const msgJson = {
+                                            "source": f.name.trim(),
+                                            "type":     "chat",
+                                            "content": `I am no longer ${(c.name=="Exhaustion")?`Exhausted (${c.level})`:c.name}`
+                                        };
+                                        _eWs.send(JSON.stringify({name: "createMessage", data: msgJson}))
+                                    }
+                                }
+                                for (let c of f.conditions) {
+                                    if (!knownCondition.conditions.find(nc=>nc.name==c.name&&nc.level==c.level)) {
+                                        const msgJson = {
+                                            "source": f.name.trim(),
+                                            "type":     "chat",
+                                            "content": `I am ${(c.name=="Exhaustion")?`Exhausted (${c.level})`:c.name}`
+                                        };
+                                        _eWs.send(JSON.stringify({name: "createMessage", data: msgJson}))
+                                    }
+                                }
+                            }
+                            knownCondition.conditions = f.conditions
+                        }
                         _win.webContents.executeJavaScript(`(()=>{
                             let characters = document.querySelectorAll('.ddb-campaigns-character-card')
                             for (let character of characters) {
@@ -1118,10 +1218,29 @@ async function connectGameLog(gameId,userId,campaignName) {
                     "type":     "chat",
                     "content": "Connected to D&D Beyond GameLog for " + campaignName.trim()
                 };
-                if (_eWs?.readyState === WebSocket.OPEN)
+                if (_eWs?.readyState === WebSocket.OPEN) {
                     _eWs.send(JSON.stringify({name: "createMessage", data: msgJson}))
-                else
+		    _win.webContents.executeJavaScript(`{
+                        let eplusws = document.getElementById('eWsStatus')
+                        if (!eplusws) {
+                            eplusws = document.createElement('div')
+                            eplusws.id = 'eWsStatus'
+                            document.getElementsByClassName('gamelog-button')[0]?.parentElement?.appendChild(eplusws)
+                        }
+                        eplusws.innerHTML = "&#x1F7E2; Connected to EncounterPlus at ${encounterhost}"
+                        }`,true).catch(e=>console.log(e))
+                } else {
+                    _win.webContents.executeJavaScript(`{
+                        let eplusws = document.getElementById('eWsStatus')
+                        if (!eplusws) {
+                            eplusws = document.createElement('div')
+                            eplusws.id = 'eWsStatus'
+                            document.getElementsByClassName('gamelog-button')[0]?.parentElement?.appendChild(eplusws)
+                        }
+                        eplusws.innerHTML = "&#x1F534; Disconnected from EncounterPlus at ${encounterhost}"
+                        }`,true).catch(e=>console.log(e))
                     connectEWS(JSON.stringify({name: "createMessage", data: msgJson}))
+                }
             updateChars()
 	})
 	ws.on('close',(code,reason) => {
@@ -1224,6 +1343,7 @@ function getEAPI () {
                 try {
                     const eAPI = JSON.parse(body)
                     _eTokens = eAPI?.map?.tokens || []
+                    _eCreatures = eAPI?.game?.creatures || []
                 } catch (e) {
                     console.log(`API Error: ${e}`)
                     console.log(body)
@@ -1252,8 +1372,18 @@ function connectEWS(msg=null) {
         let epWs = new URL("ws",encounterhost)
         epWs.protocol = epWs.protocol.replace("http","ws")
         _eWs = new WebSocket(epWs.href)
-        _eWs.on('error',e=>console.log(e,_eWs))
+        _eWs.on('error',(e)=>console.log(e))
         _eWs.on('open',() => {
+            console.log("Connected to E+")
+            _win.webContents.executeJavaScript(`{
+                let eplusws = document.getElementById('eWsStatus')
+                if (!eplusws) {
+                    eplusws = document.createElement('div')
+                    eplusws.id = 'eWsStatus'
+                    document.getElementsByClassName('gamelog-button')[0]?.parentElement?.appendChild(eplusws)
+                }
+                eplusws.innerHTML = "&#x1F7E2; Connected to EncounterPlus at ${encounterhost}"
+                }`,true).catch(e=>console.log(e))
             _eWs.on('message',(data)=>{
                 const msg = JSON.parse(data)
                 if (msg?.name == 'tokensUpdated') {
@@ -1262,13 +1392,56 @@ function connectEWS(msg=null) {
                     let token = _eTokens.findIndex(t=>t.id==msg.data.id)
                     if (token>=0)
                         _eTokens[token] = msg.data
+                } else if (msg?.name == 'creatureUpdated') {
+                    let creature = _eCreatures.findIndex(t=>t.id==msg.data.id)
+                    if (creature>=0)
+                        _eCreatures[creature] = msg.data
+                } else if (msg?.name == 'gameUpdated' && msg?.data.started) {
+                    const game = msg?.data
+                    const active = _eCreatures.filter( creature => { return creature.initiative != -10 } ).sort((a, b) => (a.rank > b.rank  ) ? 1 : -1)
+                    const current = active[game.turn-1]
+                    if (current && preferences.value("main.chatconditions")?.includes("turn")) {
+                        const knownCondition = _knownConditions.find(kc=>kc.name==current.name.trim())
+                        if (knownCondition && knownCondition.conditions) {
+                            if (knownCondition.old) {
+                                for(c of knownCondition.old) {
+                                    if (!knownCondition.conditions.find(nc=>nc.name==c.name&&nc.level==c.level)) {
+                                        const msgJson = {
+                                            "source": current.name.trim(),
+                                            "type":     "chat",
+                                            "content": `I am no longer ${(c.name=="Exhaustion")?`Exhausted (${c.level})`:c.name}`
+                                        };
+                                        _eWs.send(JSON.stringify({name: "createMessage", data: msgJson}))
+                                    }
+                                }
+                            }
+                            knownCondition.old = JSON.parse(JSON.stringify(knownCondition.conditions))
+                            for (c of knownCondition.conditions) {
+                                const msgJson = {
+                                    "source": current.name.trim(),
+                                    "type":     "chat",
+                                    "content": `I am ${(c.name=="Exhaustion")?`Exhausted (${c.level})`:c.name}`
+                                };
+                                _eWs.send(JSON.stringify({name: "createMessage", data: msgJson}))
+                            }
+                        }
+                    }
                 } else if (msg?.name == 'mapUpdated' || msg?.name == 'mapLoaded') {
                     getEAPI()
                 }
             })
         })
         _eWs.on('close',(code,reason) => {
-            if (code == 1001 && _ws && !_ws?.isDisconnecting) {
+            _win.webContents.executeJavaScript(`{
+                let eplusws = document.getElementById('eWsStatus')
+                if (!eplusws) {
+                    eplusws = document.createElement('div')
+                    eplusws.id = 'eWsStatus'
+                    document.getElementsByClassName('gamelog-button')[0]?.parentElement?.appendChild(eplusws)
+                }
+                eplusws.innerHTML = "&#x1F534; Disconnected from EncounterPlus at ${encounterhost}"
+                }`,true).catch(e=>console.log(e))
+            if (!_ws?.isDisconnecting) {
                     setTimeout(connectEWS,1000)
             }
         })
