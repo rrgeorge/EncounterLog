@@ -23,7 +23,7 @@ var _dmScreen = null
 var ddb
 let platform = app.userAgentFallback.match(/\(([^)]+)\)/)[1]
 const firefox = `Mozilla/5.0 (${platform}; rv:94.0) Gecko/20100101 Firefox/94.0`
-const chrome = `Mozilla/5.0 (${platform}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472 Safari/537.36`
+const chrome = `Mozilla/5.0 (${platform}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36`
 app.userAgentFallback = chrome
 var ignored = []
 var campaignChars = []
@@ -56,7 +56,7 @@ const preferences = new ElectronPreferences({
 	'dataStore': path.resolve(app.getPath('userData'), 'preferences.json'),
         'defaults': {
             'main': {
-                'encounerhost': 'http://localhost:8080',
+                'encounterhost': 'http://localhost:8080',
             },
             'export': {
                 'art': [ 'artwork', 'tokens' ],
@@ -285,7 +285,7 @@ app.on('ready', () => {
               {role: 'editMenu'},
               {role: 'viewMenu'},
               {label: "Campaigns", id: 'campaignMenu', submenu: [ { label: "Please Login", enabled: false } ] },
-              {label: "Compendium", id: 'compendium', submenu: [ {label: "Loading...", enabled: false } ] },
+              {label: "Compendium", id: 'compendium', submenu: [ {label: "Please Login", enabled: false } ] },
               {role: 'windowMenu'},
               {role: 'help', submenu: [
                   { label: `${app.getName()} v${app.getVersion()}`, enabled: false }, 
@@ -327,23 +327,19 @@ app.on('ready', () => {
             if (r == 200) {
                 (() => new Promise(resolve => setTimeout(resolve, 1000)))().then(
                 ddb.getUserData()
-                    .then(()=>
+                    .then(()=>{
                         updateManifest().then(()=>
-                            populateCompendiumMenu().then(()=>{
-                                populateCampaignMenu()
-                                win.webContents.off('did-navigate',checkLogin)
-                            })
+                            populateCompendiumMenu()
                         )
-                    )
+                    })
                     .catch(e=>{
-                        if (Menu.getApplicationMenu().getMenuItemById('compendium').submenu.items.length<=1) populateCompendiumMenu()
                         console.log(`Unable to get userdata: ${e}`)
-                        win.webContents.on('did-navigate',checkLogin)
+                        win.webContents.once('did-navigate',checkLogin)
                     })
                 )
             }
         }
-        win.webContents.on('did-navigate',checkLogin)
+        win.webContents.once('did-navigate',checkLogin)
         win.webContents.on('will-navigate',(e,u)=>{
             if (u.match(/\/characters?\/[0-9]+/)) {
                 e.preventDefault()
@@ -399,8 +395,8 @@ app.on('ready', () => {
                             _ws.close(1001,"Going away")
                     }
                     if (win.webContents.getURL().match(/dndbeyond.com\/my-campaigns/)) {
-                        (() => new Promise(resolve => setTimeout(resolve, 500)))().then(
-                            populateCampaignMenu()
+                        (() => new Promise(resolve => setTimeout(resolve, 500)))().then(()=>
+                            ddb.userId && populateCampaignMenu()
                         )
                     }
                 })
@@ -461,7 +457,10 @@ function updateManifest() {
                         manifest.extractEntryTo("skeleton.db3",app.getPath("userData"),false,true)
                         resolve("Updated")
                     }
-                }).catch(e=>{console.log(e);reject(e)})
+                }).catch(e=>{
+                    console.log(`Manifest Download Error: ${e}`)
+                    reject(e)
+                })
             } else {
                 console.log(res)
                 resolve(res)
@@ -951,8 +950,8 @@ async function connectGameLog(gameId,userId,campaignName) {
                         let knownCondition = _knownConditions.find(kc=>kc.name==f.name)
                         if (!knownCondition) {
                             _knownConditions.push({name: f.name.trim(), conditions: f.conditions})
-                            for (let c of f.conditions) {
-                                if (!knownCondition.conditions.find(nc=>nc.name==c.name&&nc.level==c.level)) {
+                            if (preferences.value("main.chatconditions")?.includes("change")) {
+                                for (let c of f.conditions) {
                                     const msgJson = {
                                         "source": f.name.trim(),
                                         "type":     "chat",

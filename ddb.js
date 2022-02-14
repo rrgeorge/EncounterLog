@@ -108,18 +108,17 @@ class DDB {
     }
 
     async setCobaltSession() {
-        const sess = await this.searchCookies().catch(e => console.log(e))
+        const sess = await this.searchCookies().catch(e => console.log(`Error searching cookies ${e}`))
         this.cobaltsession = sess
     }
     async getUserData() {
         if (!this.cobaltsession) await this.setCobaltSession()
         if (!this.cobaltsession) throw("Not logged in")
-        if (!this.cobaltauth) await this.getCobaltAuth()
-        await new Promise(resolve=>setTimeout(()=>resolve(),500))
+        //if (!this.cobaltauth) await this.getCobaltAuth()
         const url = "https://www.dndbeyond.com/mobile/api/v6/user-data"
         const body = qs.stringify({ 'token': this.cobaltsession })
         const res = await this.postRequest(url,body).catch(e =>{
-            console.log(`Could not populate userdata: ${e}`)
+            console.log(`Could not retrieve userdata: ${e}`)
             throw(e)
         })
         this.userId = res?.userId
@@ -145,9 +144,9 @@ class DDB {
     }
     async getRuleData() {
         //const url = "https://character-service.dndbeyond.com/character/v4/rule-data"
-        await this.getCobaltAuth()
+        if (this.userId) await this.getCobaltAuth()
         const url = "https://www.dndbeyond.com/api/config/json"
-        const res = await this.getRequest(url,true).catch(e => console.log(`Could not retrieve rule data: ${e}`))
+        const res = await this.getRequest(url,(this.cobaltauth)?true:false).catch(e => console.log(`Could not retrieve rule data: ${e}`))
         this.ruledata = res
     }
     async getCobaltAuth() {
@@ -1124,7 +1123,7 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                 })
             },
             onProgress: (p) => {
-                prog.value = p.percent * 25
+                prog.value = p.percent * 15
                 //if (p.totalBytes && !prog.isCompleted()) prog.value = p.transferredBytes
             },
             onCompleted: (f) => {
@@ -1134,7 +1133,7 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
         })
     }
 
-    convertModule(moduleId,key,filename,prog=null) {
+    async convertModule(moduleId,key,filename,prog=null) {
         const book = this.ruledata.sources.find(s=>s.id===moduleId)
         const temp = tmp.dirSync()
         if(!prog) prog = new ProgressBar({
@@ -1154,6 +1153,13 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                 { image: `images/cover.jpg` }
             ]
         }
+        if (fs.existsSync(path.join(app.getPath("userData"),"manifest.zip"))) {
+            let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+            manifest = JSON.parse(manifest.readAsText("manifest.json"))
+            let bookinfo = manifest.find(s=>s.Id===moduleId)
+            mod._content.push({category: bookinfo?.Type?.toLowerCase()||''})
+            mod._content.push({description: bookinfo?.ShortDescription||''})         
+        }
         var zip = AdmZip(filename)
         let ddbVer = zip.readAsText("version.txt").trim()
         let modVer = app.getVersion().split(".")
@@ -1164,6 +1170,21 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
         var db = new sqlite3.Database(path.join(temp.name,`${book.name.toLowerCase()}.db3`))
         var imageMap = []
         var slugIdMap = {}
+        prog.detail = `Retrieving images..`
+        if (zip.getEntry("files.txt")) {
+            const files  = JSON.parse(zip.readAsText("files.txt"))?.files
+            const getFile = file => new Promise(resolve=>{
+                this.getImage(file.RemoteUrl).then(img=>{
+                    for (const local of file.LocalUrl) {
+                        zip.addFile(local.replace(/^[\/]/,''),img)
+                    prog.detail = `Retrieving images: ${local.replace(/^[\/]/,'')}`
+                    }
+                    prog.value += ((1/files.length)*10)
+                }).catch(e=>console.log(`Could not download remote file: ${e}`))
+                .finally(()=>resolve(prog.value))
+            })
+            await asyncPool(10,files,getFile)
+        }
         db.serialize(() => {
             db.run(`PRAGMA key='${Buffer.from(key,'base64').toString('utf8')}'`)
             db.run("PRAGMA cipher_compatibility = 3")
@@ -1184,8 +1205,6 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                 if (c.ID===moduleId) {
                     mod._content.find(s=>s.image).image = `listing_images/${c.AFile}`
                     mod._content.push({code: c.Name||''})
-                    mod._content.push({category: c.Type?.toLowerCase()||''})
-                    mod._content.push({description: convert(c.ProductBlurb).trim()||''})
                 }
             })
             db.each("SELECT M.ID,A.EntityID AS AID,A.EntityTypeID AS AET,B.EntityID AS BID,B.EntityTypeID AS BET,A.FileName as AFile,B.FileName as BFile FROM RPGMonster M LEFT JOIN Avatar AS A ON M.AvatarID = A.ID LEFT JOIN Avatar AS B ON M.BasicAvatarID = B.ID WHERE M.AvatarID IS NOT NULL OR M.BasicAvatarID IS NOT NULL",(e,c)=>{
@@ -1257,14 +1276,6 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                             .replaceAll(new RegExp(`\\./${book.name.toLowerCase()}/`,'g'),"")
                             ) +
                             '</div></article></div>'
-                    }
-                }
-                if (c.Slug=="table-of-contents") {
-                    const dom = new jsdom.JSDOM(page.page.content)
-                    const intro = dom.window.document.querySelector(".compendium-intro-text")
-                    if (intro?.textContent) {
-                        const desc = mod._content.find(c=>c.description)
-                        if (desc) desc.description = convert(intro.textContent)
                     }
                 }
                 page.page.content = page.page.content.concat(`<script>window.thisSlug="${page.page.slug}"</script>`)
@@ -1719,45 +1730,41 @@ font-weight: bold;
                                 return `url(res/${resName})`
                             })
                 this.css.push("https://media.dndbeyond.com/ddb-compendium-client/compendium.590bdb9dc0538e3c4006.css")
-                prog.detail = `Retrieving and adding external resources`
+                let cssRes = []
                 for (let css of this.css) {
-                    try {
-                        console.log(`Retrieving ${css}`)
-                        if (prog.detail.endsWith("...")) prog.detail = `Retrieving and adding external resources`
-                        prog.detail += '.'
-                        let cssBuf = await this.getImage(css).catch(e=>console.log(`Error retrieving ${css}: ${e}`))
-                        let cssTxt = cssBuf
-                            .toString('utf8').replaceAll(/url\((['"]?)((?:(?:https?:)?\/\/|\.\.).*?)(?:\1)\)/g,(m,m1,m2)=>{
-                                if (!m2.startsWith("http")&&m2.startsWith("//")) m2 = "https:" + m2
-                                if (m2.startsWith("../")) {
-                                    if (m2.startsWith("../images/letters","/images/")) {
-                                        m2 = m2.replace(/\/images\/letters\//,"/images/")
+                    cssRes.push((async ()=>{
+                        try {
+                            console.log(`Retrieving ${css}`)
+                            prog.detail = "Retrieving and stylesheet resources"
+                            let cssBuf = await this.getImage(css).catch(e=>console.log(`Error retrieving ${css}: ${e}`))
+                            let cssTxt = cssBuf
+                                .toString('utf8').replaceAll(/url\((['"]?)((?:(?:https?:)?\/\/|\.\.).*?)(?:\1)\)/g,(m,m1,m2)=>{
+                                    if (!m2.startsWith("http")&&m2.startsWith("//")) m2 = "https:" + m2
+                                    if (m2.startsWith("../")) {
+                                        if (m2.startsWith("../images/letters","/images/")) {
+                                            m2 = m2.replace(/\/images\/letters\//,"/images/")
+                                        }
+                                        if (zip.getEntry(m2.substring(3))) {
+                                            return `url("../${m2}")`
+                                        }
+                                        m2 = url.resolve(css,m2)
                                     }
-                                    if (zip.getEntry(m2.substring(3))) {
-                                        return `url("../${m2}")`
-                                    }
-                                    m2 = url.resolve(css,m2)
-                                }
-                                let resName = uuid5(m2,uuid5.URL)
-                                if (path.extname(m2)) resName += path.extname(m2)
-                                if (prog.detail.endsWith("...")) prog.detail = `Retrieving and adding external resources`
-                                prog.detail += '.'
-                                if (!zip.getEntry(`assets/css/res/${resName}`))
-                                    this.getImage(m2).then(r=>zip.addFile(`assets/css/res/${resName}`,r)).catch((e)=>console.log(`${m2}-${e}`))
-                                return `url(res/${resName})`
-                            }).replaceAll(/(background:.*) (114px)/g,"$1 0px").replace(/@media\(max-width:1023px\)\{\.tooltip/,"@media(max-width: 10px){.tooltip")
-                        zip.addFile(`assets/css/${uuid5(css,uuid5.URL)}.css`,cssTxt)
-                        globalcss = globalcss.concat(`@import '${uuid5(css,uuid5.URL)}.css';\n`)
-                        console.log("Added to global.css")
-                    } catch (e) {
-                        console.log(`Error loading css: ${e}`)
-                    }
-                    prog.value += ((1/this.css.length)*2)
+                                    let resName = uuid5(m2,uuid5.URL)
+                                    if (path.extname(m2)) resName += path.extname(m2)
+                                    if (!zip.getEntry(`assets/css/res/${resName}`))
+                                        this.getImage(m2).then(r=>zip.addFile(`assets/css/res/${resName}`,r)).catch((e)=>console.log(`${m2}-${e}`))
+                                    return `url(res/${resName})`
+                                }).replaceAll(/(background:.*) (114px)/g,"$1 0px").replace(/@media\(max-width:1023px\)\{\.tooltip/,"@media(max-width: 10px){.tooltip")
+                            zip.addFile(`assets/css/${uuid5(css,uuid5.URL)}.css`,cssTxt)
+                            globalcss = globalcss.concat(`@import '${uuid5(css,uuid5.URL)}.css';\n`)
+                            console.log("Added to global.css")
+                        } catch (e) {
+                            console.log(`Error loading css: ${e}`)
+                        }
+                        prog.value += ((1/this.css.length)*2)
+                    })())
                 }
-                if (moduleId <= 2) {
-                    let dwarfIntro = await this.getImage("https://media-waterdeep.cursecdn.com/attachments/thumbnails/0/619/850/190/dwarfintro.png").catch(e=>console.log(`Error retrieving missing dwarf intro: ${e}`))
-                    if (dwarfIntro) zip.addFile("dwarfintro.png",dwarfIntro)
-                }
+                await Promise.all(cssRes)
                 console.log("Adding fixing css line endings")
                 customcss = customcss.replaceAll(/\r\n/g,"\n")
                 console.log("Adding global.css to zip")
@@ -2002,6 +2009,7 @@ window.addEventListener('load', function() {
         topNav.appendChild(topNext)
         page.appendChild(topNav)
     }
+    document.body.style.backgroundPositionY = (document.querySelector(".chapterart"))?"250px":"0px"
 })
 window.addEventListener('click', function(e) {
     var pageUrl = window.location
@@ -2677,7 +2685,7 @@ function doSearch(el,resId) {
                 setTimeout(()=>prog.setCompleted(),1000)
             })
         })
-        console.log("Closing dtabase")
+        console.log("Closing database")
         db.close()
     }
 
