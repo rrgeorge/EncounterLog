@@ -1,7 +1,7 @@
 {
   "name": "encounterlog",
   "productName": "EncounterLog",
-  "version": "2.4.11",
+  "version": "2.4.12",
   "repository": {
     "type": "git",
     "url": "https://github.com/rrgeorge/encounterlog"
@@ -145,7 +145,7 @@
     "jstoxml": "^2.0.6",
     "mac": "^0.4.0",
     "opencv4nodejs-prebuilt": "5.3.3",
-    "sharp": "^0.30.0",
+    "sharp": "^0.30.1",
     "slugify": "^1.5.3",
     "tiny-async-pool": "^1.2.0",
     "tmp": "^0.2.1",

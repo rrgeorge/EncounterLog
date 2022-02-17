@@ -88,7 +88,7 @@ function sanitize(text,rulesdata=null) {
             {selector: 'u',format: 'underline'},
             {selector: 'blockquote',format: 'quote'}
         ]
-    }).replaceAll(/[\p{Pd}−]/gu, "-")
+    }).replaceAll(/[\p{Pd}−]/gu, "-").replaceAll(/<[^>]*[\n][^>]*>/g,m=>m.replaceAll("\n"," "))
 }
 
 class DDB {
@@ -843,8 +843,8 @@ class DDB {
                     })
                 })
                 let id_chunks = []
-                for (let i=0;i<ids.length;i+=25) {
-                    id_chunks.push(ids.slice(i,i+25))
+                for (let i=0;i<ids.length;i+=15) {
+                    id_chunks.push(ids.slice(i,i+15))
                 }
                 const getChunk = id => new Promise(resolve=>{
                         this.getMonsterById(id).then(m=>{
@@ -1039,10 +1039,10 @@ class DDB {
             }
             handleTraits(monster.specialTraitsDescription,"trait")
             handleTraits(monster.actionsDescription,"action")
-            handleTraits(monster.bonusActionsDescription,"action","Bonus Action: ")
+            handleTraits(monster.bonusActionsDescription,"bonus")
             handleTraits(monster.reactionsDescription,"reaction")
             handleTraits(monster.legendaryActionsDescription,"legendary")
-            handleTraits(monster.mythicActionsDescription,"legendary","Mythic Action: ")
+            handleTraits(monster.mythicActionsDescription,"mythic")
             monsterEntry._content.push({
                 description: `${(monster.lairDescription)?sanitize(monster.lairDescription+'<hr/>',this.ruledata)+'\n':''}${sanitize(monster.characteristicsDescription,this.ruledata)}
 
