@@ -2748,6 +2748,15 @@ function doSearch(el,resId) {
                                         if (meta.gridAlpha)
                                             playerMap._content.push( { gridOpacity: meta.gridAlpha } )
                                         if (meta.lights)
+                                        playerMap._content.push( { lineOfSight: (meta.tokenVision)?"YES":"NO" } )
+                                        if (meta.fogExploration) {
+                                            playerMap._content.push( { fogOfWar: "YES" } )
+                                            playerMap._content.push( { fogExploration: "YES" } )
+                                        }
+                                        if (meata.weather) {
+                                            playerMap._content.push( { weatherType: meta.weather } )
+                                            playerMap._content.push( { weatherIntensity: 1.0 } )
+                                        }
                                         for (const l of meta.lights) {
                                             if (l.lightAnimation?.type == "ghost") continue
                                             playerMap._content.push( { light: {
