@@ -2753,7 +2753,7 @@ function doSearch(el,resId) {
                                             playerMap._content.push( { fogOfWar: "YES" } )
                                             playerMap._content.push( { fogExploration: "YES" } )
                                         }
-                                        if (meata.weather) {
+                                        if (meta.weather) {
                                             playerMap._content.push( { weatherType: meta.weather } )
                                             playerMap._content.push( { weatherIntensity: 1.0 } )
                                         }
