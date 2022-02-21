@@ -2761,10 +2761,10 @@ function doSearch(el,resId) {
                                             if (l.lightAnimation?.type == "ghost") continue
                                             playerMap._content.push( { light: {
                                                 _attrs: { id: uuid5(`light-${playerMap._content.filter(f=>f.light).length}`,playerMap._attrs.id) },
-                                                radiusMax: l.dim || l.config.dim || 0,
-                                                radiusMin: l.bright || l.config.bright || 0,
-                                                color: l.tintColor || l.config.color || "#ffffff",
-                                                opacity: l.tintAlpha || l.config.alpha || 1,
+                                                radiusMax: l.dim || l.config?.dim || 0,
+                                                radiusMin: l.bright || l.config?.bright || 0,
+                                                color: l.tintColor || l.config?.color || "#ffffff",
+                                                opacity: l.tintAlpha || l.config?.alpha || 1,
                                                 alwaysVisible: (l.t == "u")? "YES" : "NO",
                                                 x: Math.round((l.x - offset.x)*scale),
                                                 y: Math.round((l.y - offset.y)*scale),
