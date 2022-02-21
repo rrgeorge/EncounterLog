@@ -18,6 +18,7 @@ const jsdom = require('jsdom');
 const cv = require('opencv4nodejs-prebuilt');
 const asyncPool = require('tiny-async-pool');
 const fs = require('fs');
+const semver = require('semver');
 
 function slugify(str) {
     return Slugify(str,{ lower: true, strict: true })
@@ -134,11 +135,16 @@ class DDB {
         const res = await this.postRequest(url,body,true).catch(e => console.log(`Could not retrieve character statuses: ${e}`))
         return res?.foundCharacters
     }
-    async checkManifestVersion(v=0) {
+    async checkManifestVersion(v=0,sv=null) {
         if (!this.cobaltsession) await this.setCobaltSession()
         if (!this.cobaltauth) await this.getCobaltAuth()
         const url = "https://www.dndbeyond.com/mobile/api/v6/do-higher-versions-exist"
-        const body = qs.stringify({manifestVersion: v, token: this.cobaltsession})
+        let query = { manifestVersion: v, token: this.cobaltsession }
+        //sourceVersions:  {"3":17,"4":3,"27":16,"48":3,"79":1} 
+        if (sv) {
+            query.sourceVersions = sv
+        }
+        const body = qs.stringify(query)
         const res = await this.postRequest(url,body).catch(e => console.log(`Could not check manifest update: ${e}`))
         return res
     }
@@ -222,28 +228,125 @@ class DDB {
 
     getImage(url,auth=false) {
             return new Promise((resolve,reject) => {
-                    const request = net.request({url: url,useSessionCookies: true,})
-                    if (auth) {
-		        request.setHeader('Authorization',`Bearer ${this.cobaltauth}`)
-                    }
-                    request.on('response', (response) => {
-                      let body = new Buffer.alloc(0)
-                      if (response.statusCode != 200) {
-                              reject(response.statusCode)
-                      }
-                      response.on('data', (chunk) => {
-                        body = Buffer.concat([body,chunk])
-                      })
-                      response.on('end', () => {
-                        try{
-                            resolve(body)
-                        } catch(e) {
-                            reject(e)
+                try {
+                    if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)))) {
+                        const cacheStat = fs.statSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)))
+                        if (cacheStat.mtime > (new Date())) {
+                          fs.readFile(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),(e,f)=>{
+                            if (e) {
+                                console.log(`Cache error: ${e}`)
+                                fs.rmSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)))
+                                this.getImage(url,auth).then(img=>resolve(img)).catch(e=>reject(e))
+                            } else {
+                              resolve(f)
+                            }
+                          })
+                        } else {
+                            const request = net.request({url: url,useSessionCookies: true,method:"HEAD"})
+                            if (auth) {
+                                request.setHeader('Authorization',`Bearer ${this.cobaltauth}`)
+                            }
+                            request.on('response', (response) => {
+                              if (response.statusCode != 200 || cacheStat.mtime < Date(response.headers["last-modified"])) {
+                                  fs.rm(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),()=>{})
+                                  this.getImage(url,auth).then(img=>resolve(img)).catch(e=>reject(e))
+                              } else {
+                                  fs.readFile(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),(e,f)=>{
+                                    if (e) {
+                                        console.log(`Cache error: ${e}`)
+                                        fs.rmSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)))
+                                        this.getImage(url,auth).then(img=>resolve(img)).catch(e=>reject(e))
+                                    } else {
+                                        const cachecontrol = response.headers["cache-control"]
+                                        try {
+                                        if (!cachecontrol || !cachecontrol.match(/no-store/)) {
+                                            const maxAge = /max-age=([0-9]+)/.exec(cachecontrol||'')
+                                            if (maxAge) {
+                                                let exp = new Date()
+                                                exp.setSeconds(exp.getSeconds() + parseInt(maxAge[1]))
+                                                if (response.headers["age"]) {
+                                                    exp.setSeconds(exp.getSeconds() - parseInt(response.headers["age"]))
+                                                }
+                                                fs.utimes(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),exp,exp,()=>{})
+                                            } else if (response.headers["expires"]) {
+                                                const exp = Date(response.headers["expires"])
+                                                fs.utimes(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),exp,exp,()=>{})
+                                            }
+                                        }
+                                        } catch (e) {
+                                            console.log(e)
+                                        }
+                                      resolve(f)
+                                    }
+                                  })
+                              }
+                              response.on('error',(e)=>{
+                                  console.log(`Cache error: ${e}`)
+                                  fs.rmSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)))
+                                  this.getImage(url,auth).then(img=>resolve(img)).catch(e=>reject(e))
+                              })
+                            })
+                            request.on('error',(e)=>{
+                                console.log(`Cache error: ${e}`)
+                                fs.rmSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)))
+                                this.getImage(url,auth).then(img=>resolve(img)).catch(e=>reject(e))
+                            })
+                            request.end(null, null)
                         }
-                      })
-                    })
-                    request.on('error',(e)=>reject(e))
-                    request.end(null, null)
+                    } else {
+                        const request = net.request({url: url,useSessionCookies: true})
+                        if (auth) {
+                            request.setHeader('Authorization',`Bearer ${this.cobaltauth}`)
+                        }
+                        request.on('response', (response) => {
+                          let body = new Buffer.alloc(0)
+                          if (response.statusCode != 200) {
+                                  reject(response.statusCode)
+                          }
+                          response.on('data', (chunk) => {
+                            body = Buffer.concat([body,chunk])
+                          })
+                          response.on('end', () => {
+                            try{
+                                const cachecontrol = response.headers["cache-control"]
+                                if (!cachecontrol || !cachecontrol.match(/no-store/)) {
+                                    fs.writeFile(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),body,(err)=>{
+                                        if (err) {
+                                            console.log(`Cache error ${e}`)
+                                        } else {
+                                            const maxAge = /max-age=([0-9]+)/.exec(cachecontrol||'')
+                                            try {
+                                                if (maxAge) {
+                                                    let exp = new Date()
+                                                    exp.setSeconds(exp.getSeconds() + parseInt(maxAge[1]))
+                                                    if (response.headers["age"]) {
+                                                        exp.setSeconds(exp.getSeconds() - parseInt(response.headers["age"]))
+                                                    }
+                                                    fs.utimes(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),exp,exp,()=>{})
+                                                } else if (response.headers["expires"]) {
+                                                    const exp = Date(response.headers["expires"])
+                                                    fs.utimes(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),exp,exp,()=>{})
+                                                }
+                                            } catch(e) {
+                                                console.log(e)
+                                            }
+                                        }
+                                    })
+                                }
+                                resolve(body)
+                            } catch(e) {
+                                reject(e)
+                            }
+                          })
+                          response.on('error',(e)=>reject(e))
+                        })
+                        request.on('error',(e)=>reject(e))
+                        request.end(null, null)
+                    }
+                } catch(e) {
+                    console.log(`Could not retrieve ${url}: ${e}`)
+                    reject(e)
+                }
             })
     }
 
@@ -599,10 +702,10 @@ class DDB {
             { code: "G", names: [ "adventuring gear" ] },
             { code: "$", names: [ "wealth","gemstone" ] },
         ]
-        const url = "https://character-service.dndbeyond.com/character/v4/game-data/items"
+        const apiurl = "https://character-service.dndbeyond.com/character/v4/game-data/items"
         const params = qs.stringify({ 'sharingSetting': 2 })
         await this.getCobaltAuth()
-        const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting items: ${e}`))
+        const response = await this.getRequest(`${apiurl}?${params}`,true).catch((e)=>console.log(`Error getting items: ${e}`))
         if (response?.data) {
             const items = response.data.filter(s=>(source)?(s.sources.some(b=>b.sourceId===source&&b.sourceId!==29)||(source<=2&&s.sources.length==0)):true)
             if (!prog) prog = new ProgressBar({title: "Please wait...",text: "Converting items...", detail: "Please wait...", indeterminate: false, maxValue: items.length})
@@ -746,10 +849,9 @@ class DDB {
                             } else {
                                 let imagesrc = await this.getImage(item.largeAvatarUrl||item.avatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
                                 if (!imagesrc) {
-                                    let imgurl = item.largeAvatarUrl||item.avatarUrl
-                                    imgurl = `https://${url.parse(imgurl).host}${path.dirname(url.parse(imgurl).path).replace(/[0-9]+\/[0-9]+$/,'1000/1000')}/${path.basename(url.parse(imgurl).path)}`
-
-                                    imagesrc = await this.getImage(imgurl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                                    let imgurl = new URL(item.largeAvatarUrl||item.avatarUrl)
+                                    imgurl.pathname = imgurl.pathname.replace(/[/][0-9]+\/[0-9]+[/]/,'/1000/1000/')
+                                    imagesrc = await this.getImage(imgurl.toString()).catch(e=>console.log(`Could not retrieve image: ${e}`))
                                 }
                                 imageFile = `${path.basename(imageFile,path.extname(imageFile))}.webp`
                                 let image = await sharp(imagesrc).webp().toBuffer()
@@ -1058,10 +1160,9 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                         } else if (!zip.getEntry(`monsters/${path.basename(imageFile,path.extname(imageFile))}.webp`)) {
                             let imagesrc = await this.getImage(monster.basicAvatarUrl||monster.largeAvatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
                             if (!imagesrc) {
-                                let imgurl = monster.basicAvatarUrl||monster.largeAvatarUrl
-                                imgurl = `https://${url.parse(imgurl).host}${path.dirname(url.parse(imgurl).path).replace(/[0-9]+\/[0-9]+$/,'1000/1000')}/${path.basename(url.parse(imgurl).path)}`
-
-                                imagesrc = await this.getImage(imgurl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                                let imgurl = new URL(monster.basicAvatarUrl||monster.largeAvatarUrl)
+                                imgurl.pathname = imgurl.pathname.replace(/[/][0-9]+\/[0-9]+[/]/,'/1000/1000/')
+                                imagesrc = await this.getImage(imgurl.toString()).catch(e=>console.log(`Could not retrieve image: ${e}`))
                             }
                             imageFile = `${path.basename(imageFile,path.extname(imageFile))}.webp`
                             let image = await sharp(imagesrc).webp().toBuffer()
@@ -1103,11 +1204,43 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
         const kparams = qs.stringify({ token: this.cobaltsession,sources:`[{\"sourceID\":${moduleId},\"versionID\":null}]`})
         const url = `https://www.dndbeyond.com/mobile/api/v6/get-book-url/${moduleId}`
         const keyurl = "https://www.dndbeyond.com/mobile/api/v6/book-codes"
+        const book = this.ruledata.sources.find(s=>s.id===moduleId)
+        var prog
+        if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"imagecache",`${book.name.toLowerCase()}.zip`))) {
+            let manifestVersion = 0
+            if (fs.existsSync(path.join(app.getPath("userData"),"manifest.zip"))) {
+                let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                manifestVersion = parseInt(manifest.readAsText("version.txt").trim())
+            }
+            let modVersion = 0
+            let modCache = new AdmZip(path.join(app.getPath("cache"),app.getName(),"imagecache",`${book.name.toLowerCase()}.zip`))
+            modVersion = parseInt(modCache.readAsText("version.txt").trim())
+            const bookkey = modCache.getZipEntryComment(`${book.name.toLowerCase()}.db3`)
+            let modsObj = {}
+            modsObj[moduleId.toString()] = modVersion
+            const manifest = await this.checkManifestVersion(manifestVersion,modsObj)
+            if (manifest?.sourceUpdatesAvailable?.[moduleId.toString()] !== false) {
+                console.log("Using cached Module")
+                prog = new ProgressBar({
+                    title: "Converting module...",
+                    text: "Converting book...",
+                    detail: "Copying from cache...",
+                    indeterminate: false,
+                    maxValue: 100,
+                    value: 0
+                })
+
+                fs.copyFile(path.join(app.getPath("cache"),app.getName(),"imagecache",`${book.name.toLowerCase()}.zip`),filename,()=>{
+                    prog.value = 15
+                    this.convertModule(moduleId,bookkey,filename,prog)
+                })
+                return
+            }
+        }
+        const bookkey = await this.postRequest(keyurl,kparams)
+            .catch(e=>{throw new Error(`Could not get book key: ${e}`)})
         const bookurl = await this.postRequest(url,params)
             .catch(e=>{throw new Error(`Could not get book url: ${e}`)})
-        const bookkey = await this.postRequest(keyurl,kparams)
-            .catch(e=>{throw new Error(`Could not get book url: ${e}`)})
-        var prog
         download(win,bookurl.data,{
             saveAs: false,
             filename: path.basename(filename),
@@ -1128,6 +1261,9 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
             },
             onCompleted: (f) => {
                 //prog.setCompleted()
+                let modCache = new AdmZip(filename)
+                modCache.addZipEntryComment(`${book.name.toLowerCase()}.db3`,bookkey.data[0].data)
+                modCache.writeZip(path.join(app.getPath("cache"),app.getName(),"imagecache",`${book.name.toLowerCase()}.zip`))
                 this.convertModule(moduleId,bookkey.data[0].data,filename,prog)
             }
         })
@@ -1170,18 +1306,49 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
         var db = new sqlite3.Database(path.join(temp.name,`${book.name.toLowerCase()}.db3`))
         var imageMap = []
         var slugIdMap = {}
-        prog.detail = `Retrieving images..`
+        prog.detail = `Loading images..`
         if (zip.getEntry("files.txt")) {
             const files  = JSON.parse(zip.readAsText("files.txt"))?.files
+            //"RemoteUrl": "https://media.dndbeyond.com/mobile/compendium_images/ftod/map-5.10-green-dragon-lair-player.jpg",
+            //"RemoteUrl": "https://media.dndbeyond.com/compendium-images/ftod/drRfJbPh5T7LsYy4/map-5.10-green-dragon-lair.jpg",
+            let linkMatch = new RegExp(`https:\/\/media.dndbeyond.com\/compendium-images\/${book.name.toLowerCase()}\/([^\/]*)\/`)
+            let prefixMatch = files.find(f=>linkMatch.exec(f.RemoteUrl))
+            let prefix
+            if (prefixMatch?.RemoteUrl) {
+                prefix = linkMatch.exec(prefixMatch.RemoteUrl)?.[1]
+                console.log(`Image prefix: ${prefix}`)
+            }
             const getFile = file => new Promise(resolve=>{
-                this.getImage(file.RemoteUrl).then(img=>{
-                    for (const local of file.LocalUrl) {
-                        zip.addFile(local.replace(/^[\/]/,''),img)
-                    prog.detail = `Retrieving images: ${local.replace(/^[\/]/,'')}`
-                    }
-                    prog.value += ((1/files.length)*10)
-                }).catch(e=>console.log(`Could not download remote file: ${e}`))
-                .finally(()=>resolve(prog.value))
+                if (prefix && file.RemoteUrl.match(/mobile\/compendium_images/)) {
+                    let RemoteFullsize = file.RemoteUrl.replace(`/mobile/compendium_images/${book.name.toLowerCase()}/`,`/compendium-images/${book.name.toLowerCase()}/${prefix}/`)
+                    this.getImage(RemoteFullsize).then(img=>{
+                        for (const local of file.LocalUrl) {
+                            zip.addFile(local.replace(/^[\/]/,''),img)
+                            prog.detail = `Retrieving images: ${local.replace(/^[\/]/,'')}`
+                        }
+                        prog.value += ((1/files.length)*10)
+                        resolve(prog.value)
+                    }).catch(e=>{
+                        console.log(`Could not download better file: ${e}`)
+                        this.getImage(file.RemoteUrl).then(img=>{
+                            for (const local of file.LocalUrl) {
+                                zip.addFile(local.replace(/^[\/]/,''),img)
+                                prog.detail = `Retrieving images: ${local.replace(/^[\/]/,'')}`
+                            }
+                            prog.value += ((1/files.length)*10)
+                        }).catch(e=>console.log(`Could not download remote file: ${e}`))
+                        .finally(()=>resolve(prog.value))
+                    })
+                } else {
+                    this.getImage(file.RemoteUrl).then(img=>{
+                        for (const local of file.LocalUrl) {
+                            zip.addFile(local.replace(/^[\/]/,''),img)
+                            prog.detail = `Retrieving images: ${local.replace(/^[\/]/,'')}`
+                        }
+                        prog.value += ((1/files.length)*10)
+                    }).catch(e=>console.log(`Could not download remote file: ${e}`))
+                    .finally(()=>resolve(prog.value))
+                }
             })
             await asyncPool(10,files,getFile)
         }
@@ -1735,7 +1902,7 @@ font-weight: bold;
                     cssRes.push((async ()=>{
                         try {
                             console.log(`Retrieving ${css}`)
-                            prog.detail = "Retrieving and stylesheet resources"
+                            prog.detail = "Retrieving stylesheet resources"
                             let cssBuf = await this.getImage(css).catch(e=>console.log(`Error retrieving ${css}: ${e}`))
                             let cssTxt = cssBuf
                                 .toString('utf8').replaceAll(/url\((['"]?)((?:(?:https?:)?\/\/|\.\.).*?)(?:\1)\)/g,(m,m1,m2)=>{
@@ -1752,7 +1919,7 @@ font-weight: bold;
                                     let resName = uuid5(m2,uuid5.URL)
                                     if (path.extname(m2)) resName += path.extname(m2)
                                     if (!zip.getEntry(`assets/css/res/${resName}`))
-                                        this.getImage(m2).then(r=>zip.addFile(`assets/css/res/${resName}`,r)).catch((e)=>console.log(`${m2}-${e}`))
+                                        this.getImage(m2).then(r=>zip.addFile(`assets/css/res/${resName}`,r)).catch((e)=>console.log(`res ${m2}-${e} (${css})`))
                                     return `url(res/${resName})`
                                 }).replaceAll(/(background:.*) (114px)/g,"$1 0px").replace(/@media\(max-width:1023px\)\{\.tooltip/,"@media(max-width: 10px){.tooltip")
                             zip.addFile(`assets/css/${uuid5(css,uuid5.URL)}.css`,cssTxt)
@@ -1782,7 +1949,7 @@ font-weight: bold;
                 }
 
                 const customjs = `
-${(await this.getImage("https://cdnjs.cloudflare.com/ajax/libs/uuid/8.1.0/uuidv5.min.js").catch(e=>console.log(`Error retrieving ${css}: ${e}`))).toString('utf8')}
+${(await this.getImage("https://cdnjs.cloudflare.com/ajax/libs/uuid/8.1.0/uuidv5.min.js").catch(e=>console.log(`Error retrieving uuid5: ${e}`))).toString('utf8')}
 const knownIds = ${JSON.stringify(slugIdMap)}
 
 function makeRollLinks(el) {
@@ -2380,11 +2547,56 @@ function doSearch(el,resId) {
 }`)
                 zip.addFile("assets/js/fuse.min.js",fs.readFileSync(path.join(require.resolve('fuse.js'),"../fuse.min.js")))
                 if (this.maps && this.maps != "nomaps") {
-                    const getGrid = require('./getgrid')
+                    const mapgroup = uuid5(`https://www.dndbeyond.com/${book.sourceURL}/maps`,uuid5.URL)
                     prog.text = "Searching for Maps..."
+                    let ddbMeta = []
+                    const metaLatest = await this.getRequest("https://api.github.com/repos/MrPrimate/ddb-meta-data/releases/latest").catch(e=>console.log(`Could not check for new meta data: ${e}`))
+                    let ddbmeta, metaVer
+                    if (fs.existsSync(path.join(app.getPath("userData"),"ddb-meta-data.zip"))) {
+                        ddbmeta = new AdmZip(path.join(app.getPath("userData"),"ddb-meta-data.zip"))
+                        metaVer = semver.clean(JSON.parse(ddbmeta.readAsText("meta.json")).version)
+                    }
+                    if (semver.gt(semver.clean(metaLatest.tag_name),metaVer||"0.0.0")) {
+                        ddbmeta = undefined
+                        if (fs.existsSync(path.join(app.getPath("userData"),"ddb-meta-data.zip")))
+                            fs.rmSync(path.join(app.getPath("userData"),"ddb-meta-data.zip"))
+                        ddbmeta = await (new Promise((resolve,reject)=>{
+                            const request = net.request({url: metaLatest.assets[0].browser_download_url})
+                            request.on('response', (response) => {
+                              let body = new Buffer.alloc(0)
+                              const total = parseInt(response.headers['content-length']||0)
+                              if (response.statusCode != 200) {
+                                  console.log(response)
+                                  if (response.statusCode > 299)
+                                      reject(response.statusCode)
+                              }
+                              response.on('data', (chunk) => {
+                                body = Buffer.concat([body,chunk])
+                                if (total)
+                                    prog.detail = `Retrieving updated metadata ${parseInt(body.length/total*100)}%`
+                                else
+                                    prog.detail = `Retrieving updated metadata ${body.length}`
+                              })
+                              response.on('end', () => {
+                                try{
+                                    fs.writeFile(path.join(app.getPath("userData"),"ddb-meta-data.zip"),body,()=>{
+                                        resolve(new AdmZip(path.join(app.getPath("userData"),"ddb-meta-data.zip")))
+                                    })
+                                } catch(e) {
+                                    reject(e)
+                                }
+                              })
+                            })
+                            request.end()
+                        })).catch(e=>console.log(`Error retrieiving metadata: ${e}`))
+                    }
+                    ddbmeta.getEntries().forEach(entry=>{
+                        if (entry.isDirectory || !entry.entryName.match(new RegExp(`scene_info\/${book.name.toLowerCase()}\/.*\.json`))) return
+                        ddbMeta.push(JSON.parse(ddbmeta.readAsText(entry)))
+                    })
+                    const getGrid = require('./getgrid')
                     prog.detail = "Scanning pages..."
                     var mapJobs = []
-                    const mapgroup = uuid5(`https://www.dndbeyond.com/${book.sourceURL}/maps`,uuid5.URL)
                     if (this.mapsloc != "parent") {
                         mod._content.push(
                             {
@@ -2395,19 +2607,6 @@ function doSearch(el,resId) {
                                     { slug: 'maps' }
                                 ]
                             })
-                    }
-                    if (this.remotemaps?.includes("remote")) {
-                        console.log("Checking to see if we can get remote images")
-                        const remotePage = await this.getImage(`https://www.dndbeyond.com/${book.sourceURL}`)
-                        const remoteDom = new jsdom.JSDOM(remotePage)
-                        for (const link of remoteDom.window.document.querySelectorAll("A")) {
-                            let linkMatch = /https:\/\/media.dndbeyond.com\/compendium-images\/[^\/]*\/[^\/]*\//.exec(link.href)
-                            if (linkMatch) {
-                                console.log(`Remote prefix: ${linkMatch[0]}`)
-                                book.remotePrefix = linkMatch[0]
-                                break
-                            }
-                        }
                     }
                     for (const page of mod._content) {
                         prog.value += ((1/mod._content.length))
@@ -2465,30 +2664,10 @@ function doSearch(el,resId) {
                                         }
                                     }
                                 }
+                                mapTitle = mapTitle.trim()
                                 mapsort ++
                                 prog.detail = `Found: ${mapTitle}`
                                 let { data: mapfile, info } = await sharp(zip.readFile(mapUrl)).toBuffer({resolveWithObject: true})
-                                if (book.remotePrefix) {
-                                    let remoteData = await this.getImage(`${book.remotePrefix}${mapUrl}`).catch(e=>console.log(`Could not load remote map: ${e}`))
-                                    if (remoteData) {
-                                        let { data: rFile, info: rInfo } = await sharp(remoteData).toBuffer({resolveWithObject: true}).catch(e=>console.log(e))
-                                        if (rInfo.width > info.width || rInfo.height > info.height) {
-                                            console.log("Remote map is larger, using remote map")
-                                            mapfile = rFile
-                                            zip.addFile(mapUrl,remoteData)
-                                            if (dmMap) {
-                                                let remoteData = await this.getImage(`${book.remotePrefix}${dmMap}`).catch(e=>console.log(`Could not load remote DM map: ${e}`))
-                                                if (remoteData) {
-                                                    console.log("Replacing DM Map too")
-                                                    zip.addFile(dmMap,remoteData)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                const grid = await getGrid(mapfile);
-                                prog.value += ((1/figures.length)*((1/mod._content.length)*3))
-                                console.log(`This might be a map: ${mapUrl}`)
                                 let playerMap = {
                                     _name: "map",
                                     _attrs: { id: uuid5(`https://www.dndbeyond.com/${book.sourceURL}/image/${figure.id||mapUrl}`, uuid5.URL), parent: (this.mapsloc!="group")? page.page._attrs.id : mapgroup, sort: mapsort},
@@ -2498,14 +2677,211 @@ function doSearch(el,resId) {
                                         { image: mapUrl }
                                     ]
                                 }
-                                if (grid.freq > 0) {
-                                    prog.detail = `${mapTitle} - Analyzing grid: ${grid.size}px`
-                                    playerMap._content.push( { gridSize: grid.size } )
-                                    playerMap._content.push( { gridOffsetX: grid.x } )
-                                    playerMap._content.push( { gridOffsetY: grid.y } )
-                                    playerMap._content.push( { scale: grid.scale } )
+                                const headings = Array.from(dom.window.document.querySelectorAll("h1, h2, h3, h4, h5, h6"))
+                                let siblingHeadings = []
+                                if (page.page._attrs.parent) {
+                                    for (let nextpage of mod._content.filter(p=>p.page&&p.page._attrs.parent==page.page._attrs.parent)) {
+                                        let nxtDom = new jsdom.JSDOM(nextpage.page.content)
+                                        let nxtHeadings = Array.from(nxtDom.window.document.querySelectorAll("h1, h2, h3, h4, h5, h6"))
+                                        siblingHeadings.push({slug:nextpage.page.slug,headings:nxtHeadings})
+                                    }
                                 }
-                                if (this.maps == "markers") {
+                                for(const meta of ddbMeta) {
+                                    if (meta.name.toLowerCase() == mapTitle.toLowerCase() || meta.name.toLowerCase() == he.decode(mapTitle).toLowerCase() || meta.flags?.ddb?.originalLink?.endsWith("/"+mapUrl)) {
+                                        console.log(`Found meta data for map ${mapTitle}`)
+                                        let offset = {
+                                            x: Math.ceil(((meta.padding||.25) * meta.width) / meta.grid) * meta.grid,
+                                            y: Math.ceil(((meta.padding||.25) * meta.height) / meta.grid) * meta.grid,
+                                        }
+                                        offset.x -= meta.shiftX
+                                        offset.y -= meta.shiftY
+                                        let grid = meta.grid
+                                        let scale = 1
+                                        if (info.width!=meta.width||info.height!=meta.height) {
+                                            scale = (info.width/meta.width)
+                                            console.log(`Meta ${meta.width}x${meta.height} != ${info.width}x${info.height} (${scale})`)
+                                            console.log(offset,grid)
+                                            grid = Math.round(grid * scale)
+                                        }
+//          elif map["gridType"] > 1 and round(map["grid"] / 2.0) != (map["grid"] / 2.0):
+                                        //                        map["realign"] = round(map["grid"] / 2.0) / (map["grid"] / 2.0)
+
+                                        if (meta.gridDistance) playerMap._content.push( { gridScale: meta.gridDistance } )
+                                        if (meta.gridUnits) playerMap._content.push( { gridUnits: meta.gridUnits } )
+                                        if (meta.gridType>1) {
+                                            grid = Math.round((meta.grid*scale)/2.0)
+                                            let shiftX = Math.round(meta.shiftX*scale)
+                                            let shiftY = Math.round(meta.shiftY*scale)
+                                            let gridScale = grid/((meta.grid*scale)/2.0)
+                                            scale *= gridScale
+                                            switch (meta.gridType) {
+                                                case 2:
+                                                    shiftY += grid
+                                                    break
+                                                case 3:
+                                                    shiftY -= grid/2.0
+                                                    break
+                                                case 4:
+                                                    shiftY += grid/2.0
+                                                    shiftX -= grid
+                                                    break
+                                                case 5:
+                                                    shiftY += grid/2.0
+                                                    shiftX += grid/2.0
+                                                    break
+                                            }
+                                            playerMap._content.push( { gridSize: grid } )
+                                            playerMap._content.push( { gridOffsetX: shiftX } )
+                                            playerMap._content.push( { gridOffsetY: shiftY } )
+                                            playerMap._content.push( { scale: gridScale } )
+                                            playerMap._content.push( { gridType: (meta.gridType>=4)?"hexPointy":"hexFlat" } )
+                                        } else {
+                                            let gridScale = grid/(meta.grid*scale)
+                                            scale *= gridScale
+                                            playerMap._content.push( { gridSize: grid } )
+                                            playerMap._content.push( { gridOffsetX: Math.round(meta.shiftX*scale) } )
+                                            playerMap._content.push( { gridOffsetY: Math.round(meta.shiftY*scale) } )
+                                            playerMap._content.push( { scale: gridScale } )
+                                        }
+                                        playerMap._content.push( { gridColor: meta.gridColor||"#000000" } )
+                                        playerMap._content.push( { gridVisible: (meta.gridAlpha>0)?"YES":"NO" } )
+                                        if (meta.gridAlpha)
+                                            playerMap._content.push( { gridOpacity: meta.gridAlpha } )
+                                        if (meta.lights)
+                                        for (const l of meta.lights) {
+                                            if (l.lightAnimation?.type == "ghost") continue
+                                            playerMap._content.push( { light: {
+                                                _attrs: { id: uuid5(`light-${playerMap._content.filter(f=>f.light).length}`,playerMap._attrs.id) },
+                                                radiusMax: l.dim || l.config.dim || 0,
+                                                radiusMin: l.bright || l.config.bright || 0,
+                                                color: l.tintColor || l.config.color || "#ffffff",
+                                                opacity: l.tintAlpha || l.config.alpha || 1,
+                                                alwaysVisible: (l.t == "u")? "YES" : "NO",
+                                                x: Math.round((l.x - offset.x)*scale),
+                                                y: Math.round((l.y - offset.y)*scale),
+                                            } } )
+                                        }
+                                        if (meta.flags?.ddb?.tokens)
+                                        for (const t of meta.flags.ddb.tokens) {
+                                            playerMap._content.push( { token: {
+                                                _attrs: { id: uuid5(`token-${playerMap._content.filter(f=>f.token).length}`,playerMap._attrs.id) },
+                                                name: t.name.trim(),
+                                                x: Math.round(((t.x - offset.x)*scale) + (t.width*grid/2)),
+                                                y: Math.round(((t.y - offset.y)*scale) + (t.height*grid/2)),
+                                                hidden: (t.hidden)? "YES" : "NO",
+                                                size: (t.width!=t.height)?`${t.width}x${t.height}`:(t.width>4)?"C":(t.width>3)?"G":(t.width>2)?"H":(t.width>1)?"L":(t.width<.5)?"T":(t.width<1)?"S":"M",
+                                                rotation: t.rotation||0,
+                                                elevation: t.elevation||0,
+                                                reference: (t.flags?.ddbActorFlags?.id)?`/monster/${uuid5(`ddb://monsters/${t.flags.ddbActorFlags.id}`,uuid5.URL)}`:null
+                                            } } )
+                                        }
+                                        if (meta.drawings)
+                                        for (const d of meta.drawings) {
+                                            if (d.type != "t") continue
+                                            playerMap._content.push({
+                                                marker: {
+                                                    name: d.text.trim(),
+                                                    label: "",
+                                                    color: d.textColor||"#000000",
+                                                    shape: "label",
+                                                    size: (d.fontSize>100)?"huge":(d.fontSize>50)?"large":(d.fontSize>25)?"medium":(d.fontSize>16)?"small":"tiny",
+                                                    hidden: "YES",
+                                                    locked: "YES",
+                                                    x: Math.round(((d.x+(d.width/2))-offset.x)*scale),
+                                                    y: Math.round(((d.y+(d.height/2))-offset.y)*scale),
+                                                }
+                                            })
+                                        }
+                                        if (meta.flags?.ddb?.notes)
+                                        for (const n of meta.flags.ddb.notes) {
+                                            let pageslug = page.page.slug
+                                            let marker = headings.find(h=>h.dataset.contentChunkId==n.flags?.ddb?.contentChunkId)
+                                            if (!marker && siblingHeadings) {
+                                                for(let sibling of siblingHeadings) {
+                                                    marker = sibling.headings.find(h=>h.dataset.contentChunkId==n.flags?.ddb?.contentChunkId)
+                                                    if (marker) {
+                                                        pageslug = sibling.slug
+                                                        break
+                                                    }
+                                                }
+                                            }
+                                            if (marker)
+                                                playerMap._content.push({
+                                                    marker: {
+                                                        name: "",
+                                                        label: marker.textContent.substring(0,marker.textContent.indexOf('.')),
+                                                        color: "#ff0000",
+                                                        shape: "circle",
+                                                        size: "medium",
+                                                        hidden: "YES",
+                                                        locked: "YES",
+                                                        x: Math.round((n.positions[0].x-offset.x)*scale),
+                                                        y: Math.round((n.positions[0].y-offset.y)*scale),
+                                                        content: {_attrs: { ref: `/page/${pageslug}#${marker.id}` }}
+                                                    }
+                                                })
+                                        }
+                                        if (meta.walls)
+                                        for (const w of meta.walls) {
+                                            let pathlist = [
+                                                ((w.c[0]-offset.x) * scale).toFixed(1),
+                                                ((w.c[1]-offset.y) * scale).toFixed(1),
+                                                ((w.c[2]-offset.x) * scale).toFixed(1),
+                                                ((w.c[3]-offset.y) * scale).toFixed(1)
+                                            ]
+                                            let wall = {
+                                                _attrs: { id: uuid5(`wall-${playerMap._content.filter(f=>f.wall).length}`,playerMap._attrs.id)},
+                                                data: pathlist.join(','),
+                                                generated: "YES"
+                                            }
+                                            if (w.door) {
+                                                wall.type = (w.door == 2)? "secretDoor":"door"
+                                                wall.color = "#00ffff"
+                                                if (w.ds) wall.door = (w.ds == 2)? "locked" : "open"
+                                            } else if ((w.move==0) && (w.sight==20||w.sense==1)) {
+                                                wall.type = "ethereal"
+                                                wall.color = "#7f007f"
+                                            } else if ((w.move==1||w.move==20) && (w.sight==0||w.sense==0)) {
+                                                wall.type = "invisible"
+                                                wall.color = "#ff00ff"
+                                            } else if ((w.move==1||w.move==20) && (w.sight==10||w.sense==2)) {
+                                                wall.type = "terrain"
+                                                wall.color = "#ffff00"
+                                            } else if ((w.move==1||w.move==20) && (w.sight==20||w.sense==1)) {
+                                                wall.type = "normal"
+                                                wall.color = "#ff7f00"
+                                            }
+                                            if (w.dir) wall.side = (w.dir==1)?"left":"right"
+                                            let existingWall = playerMap._content.find(pw=>pw.wall&&
+                                                pw.wall.type===wall.type&&pw.wall.door===wall.door&&
+                                                    (pw.wall.data.endsWith(pathlist.slice(0,2).join(','))
+                                                        ||pw.wall.data.startsWith(pathlist.slice(2).join(','))
+)
+                                            )?.wall
+                                            if (existingWall) {
+                                                if (existingWall.data.endsWith(pathlist.slice(0,2).join(',')))
+                                                    existingWall.data += ","+pathlist.slice(2).join(',')
+                                                else
+                                                    existingWall.data = pathlist.slice(0,2).join(',')+","+existingWall.data
+                                            } else {
+                                                playerMap._content.push({wall: wall})
+                                            }
+                                        }
+                                    }
+                                }
+                                if (!playerMap._content.find(c=>c.gridSize)) {
+                                    const grid = await getGrid(mapfile);
+                                    console.log(`This might be a map: ${mapUrl}`)
+                                    if (grid.freq > 0) {
+                                        prog.detail = `${mapTitle} - Analyzing grid: ${grid.size}px`
+                                        playerMap._content.push( { gridSize: grid.size } )
+                                        playerMap._content.push( { gridOffsetX: grid.x } )
+                                        playerMap._content.push( { gridOffsetY: grid.y } )
+                                        playerMap._content.push( { scale: grid.scale } )
+                                    }
+                                }
+                                prog.value += ((1/figures.length)*((1/mod._content.length)*3))
+                                if (this.maps == "markers" && !playerMap._content.find(c=>c.marker)) {
                                     if (dmMap) {
                                         let {data:dmMapImg,info:dmMapInfo} = await sharp(zip.readFile(dmMap)).toBuffer({resolveWithObject: true})
                                         let markerOffset = {x:0,y:0,s:1}
@@ -2542,15 +2918,6 @@ function doSearch(el,resId) {
                                         if (dmMapImg.length > 10485760) dmMapImg = await sharp(dmMapImg).webp().toBuffer()
                                             //(book.remotePrefix)?`${book.remotePrefix}${dmMap}`:await sharp(zip.readFile(dmMap)).toBuffer()
                                         let tasks = []
-                                        const headings = Array.from(dom.window.document.querySelectorAll("h1, h2, h3, h4, h5, h6"))
-                                        let siblingHeadings = []
-                                        if (page.page._attrs.parent) {
-                                            for (let nextpage of mod._content.filter(p=>p.page&&p.page._attrs.parent==page.page._attrs.parent)) {
-                                                let nxtDom = new jsdom.JSDOM(nextpage.page.content)
-                                                let nxtHeadings = Array.from(nxtDom.window.document.querySelectorAll("h1, h2, h3, h4, h5, h6"))
-                                                siblingHeadings.push({slug:nextpage.page.slug,headings:nxtHeadings})
-                                            }
-                                        }
                                         prog.detail = `${mapTitle} - Scanning for markers with Google Vision`
                                         const gVisionClient = new vision.ImageAnnotatorClient({
                                             keyFile: path.join(__dirname,'.gkey.json')
@@ -2635,6 +3002,11 @@ function doSearch(el,resId) {
                     }
                     if (mapJobs.length > 0) await Promise.all(mapJobs)
                     prog.value = 50
+                    if (mod._content.find(g=>g._attrs?.id==mapgroup)
+                        &&!mod._content.find(c=>c.map?._attrs?.parent==mapgroup)) {
+                        console.log("Removing empty maps group")
+                        mod._content.splice(mod._content.findIndex(g=>g.group?._attrs?.id==mapgroup),1)
+                    }
                 }
                 let modImg = mod._content.find(c=>c?.image)
                 if (zip.getEntry(modImg.image)) {

@@ -62,7 +62,6 @@ const preferences = new ElectronPreferences({
                 'art': [ 'artwork', 'tokens' ],
                 'maps': 'nomaps',
                 'mapsloc': 'group',
-                'remotemaps': [ ]
             }
         },
 	'sections': [ {
@@ -131,9 +130,13 @@ const preferences = new ElectronPreferences({
                                         'options': [
                                             { 'label': 'Do not look for maps', 'value': 'nomaps' },
                                             { 'label': 'Look for maps', 'value': 'maps' },
-                                            { 'label': 'Look for maps and search for markers with Google Vision', 'value': 'markers' },
-                                        ],
-                                        'help': 'EncounterLog will attempt to identify and align the grid in discovered maps. If you choose to search for markers, EncounterLog will upload the maps to Google Vision to try to find label text and match it to headers in the page.'
+                                            { 'label': 'Look for maps and search for missing markers with Google Vision', 'value': 'markers' },
+                                        ]
+                                    },
+                                    {
+                                        'key': 'mapsdetail',
+                                        'type': 'message',
+                                        'content': 'EncounterLog will attempt to identify maps and prepare the grid, walls, lighting, tokens, and markers using crowdsourced data from: <a target="_blank" href="https://github.com/MrPrimate/ddb-meta-data" style="color: white;">Mr. Primate&apos;s ddb-meta-data</a>.<br>EncounterLog will then use computer vision to attempt automatically detect and align the grid for any maps without existing meta data.<br>If you choose to search for missing markers, EncounterLog will upload any maps without markers to Google Vision to try to find label text and match it to headers in the page.'
                                     },
                                     {
 					'label': "Location for discovered maps",
@@ -144,14 +147,6 @@ const preferences = new ElectronPreferences({
                                             { 'label': 'In "Maps" group', 'value': 'group' },
                                         ],
                                     },
-                                    {
-					'label': "Check to see if a higher resolution maps exist on the site. This can make the module significantly larger, take a lot longer to process, and may not work with every module.",
-					'key': 'remotemaps',
-					'type': 'checkbox',
-                                        'options': [
-                                            { 'label': 'Check for higher resolution maps', 'value': 'remote' }
-                                        ]
-                                    }
                                 ],
                             },
                             {
@@ -171,6 +166,7 @@ const preferences = new ElectronPreferences({
             }
 })
 function openURL(u) {
+    if (!u) return
     const url = u.replace(/(https?)\/\//,"$1://")
     if (url.match(/dndbeyond.com/)) {
         const ddburl = url.replace(/encounterlog:\/?\/?/,'')
@@ -194,6 +190,9 @@ function openURL(u) {
 }
 encounterhost = preferences.value('main.encounterhost');
 app.on('ready', () => {
+        if (!fs.existsSync(path.join(app.getPath("cache"),app.getName(),"imagecache"))) {
+            fs.mkdir(path.join(app.getPath("cache"),app.getName(),"imagecache"),{recursive:true},()=>{})
+        }
         autoUpdater.autoDownload = false
         autoUpdater.on('update-available',update=>
             dialog.showMessageBox(_win,{
@@ -250,15 +249,9 @@ app.on('ready', () => {
             delete preferences.preferences.main.mapsloc
             preferences.save()
         }
-        if (preferences.value('main.remotemaps')) {
-            preferences.value('export.remotemaps',preferences.value('main.remotemaps'))
-            delete preferences.preferences.main.remotemaps
-            preferences.save()
-        }
         ddb.art = preferences.value('export.art');
         ddb.maps = preferences.value('export.maps') ?? "nomaps";
         ddb.mapsloc = preferences.value('export.mapsloc') ?? "group";
-        ddb.remotemaps = preferences.value('export.remotemaps');
 
         console.log(ddb.art,ddb.maps)
         preferences.on('save', (preferences) => {
@@ -268,7 +261,6 @@ app.on('ready', () => {
                 ddb.art = preferences.export.art
                 ddb.maps = preferences.export.maps
                 ddb.mapsloc = preferences.export.mapsloc
-                ddb.remotemaps = preferences.export.remotemaps
         })
 	var menu = Menu.buildFromTemplate([
 	      {
@@ -291,6 +283,19 @@ app.on('ready', () => {
                   { label: `${app.getName()} v${app.getVersion()}`, enabled: false }, 
                   { label: "About", click: () => shell.openExternal("https://github.com/rrgeorge/EncounterLog") },
                   { label: "Support this project", click: () => shell.openExternal("https://github.com/sponsors/rrgeorge") },
+                  {
+                      'click': function() {
+                            fs.rm(path.join(app.getPath("cache"),app.getName(),"imagecache"),{recursive: true},(e)=>{
+                                if (e) {
+                                    dialog.showErrorBox("Error",`Could not remove image cache: ${e}`)
+                                } else {
+                                    fs.mkdir(path.join(app.getPath("cache"),app.getName(),"imagecache"),{recursive: true},()=>{})
+                                    dialog.showMessageBox(_win,{title:"Image Cache Cleared",message: "Image cache has been cleared."})
+                                }
+                            })
+                      },
+                      'label': "Clear image cache",
+                  },
                   {
                       'click': function() {
                           win.webContents.session.clearStorageData().then(()=>
@@ -325,7 +330,6 @@ app.on('ready', () => {
         })
         const checkLogin = (e,u,r,m) => {
             if (r == 200) {
-                (() => new Promise(resolve => setTimeout(resolve, 1000)))().then(
                 ddb.getUserData()
                     .then(()=>{
                         updateManifest().then(()=>
@@ -336,7 +340,8 @@ app.on('ready', () => {
                         console.log(`Unable to get userdata: ${e}`)
                         win.webContents.once('did-navigate',checkLogin)
                     })
-                )
+            } else {
+                win.webContents.once('did-navigate',checkLogin)
             }
         }
         win.webContents.once('did-navigate',checkLogin)
@@ -895,7 +900,7 @@ function requestCampaignChars(gameId,cobalt) {
 	})
 }
 async function connectGameLog(gameId,userId,campaignName) {
-        connectEWS()
+        connectEWS(null,true)
 	const cobalt = await ddb.getCobaltAuth()
         ddb.gameId = gameId
         let updateChars = () => {}
@@ -924,7 +929,7 @@ async function connectGameLog(gameId,userId,campaignName) {
                         },1000)
                         })()`).catch(e=>console.log(`Could not set timer: ${e}`))
                     if (_eWs?.readyState !== WebSocket.open)
-                        connectEWS
+                        connectEWS()
                     for(let f of found) {
                         let conditions = f.conditions.map(c=>`i-condition-white-${c.name.toLowerCase()}`)
                         let senses = f.senses.map(s=>`${s.name} ${s.distance}`)
@@ -1228,6 +1233,16 @@ async function connectGameLog(gameId,userId,campaignName) {
                         }
                         eplusws.innerHTML = "&#x1F7E2; Connected to EncounterPlus at ${encounterhost}"
                         }`,true).catch(e=>console.log(e))
+                } else if (!encounterhost) {
+                    _win.webContents.executeJavaScript(`{
+                        let eplusws = document.getElementById('eWsStatus')
+                        if (!eplusws) {
+                            eplusws = document.createElement('div')
+                            eplusws.id = 'eWsStatus'
+                            document.getElementsByClassName('gamelog-button')[0]?.parentElement?.appendChild(eplusws)
+                        }
+                        eplusws.innerHTML = "&#x1F534; EncounterPlus remote host not configured"
+                        }`,true).catch(e=>console.log(e))
                 } else {
                     _win.webContents.executeJavaScript(`{
                         let eplusws = document.getElementById('eWsStatus')
@@ -1356,14 +1371,16 @@ function getEAPI () {
     })
     request.end()
 }
-function connectEWS(msg=null) {
+function connectEWS(msg=null,initial=false) {
     if (!encounterhost) {
-        dialog.showMessageBox(_win,{
-            title: "No Remote Host Set",
-            message: "EncounterPlus remote host not set.",
-            detail: "EncounterLog will not be able to send dice rolls or health updates to EncounterPlus.\nPlease set the EncounterPlus remote host in Preferences, then reload this page.",
-            type: "warning"
-        })
+        if (initial) {
+            dialog.showMessageBox(_win,{
+                title: "No Remote Host Set",
+                message: "EncounterPlus remote host not set.",
+                detail: "EncounterLog will not be able to send dice rolls or health updates to EncounterPlus.\nPlease set the EncounterPlus remote host in Preferences, then reload this page.",
+                type: "warning"
+            })
+        }
         return
     }
     getEAPI()
