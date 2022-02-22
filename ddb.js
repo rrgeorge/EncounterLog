@@ -2783,9 +2783,10 @@ function doSearch(el,resId) {
                                                 x: Math.round(((t.x - offset.x)*scale) + (t.width*grid/2)),
                                                 y: Math.round(((t.y - offset.y)*scale) + (t.height*grid/2)),
                                                 hidden: (t.hidden)? "YES" : "NO",
-                                                size: (t.width!=t.height)?`${t.width}x${t.height}`:(t.width>4)?"C":(t.width>3)?"G":(t.width>2)?"H":(t.width>1)?"L":(t.width<.5)?"T":(t.width<1)?"S":"M",
+                                                size: (t.width!=t.height)?`${t.width}x${t.height}`:(t.width>4)?"C":(t.width>3)?"G":(t.width>2)?"H":(t.width>1)?"L":(t.width<.5||t.scale<=.5)?"T":(t.width<1||t.scale<1)?"S":"M",
                                                 rotation: t.rotation||0,
                                                 elevation: t.elevation||0,
+                                                scale:(t.width<.5||t.scale<=.5)?0.7:(t.width<1||t.scale<1)?0.8:1,
                                                 reference: (t.flags?.ddbActorFlags?.id)?`/monster/${uuid5(`ddb://monsters/${t.flags.ddbActorFlags.id}`,uuid5.URL)}`:null
                                             } } )
                                         }
@@ -3039,7 +3040,6 @@ function doSearch(el,resId) {
                                 console.log(`Adding MAP: ${mapTitle}`)
                                 page.page.content = page.page.content.replaceAll(new RegExp(`href="${mapUrl}"`,'g'),`href="/map/${playerMap._attrs.id}"`);
                                 mod._content.push(playerMap)
-                                console.log()
                                 console.log(`Added: ${mapTitle}`)
                             }
                         }
