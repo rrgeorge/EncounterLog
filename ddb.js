@@ -2687,7 +2687,12 @@ function doSearch(el,resId) {
                                     }
                                 }
                                 for(const meta of ddbMeta) {
-                                    if (meta.name.toLowerCase() == mapTitle.toLowerCase() || meta.name.toLowerCase() == he.decode(mapTitle).toLowerCase() || meta.flags?.ddb?.originalLink?.endsWith("/"+mapUrl)) {
+                                    if (figure.dataset?.contentChunkId == meta.flags?.ddb?.contentChunkId ||
+                                        figure.id == meta.flags?.ddb?.contentChunkId ||
+                                        `${figure.id}-player` == meta.flags?.ddb?.contentChunkId ||
+                                        meta.name.toLowerCase() == mapTitle.toLowerCase() ||
+                                        meta.name.toLowerCase() == he.decode(mapTitle).toLowerCase() ||
+                                        meta.flags?.ddb?.originalLink?.endsWith("/"+mapUrl) ) {
                                         console.log(`Found meta data for map ${mapTitle}`)
                                         let offset = {
                                             x: Math.ceil(((meta.padding||.25) * meta.width) / meta.grid) * meta.grid,
@@ -2787,19 +2792,48 @@ function doSearch(el,resId) {
                                         if (meta.drawings)
                                         for (const d of meta.drawings) {
                                             if (d.type != "t") continue
-                                            playerMap._content.push({
-                                                marker: {
-                                                    name: d.text.trim(),
-                                                    label: "",
-                                                    color: d.textColor||"#000000",
-                                                    shape: "label",
-                                                    size: (d.fontSize>100)?"huge":(d.fontSize>50)?"large":(d.fontSize>25)?"medium":(d.fontSize>16)?"small":"tiny",
-                                                    hidden: "YES",
-                                                    locked: "YES",
-                                                    x: Math.round(((d.x+(d.width/2))-offset.x)*scale),
-                                                    y: Math.round(((d.y+(d.height/2))-offset.y)*scale),
+                                            let pageslug = page.page.slug
+                                            const markerRegex = new RegExp(`^${d.text.toLowerCase().trim()}\\. `,'i')
+                                            let marker = headings.find(h=>h.textContent.match(markerRegex))
+                                            if (!marker && siblingHeadings) {
+                                                for(let sibling of siblingHeadings) {
+                                                    marker = sibling.headings.find(h=>h.textContent.match(markerRegex))
+                                                    if (marker) {
+                                                        pageslug = sibling.slug
+                                                        break
+                                                    }
                                                 }
-                                            })
+                                            }
+                                            if (marker) {
+                                                playerMap._content.push({
+                                                    marker: {
+                                                        name: "",
+                                                        label: marker.textContent.substring(0,marker.textContent.indexOf('.')),
+                                                        color: "#ff0000",
+                                                        shape: "circle",
+                                                        size: "medium",
+                                                        hidden: "YES",
+                                                        locked: "YES",
+                                                        x: Math.round(((d.x+(d.width/2))-offset.x)*scale),
+                                                        y: Math.round(((d.y+(d.height/2))-offset.y)*scale),
+                                                        content: {_attrs: { ref: `/page/${pageslug}#${marker.id}` }}
+                                                    }
+                                                })
+                                            } else {
+                                                playerMap._content.push({
+                                                    marker: {
+                                                        name: d.text.trim(),
+                                                        label: "",
+                                                        color: d.textColor||"#000000",
+                                                        shape: "label",
+                                                        size: (d.fontSize>100)?"huge":(d.fontSize>50)?"large":(d.fontSize>25)?"medium":(d.fontSize>16)?"small":"tiny",
+                                                        hidden: "YES",
+                                                        locked: "YES",
+                                                        x: Math.round(((d.x+(d.width/2))-offset.x)*scale),
+                                                        y: Math.round(((d.y+(d.height/2))-offset.y)*scale),
+                                                    }
+                                                })
+                                            }
                                         }
                                         if (meta.flags?.ddb?.notes)
                                         for (const n of meta.flags.ddb.notes) {
@@ -2876,9 +2910,11 @@ function doSearch(el,resId) {
                                                 playerMap._content.push({wall: wall})
                                             }
                                         }
+                                        break
                                     }
                                 }
                                 if (!playerMap._content.find(c=>c.gridSize)) {
+                                    console.log(`No meta data found for ${mapTitle}`)
                                     const grid = await getGrid(mapfile);
                                     console.log(`This might be a map: ${mapUrl}`)
                                     if (grid.freq > 0) {
@@ -3003,7 +3039,8 @@ function doSearch(el,resId) {
                                 console.log(`Adding MAP: ${mapTitle}`)
                                 page.page.content = page.page.content.replaceAll(new RegExp(`href="${mapUrl}"`,'g'),`href="/map/${playerMap._attrs.id}"`);
                                 mod._content.push(playerMap)
-                                
+                                console.log()
+                                console.log(`Added: ${mapTitle}`)
                             }
                         }
                         prog.value += ((1/mod._content.length)*3)
@@ -3011,10 +3048,10 @@ function doSearch(el,resId) {
                     }
                     if (mapJobs.length > 0) await Promise.all(mapJobs)
                     prog.value = 50
-                    if (mod._content.find(g=>g._attrs?.id==mapgroup)
-                        &&!mod._content.find(c=>c.map?._attrs?.parent==mapgroup)) {
+                    if (mod._content.find(g=>g._attrs?.id==mapgroup)!==undefined
+                        &&mod._content.find(c=>c._name=="map")===undefined) {
                         console.log("Removing empty maps group")
-                        mod._content.splice(mod._content.findIndex(g=>g.group?._attrs?.id==mapgroup),1)
+                        mod._content.splice(mod._content.findIndex(g=>g._attrs?.id==mapgroup),1)
                     }
                 }
                 let modImg = mod._content.find(c=>c?.image)
