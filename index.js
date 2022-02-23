@@ -330,6 +330,7 @@ app.on('ready', () => {
         })
         const checkLogin = (e,u,r,m) => {
             if (r == 200) {
+                (() => new Promise(resolve => setTimeout(resolve, 500)))().then(()=>
                 ddb.getUserData()
                     .then(()=>{
                         updateManifest().then(()=>
@@ -340,6 +341,7 @@ app.on('ready', () => {
                         console.log(`Unable to get userdata: ${e}`)
                         win.webContents.once('did-navigate',checkLogin)
                     })
+                )
             } else {
                 win.webContents.once('did-navigate',checkLogin)
             }

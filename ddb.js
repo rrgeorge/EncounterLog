@@ -2792,9 +2792,11 @@ function doSearch(el,resId) {
                                         }
                                         if (meta.drawings)
                                         for (const d of meta.drawings) {
-                                            if (d.type != "t") continue
+                                            if (d.type != "t"||!d.text) continue
+                                            let txt = d.text.replaceAll(/[\W_]+/g,'').trim();
+                                            if (!txt) continue
                                             let pageslug = page.page.slug
-                                            const markerRegex = new RegExp(`^${d.text.toLowerCase().trim()}\\. `,'i')
+                                            const markerRegex = new RegExp(`^${txt}\\. `,'i')
                                             let marker = headings.find(h=>h.textContent.match(markerRegex))
                                             if (!marker && siblingHeadings) {
                                                 for(let sibling of siblingHeadings) {
