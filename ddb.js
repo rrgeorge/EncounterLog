@@ -92,6 +92,226 @@ function sanitize(text,rulesdata=null) {
     }).replaceAll(/[\p{Pd}−]/gu, "-").replaceAll(/<[^>]*[\n][^>]*>/g,m=>m.replaceAll("\n"," "))
 }
 
+
+function applyMeta (playerMap,meta,info,page,headings,siblingHeadings) {
+    let offset = {
+        x: Math.ceil(((meta.padding||.25) * meta.width) / meta.grid) * meta.grid,
+        y: Math.ceil(((meta.padding||.25) * meta.height) / meta.grid) * meta.grid,
+    }
+    offset.x -= meta.shiftX
+    offset.y -= meta.shiftY
+    let grid = meta.grid
+    let scale = 1
+    if (info.width!=meta.width||info.height!=meta.height) {
+        scale = (info.width/meta.width)
+        console.log(`Meta ${meta.width}x${meta.height} != ${info.width}x${info.height} (${scale})`)
+        console.log(offset,grid)
+        grid = Math.round(grid * scale)
+    }
+    if (meta.gridDistance) playerMap._content.push( { gridScale: meta.gridDistance } )
+    if (meta.gridUnits) playerMap._content.push( { gridUnits: meta.gridUnits } )
+    if (meta.gridType>1) {
+        grid = Math.round((meta.grid*scale)/2.0)
+        let shiftX = Math.round(meta.shiftX*scale)
+        let shiftY = Math.round(meta.shiftY*scale)
+        let gridScale = grid/((meta.grid*scale)/2.0)
+        scale *= gridScale
+        switch (meta.gridType) {
+            case 2:
+                shiftY += grid
+                break
+            case 3:
+                shiftY -= grid/2.0
+                break
+            case 4:
+                shiftY += grid/2.0
+                shiftX -= grid
+                break
+            case 5:
+                shiftY += grid/2.0
+                shiftX += grid/2.0
+                break
+        }
+        playerMap._content.push( { gridSize: grid } )
+        playerMap._content.push( { gridOffsetX: shiftX } )
+        playerMap._content.push( { gridOffsetY: shiftY } )
+        playerMap._content.push( { scale: gridScale } )
+        playerMap._content.push( { gridType: (meta.gridType>=4)?"hexPointy":"hexFlat" } )
+    } else {
+        let gridScale = grid/(meta.grid*scale)
+        scale *= gridScale
+        playerMap._content.push( { gridSize: grid } )
+        playerMap._content.push( { gridOffsetX: Math.round(meta.shiftX*scale) } )
+        playerMap._content.push( { gridOffsetY: Math.round(meta.shiftY*scale) } )
+        playerMap._content.push( { scale: gridScale } )
+    }
+    playerMap._content.push( { gridColor: meta.gridColor||"#000000" } )
+    playerMap._content.push( { gridVisible: (meta.gridAlpha>0)?"YES":"NO" } )
+    if (meta.gridAlpha)
+        playerMap._content.push( { gridOpacity: meta.gridAlpha } )
+    if (meta.lights)
+    playerMap._content.push( { lineOfSight: (meta.tokenVision)?"YES":"NO" } )
+    if (meta.fogExploration) {
+        playerMap._content.push( { fogOfWar: "YES" } )
+        playerMap._content.push( { fogExploration: "YES" } )
+    }
+    if (meta.weather) {
+        playerMap._content.push( { weatherType: meta.weather } )
+        playerMap._content.push( { weatherIntensity: 1.0 } )
+    }
+    for (const l of meta.lights) {
+        if (l.lightAnimation?.type == "ghost") continue
+        playerMap._content.push( { light: {
+            _attrs: { id: uuid5(`light-${playerMap._content.filter(f=>f.light).length}`,playerMap._attrs.id) },
+            radiusMax: l.dim || l.config?.dim || 0,
+            radiusMin: l.bright || l.config?.bright || 0,
+            color: l.tintColor || l.config?.color || "#ffffff",
+            opacity: l.tintAlpha || l.config?.alpha || 1,
+            alwaysVisible: (l.t == "u")? "YES" : "NO",
+            x: Math.round((l.x - offset.x)*scale),
+            y: Math.round((l.y - offset.y)*scale),
+        } } )
+    }
+    if (meta.flags?.ddb?.tokens)
+    for (const t of meta.flags.ddb.tokens) {
+        playerMap._content.push( { token: {
+            _attrs: { id: uuid5(`token-${playerMap._content.filter(f=>f.token).length}`,playerMap._attrs.id) },
+            name: t.name.trim(),
+            x: Math.round(((t.x - offset.x)*scale) + (t.width*grid/2)),
+            y: Math.round(((t.y - offset.y)*scale) + (t.height*grid/2)),
+            hidden: (t.hidden)? "YES" : "NO",
+            size: (t.width!=t.height)?`${t.width}x${t.height}`:(t.width>4)?"C":(t.width>3)?"G":(t.width>2)?"H":(t.width>1)?"L":(t.width<.5||t.scale<=.5)?"T":(t.width<1||t.scale<1)?"S":"M",
+            rotation: t.rotation||0,
+            elevation: t.elevation||0,
+            scale:(t.width<.5||t.scale<=.5)?0.7:(t.width<1||t.scale<1)?0.8:1,
+            reference: (t.flags?.ddbActorFlags?.id)?`/monster/${uuid5(`ddb://monsters/${t.flags.ddbActorFlags.id}`,uuid5.URL)}`:null
+        } } )
+    }
+    if (meta.drawings)
+    for (const d of meta.drawings) {
+        if (d.type != "t"||!d.text) continue
+        let txt = d.text.replaceAll(/[\W_]+/g,'').trim();
+        if (!txt) continue
+        let pageslug = page.page.slug
+        const markerRegex = new RegExp(`^${txt}\\. `,'i')
+        let marker = headings.find(h=>h.textContent.match(markerRegex))
+        if (!marker && siblingHeadings) {
+            for(let sibling of siblingHeadings) {
+                marker = sibling.headings.find(h=>h.textContent.match(markerRegex))
+                if (marker) {
+                    pageslug = sibling.slug
+                    break
+                }
+            }
+        }
+        if (marker) {
+            playerMap._content.push({
+                marker: {
+                    name: "",
+                    label: marker.textContent.substring(0,marker.textContent.indexOf('.')),
+                    color: "#ff0000",
+                    shape: "circle",
+                    size: "medium",
+                    hidden: "YES",
+                    locked: "YES",
+                    x: Math.round(((d.x+(d.width/2))-offset.x)*scale),
+                    y: Math.round(((d.y+(d.height/2))-offset.y)*scale),
+                    content: {_attrs: { ref: `/page/${pageslug}#${marker.id}` }}
+                }
+            })
+        } else {
+            playerMap._content.push({
+                marker: {
+                    name: d.text.trim(),
+                    label: "",
+                    color: d.textColor||"#000000",
+                    shape: "label",
+                    size: (d.fontSize>100)?"huge":(d.fontSize>50)?"large":(d.fontSize>25)?"medium":(d.fontSize>16)?"small":"tiny",
+                    hidden: "YES",
+                    locked: "YES",
+                    x: Math.round(((d.x+(d.width/2))-offset.x)*scale),
+                    y: Math.round(((d.y+(d.height/2))-offset.y)*scale),
+                }
+            })
+        }
+    }
+    if (meta.flags?.ddb?.notes)
+    for (const n of meta.flags.ddb.notes) {
+        let pageslug = page.page.slug
+        let marker = headings.find(h=>h.dataset.contentChunkId==n.flags?.ddb?.contentChunkId)
+        if (!marker && siblingHeadings) {
+            for(let sibling of siblingHeadings) {
+                marker = sibling.headings.find(h=>h.dataset.contentChunkId==n.flags?.ddb?.contentChunkId)
+                if (marker) {
+                    pageslug = sibling.slug
+                    break
+                }
+            }
+        }
+        if (marker)
+            playerMap._content.push({
+                marker: {
+                    name: "",
+                    label: marker.textContent.substring(0,marker.textContent.indexOf('.')),
+                    color: "#ff0000",
+                    shape: "circle",
+                    size: "medium",
+                    hidden: "YES",
+                    locked: "YES",
+                    x: Math.round((n.positions[0].x-offset.x)*scale),
+                    y: Math.round((n.positions[0].y-offset.y)*scale),
+                    content: {_attrs: { ref: `/page/${pageslug}#${marker.id}` }}
+                }
+            })
+    }
+    if (meta.walls)
+    for (const w of meta.walls) {
+        let pathlist = [
+            ((w.c[0]-offset.x) * scale).toFixed(1),
+            ((w.c[1]-offset.y) * scale).toFixed(1),
+            ((w.c[2]-offset.x) * scale).toFixed(1),
+            ((w.c[3]-offset.y) * scale).toFixed(1)
+        ]
+        let wall = {
+            _attrs: { id: uuid5(`wall-${playerMap._content.filter(f=>f.wall).length}`,playerMap._attrs.id)},
+            data: pathlist.join(','),
+            generated: "YES"
+        }
+        if (w.door) {
+            wall.type = (w.door == 2)? "secretDoor":"door"
+            wall.color = "#00ffff"
+            if (w.ds) wall.door = (w.ds == 2)? "locked" : "open"
+        } else if ((w.move==0) && (w.sight==20||w.sense==1)) {
+            wall.type = "ethereal"
+            wall.color = "#7f007f"
+        } else if ((w.move==1||w.move==20) && (w.sight==0||w.sense==0)) {
+            wall.type = "invisible"
+            wall.color = "#ff00ff"
+        } else if ((w.move==1||w.move==20) && (w.sight==10||w.sense==2)) {
+            wall.type = "terrain"
+            wall.color = "#ffff00"
+        } else if ((w.move==1||w.move==20) && (w.sight==20||w.sense==1)) {
+            wall.type = "normal"
+            wall.color = "#ff7f00"
+        }
+        if (w.dir) wall.side = (w.dir==1)?"left":"right"
+        let existingWall = playerMap._content.find(pw=>pw.wall&&
+            pw.wall.type===wall.type&&pw.wall.door===wall.door&&
+                (pw.wall.data.endsWith(pathlist.slice(0,2).join(','))
+                    ||pw.wall.data.startsWith(pathlist.slice(2).join(','))
+)
+        )?.wall
+        if (existingWall) {
+            if (existingWall.data.endsWith(pathlist.slice(0,2).join(',')))
+                existingWall.data += ","+pathlist.slice(2).join(',')
+            else
+                existingWall.data = pathlist.slice(0,2).join(',')+","+existingWall.data
+        } else {
+            playerMap._content.push({wall: wall})
+        }
+    }
+}
+
 class DDB {
     searchCookies() {
 	return new Promise((resolve,reject) => {
@@ -2694,225 +2914,30 @@ function doSearch(el,resId) {
                                         meta.name.toLowerCase() == he.decode(mapTitle).toLowerCase() ||
                                         meta.flags?.ddb?.originalLink?.endsWith("/"+mapUrl) ) {
                                         console.log(`Found meta data for map ${mapTitle}`)
-                                        let offset = {
-                                            x: Math.ceil(((meta.padding||.25) * meta.width) / meta.grid) * meta.grid,
-                                            y: Math.ceil(((meta.padding||.25) * meta.height) / meta.grid) * meta.grid,
-                                        }
-                                        offset.x -= meta.shiftX
-                                        offset.y -= meta.shiftY
-                                        let grid = meta.grid
-                                        let scale = 1
-                                        if (info.width!=meta.width||info.height!=meta.height) {
-                                            scale = (info.width/meta.width)
-                                            console.log(`Meta ${meta.width}x${meta.height} != ${info.width}x${info.height} (${scale})`)
-                                            console.log(offset,grid)
-                                            grid = Math.round(grid * scale)
-                                        }
-//          elif map["gridType"] > 1 and round(map["grid"] / 2.0) != (map["grid"] / 2.0):
-                                        //                        map["realign"] = round(map["grid"] / 2.0) / (map["grid"] / 2.0)
-
-                                        if (meta.gridDistance) playerMap._content.push( { gridScale: meta.gridDistance } )
-                                        if (meta.gridUnits) playerMap._content.push( { gridUnits: meta.gridUnits } )
-                                        if (meta.gridType>1) {
-                                            grid = Math.round((meta.grid*scale)/2.0)
-                                            let shiftX = Math.round(meta.shiftX*scale)
-                                            let shiftY = Math.round(meta.shiftY*scale)
-                                            let gridScale = grid/((meta.grid*scale)/2.0)
-                                            scale *= gridScale
-                                            switch (meta.gridType) {
-                                                case 2:
-                                                    shiftY += grid
-                                                    break
-                                                case 3:
-                                                    shiftY -= grid/2.0
-                                                    break
-                                                case 4:
-                                                    shiftY += grid/2.0
-                                                    shiftX -= grid
-                                                    break
-                                                case 5:
-                                                    shiftY += grid/2.0
-                                                    shiftX += grid/2.0
-                                                    break
-                                            }
-                                            playerMap._content.push( { gridSize: grid } )
-                                            playerMap._content.push( { gridOffsetX: shiftX } )
-                                            playerMap._content.push( { gridOffsetY: shiftY } )
-                                            playerMap._content.push( { scale: gridScale } )
-                                            playerMap._content.push( { gridType: (meta.gridType>=4)?"hexPointy":"hexFlat" } )
-                                        } else {
-                                            let gridScale = grid/(meta.grid*scale)
-                                            scale *= gridScale
-                                            playerMap._content.push( { gridSize: grid } )
-                                            playerMap._content.push( { gridOffsetX: Math.round(meta.shiftX*scale) } )
-                                            playerMap._content.push( { gridOffsetY: Math.round(meta.shiftY*scale) } )
-                                            playerMap._content.push( { scale: gridScale } )
-                                        }
-                                        playerMap._content.push( { gridColor: meta.gridColor||"#000000" } )
-                                        playerMap._content.push( { gridVisible: (meta.gridAlpha>0)?"YES":"NO" } )
-                                        if (meta.gridAlpha)
-                                            playerMap._content.push( { gridOpacity: meta.gridAlpha } )
-                                        if (meta.lights)
-                                        playerMap._content.push( { lineOfSight: (meta.tokenVision)?"YES":"NO" } )
-                                        if (meta.fogExploration) {
-                                            playerMap._content.push( { fogOfWar: "YES" } )
-                                            playerMap._content.push( { fogExploration: "YES" } )
-                                        }
-                                        if (meta.weather) {
-                                            playerMap._content.push( { weatherType: meta.weather } )
-                                            playerMap._content.push( { weatherIntensity: 1.0 } )
-                                        }
-                                        for (const l of meta.lights) {
-                                            if (l.lightAnimation?.type == "ghost") continue
-                                            playerMap._content.push( { light: {
-                                                _attrs: { id: uuid5(`light-${playerMap._content.filter(f=>f.light).length}`,playerMap._attrs.id) },
-                                                radiusMax: l.dim || l.config?.dim || 0,
-                                                radiusMin: l.bright || l.config?.bright || 0,
-                                                color: l.tintColor || l.config?.color || "#ffffff",
-                                                opacity: l.tintAlpha || l.config?.alpha || 1,
-                                                alwaysVisible: (l.t == "u")? "YES" : "NO",
-                                                x: Math.round((l.x - offset.x)*scale),
-                                                y: Math.round((l.y - offset.y)*scale),
-                                            } } )
-                                        }
-                                        if (meta.flags?.ddb?.tokens)
-                                        for (const t of meta.flags.ddb.tokens) {
-                                            playerMap._content.push( { token: {
-                                                _attrs: { id: uuid5(`token-${playerMap._content.filter(f=>f.token).length}`,playerMap._attrs.id) },
-                                                name: t.name.trim(),
-                                                x: Math.round(((t.x - offset.x)*scale) + (t.width*grid/2)),
-                                                y: Math.round(((t.y - offset.y)*scale) + (t.height*grid/2)),
-                                                hidden: (t.hidden)? "YES" : "NO",
-                                                size: (t.width!=t.height)?`${t.width}x${t.height}`:(t.width>4)?"C":(t.width>3)?"G":(t.width>2)?"H":(t.width>1)?"L":(t.width<.5||t.scale<=.5)?"T":(t.width<1||t.scale<1)?"S":"M",
-                                                rotation: t.rotation||0,
-                                                elevation: t.elevation||0,
-                                                scale:(t.width<.5||t.scale<=.5)?0.7:(t.width<1||t.scale<1)?0.8:1,
-                                                reference: (t.flags?.ddbActorFlags?.id)?`/monster/${uuid5(`ddb://monsters/${t.flags.ddbActorFlags.id}`,uuid5.URL)}`:null
-                                            } } )
-                                        }
-                                        if (meta.drawings)
-                                        for (const d of meta.drawings) {
-                                            if (d.type != "t"||!d.text) continue
-                                            let txt = d.text.replaceAll(/[\W_]+/g,'').trim();
-                                            if (!txt) continue
-                                            let pageslug = page.page.slug
-                                            const markerRegex = new RegExp(`^${txt}\\. `,'i')
-                                            let marker = headings.find(h=>h.textContent.match(markerRegex))
-                                            if (!marker && siblingHeadings) {
-                                                for(let sibling of siblingHeadings) {
-                                                    marker = sibling.headings.find(h=>h.textContent.match(markerRegex))
-                                                    if (marker) {
-                                                        pageslug = sibling.slug
-                                                        break
-                                                    }
+                                        const missing = ddbMeta.filter(mm=>
+                                            mm.flags.ddb.ddbId>=90000 &&
+                                            (mm.flags.ddb.ddbId-90000)>=meta.flags.ddb.ddbId &&
+                                            !ddbMeta.find(nm=>nm.flags.ddb.ddbId>meta.flags.ddb.ddbId &&
+                                                nm.flags.ddb.ddbId<=(mm.flags.ddb.ddbId-90000)))
+                                        if (missing.length>0) {
+                                            console.log("Found linked maps")
+                                            console.log(missing.map(mm=>mm.name))
+                                            for (const subMap of missing) {
+                                                let subMapEntry = {
+                                                    _name: "map",
+                                                    _attrs: { id: uuid5(`https://www.dndbeyond.com/${book.sourceURL}/image/${figure.id||mapUrl}/${subMap.flags.ddb.ddbId}`, uuid5.URL), parent: playerMap._attrs.id, sort: subMap.flags.ddb.ddbId},
+                                                    _content: [
+                                                        { name: he.decode(subMap.name) },
+                                                        { slug: slugify(subMap.name) },
+                                                        { image: mapUrl }
+                                                    ]
                                                 }
-                                            }
-                                            if (marker) {
-                                                playerMap._content.push({
-                                                    marker: {
-                                                        name: "",
-                                                        label: marker.textContent.substring(0,marker.textContent.indexOf('.')),
-                                                        color: "#ff0000",
-                                                        shape: "circle",
-                                                        size: "medium",
-                                                        hidden: "YES",
-                                                        locked: "YES",
-                                                        x: Math.round(((d.x+(d.width/2))-offset.x)*scale),
-                                                        y: Math.round(((d.y+(d.height/2))-offset.y)*scale),
-                                                        content: {_attrs: { ref: `/page/${pageslug}#${marker.id}` }}
-                                                    }
-                                                })
-                                            } else {
-                                                playerMap._content.push({
-                                                    marker: {
-                                                        name: d.text.trim(),
-                                                        label: "",
-                                                        color: d.textColor||"#000000",
-                                                        shape: "label",
-                                                        size: (d.fontSize>100)?"huge":(d.fontSize>50)?"large":(d.fontSize>25)?"medium":(d.fontSize>16)?"small":"tiny",
-                                                        hidden: "YES",
-                                                        locked: "YES",
-                                                        x: Math.round(((d.x+(d.width/2))-offset.x)*scale),
-                                                        y: Math.round(((d.y+(d.height/2))-offset.y)*scale),
-                                                    }
-                                                })
+                                                applyMeta(subMapEntry,subMap,info,page,headings,siblingHeadings)
+                                                console.log(`Adding Child map: ${subMap.name}`)
+                                                mod._content.push(subMapEntry)
                                             }
                                         }
-                                        if (meta.flags?.ddb?.notes)
-                                        for (const n of meta.flags.ddb.notes) {
-                                            let pageslug = page.page.slug
-                                            let marker = headings.find(h=>h.dataset.contentChunkId==n.flags?.ddb?.contentChunkId)
-                                            if (!marker && siblingHeadings) {
-                                                for(let sibling of siblingHeadings) {
-                                                    marker = sibling.headings.find(h=>h.dataset.contentChunkId==n.flags?.ddb?.contentChunkId)
-                                                    if (marker) {
-                                                        pageslug = sibling.slug
-                                                        break
-                                                    }
-                                                }
-                                            }
-                                            if (marker)
-                                                playerMap._content.push({
-                                                    marker: {
-                                                        name: "",
-                                                        label: marker.textContent.substring(0,marker.textContent.indexOf('.')),
-                                                        color: "#ff0000",
-                                                        shape: "circle",
-                                                        size: "medium",
-                                                        hidden: "YES",
-                                                        locked: "YES",
-                                                        x: Math.round((n.positions[0].x-offset.x)*scale),
-                                                        y: Math.round((n.positions[0].y-offset.y)*scale),
-                                                        content: {_attrs: { ref: `/page/${pageslug}#${marker.id}` }}
-                                                    }
-                                                })
-                                        }
-                                        if (meta.walls)
-                                        for (const w of meta.walls) {
-                                            let pathlist = [
-                                                ((w.c[0]-offset.x) * scale).toFixed(1),
-                                                ((w.c[1]-offset.y) * scale).toFixed(1),
-                                                ((w.c[2]-offset.x) * scale).toFixed(1),
-                                                ((w.c[3]-offset.y) * scale).toFixed(1)
-                                            ]
-                                            let wall = {
-                                                _attrs: { id: uuid5(`wall-${playerMap._content.filter(f=>f.wall).length}`,playerMap._attrs.id)},
-                                                data: pathlist.join(','),
-                                                generated: "YES"
-                                            }
-                                            if (w.door) {
-                                                wall.type = (w.door == 2)? "secretDoor":"door"
-                                                wall.color = "#00ffff"
-                                                if (w.ds) wall.door = (w.ds == 2)? "locked" : "open"
-                                            } else if ((w.move==0) && (w.sight==20||w.sense==1)) {
-                                                wall.type = "ethereal"
-                                                wall.color = "#7f007f"
-                                            } else if ((w.move==1||w.move==20) && (w.sight==0||w.sense==0)) {
-                                                wall.type = "invisible"
-                                                wall.color = "#ff00ff"
-                                            } else if ((w.move==1||w.move==20) && (w.sight==10||w.sense==2)) {
-                                                wall.type = "terrain"
-                                                wall.color = "#ffff00"
-                                            } else if ((w.move==1||w.move==20) && (w.sight==20||w.sense==1)) {
-                                                wall.type = "normal"
-                                                wall.color = "#ff7f00"
-                                            }
-                                            if (w.dir) wall.side = (w.dir==1)?"left":"right"
-                                            let existingWall = playerMap._content.find(pw=>pw.wall&&
-                                                pw.wall.type===wall.type&&pw.wall.door===wall.door&&
-                                                    (pw.wall.data.endsWith(pathlist.slice(0,2).join(','))
-                                                        ||pw.wall.data.startsWith(pathlist.slice(2).join(','))
-)
-                                            )?.wall
-                                            if (existingWall) {
-                                                if (existingWall.data.endsWith(pathlist.slice(0,2).join(',')))
-                                                    existingWall.data += ","+pathlist.slice(2).join(',')
-                                                else
-                                                    existingWall.data = pathlist.slice(0,2).join(',')+","+existingWall.data
-                                            } else {
-                                                playerMap._content.push({wall: wall})
-                                            }
-                                        }
+                                        applyMeta(playerMap,meta,info,page,headings,siblingHeadings)
                                         break
                                     }
                                 }
