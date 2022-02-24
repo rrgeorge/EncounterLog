@@ -249,20 +249,22 @@ function applyMeta (playerMap,meta,info,page,headings,siblingHeadings) {
             }
         }
         if (marker)
-            playerMap._content.push({
-                marker: {
-                    name: "",
-                    label: marker.textContent.substring(0,marker.textContent.indexOf('.')),
-                    color: "#ff0000",
-                    shape: "circle",
-                    size: "medium",
-                    hidden: "YES",
-                    locked: "YES",
-                    x: Math.round((n.positions[0].x-offset.x)*scale),
-                    y: Math.round((n.positions[0].y-offset.y)*scale),
-                    content: {_attrs: { ref: `/page/${pageslug}#${marker.id}` }}
-                }
-            })
+            for (const pos of n.positions) {
+                playerMap._content.push({
+                    marker: {
+                        name: "",
+                        label: marker.textContent.substring(0,marker.textContent.indexOf('.')),
+                        color: "#ff0000",
+                        shape: "circle",
+                        size: "medium",
+                        hidden: "YES",
+                        locked: "YES",
+                        x: Math.round((pos.x-offset.x)*scale),
+                        y: Math.round((pos.y-offset.y)*scale),
+                        content: {_attrs: { ref: `/page/${pageslug}#${marker.id}` }}
+                    }
+                })
+            }
     }
     if (meta.walls)
     for (const w of meta.walls) {
@@ -1637,6 +1639,7 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                     page: {
                         _attrs: { id: uuid5(`https://www.dndbeyond.com/${book.sourceURL}/${c.Slug}`, uuid5.URL), sort: c.ID},
                         name: he.decode(c.Title),
+                        ddb: { id: c.ID, cobalt: c.CobaltID||'', parent: c.ParentID||'' },
                         slug: c.Slug.replaceAll("#","-"),
                         content: ((zip.getEntry(`images/chapter-backgrounds/${c.Slug}.jpg`))?`
             <div class="chapterart view-cover-art" style="background-image: url(images/chapter-backgrounds/${c.Slug}.jpg);">
@@ -2814,6 +2817,7 @@ function doSearch(el,resId) {
                         if (entry.isDirectory || !entry.entryName.match(new RegExp(`scene_info\/${book.name.toLowerCase()}\/.*\.json`))) return
                         ddbMeta.push(JSON.parse(ddbmeta.readAsText(entry)))
                     })
+                    ddbMeta.sort((a,b)=>a.flags.ddb.ddbId-b.flags.ddb.ddbId)
                     const getGrid = require('./getgrid')
                     prog.detail = "Scanning pages..."
                     var mapJobs = []
@@ -2842,7 +2846,8 @@ function doSearch(el,resId) {
                             figures = dom.window.document.querySelectorAll(".compendium-image-with-subtitle-center")
                         }
                         if (figures) {
-                            for (let figure of figures) {
+                            for (let figureIdx = 0;figureIdx<figures.length;figureIdx++) {
+                                let figure = figures[figureIdx]
                                 prog.value += ((1/figures.length)*((1/mod._content.length)*4))
                                 let mapTitle,mapUrl,dmMap
                                 if (figure.classList.contains("compendium-image-with-subtitle-center")) {
@@ -2906,14 +2911,37 @@ function doSearch(el,resId) {
                                         siblingHeadings.push({slug:nextpage.page.slug,headings:nxtHeadings})
                                     }
                                 }
-                                for(const meta of ddbMeta) {
-                                    if (figure.dataset?.contentChunkId == meta.flags?.ddb?.contentChunkId ||
+                                let metaMatch = ddbMeta.filter(meta=>
+                                    (figure.dataset?.contentChunkId == meta.flags?.ddb?.contentChunkId ||
                                         figure.id == meta.flags?.ddb?.contentChunkId ||
                                         `${figure.id}-player` == meta.flags?.ddb?.contentChunkId ||
                                         meta.name.toLowerCase() == mapTitle.toLowerCase() ||
                                         meta.name.toLowerCase() == he.decode(mapTitle).toLowerCase() ||
-                                        meta.flags?.ddb?.originalLink?.endsWith("/"+mapUrl) ) {
-                                        console.log(`Found meta data for map ${mapTitle}`)
+                                        meta.flags?.ddb?.originalLink?.endsWith("/"+mapUrl) ))
+                                if (metaMatch.length>0) {
+                                    let meta = metaMatch[0]
+                                    if (metaMatch.length>1) {
+                                        meta = metaMatch.find(m=>m.name.toLowerCase()==mapTitle.toLowerCase()||m.name==he.decode(mapTitle.toLowerCase()))
+                                        if (!meta)
+                                            meta = metaMatch.find(m=>
+                                                    figure.id == m.flags?.ddb?.contentChunkId)
+                                        if (!meta)
+                                            meta = metaMatch.find(m=>
+                                                    `${figure.id}-player` == m.flags?.ddb?.contentChunkId)
+                                        if (!meta)
+                                            meta = metaMatch.find(m=>
+                                                    m.flags?.ddb?.originalLink?.endsWith("/"+mapUrl))
+                                        if (!meta)
+                                            meta = metaMatch.find(m=>{
+                                                let realId = m.flags.ddb.ddbId - 10001
+                                                if (realId > 3000) realId -= 3000
+                                                return realId == page.page.ddb.id && m.flags.ddb.parentId == page.page.ddb.parent
+                                            })
+                                    }
+                                    if (meta) {
+                                        console.log(`Found meta data for map ${mapTitle} ${meta.flags.ddb.ddbId} ${meta.name}`)
+                                        console.log(page.page.ddb)
+                                        console.log(figureIdx)
                                         const missing = ddbMeta.filter(mm=>
                                             mm.flags.ddb.ddbId>=90000 &&
                                             (mm.flags.ddb.ddbId-90000)>=meta.flags.ddb.ddbId &&
@@ -2938,7 +2966,6 @@ function doSearch(el,resId) {
                                             }
                                         }
                                         applyMeta(playerMap,meta,info,page,headings,siblingHeadings)
-                                        break
                                     }
                                 }
                                 if (!playerMap._content.find(c=>c.gridSize)) {
