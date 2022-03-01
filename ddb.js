@@ -2200,7 +2200,7 @@ function makeRollLinks(el) {
                 let header;
                 while(sibling = sibling.previousElementSibling) {
                     header = (sibling.tagName.match(/H[1-9]/))? sibling:parent.querySelector("h1,h2,h3,h4,h5,h6,h7,h8")
-                    if (sibling.tagName == "STRONG" || (!sibling.tagName.match(/^t/i)&&sibling.className.toLowerCase().includes("table"))) header = sibling
+                    if (sibling.tagName == "CAPTION" || sibling.tagName == "STRONG" || (!sibling.tagName.match(/^t/i)&&sibling.className.toLowerCase().includes("table"))) header = sibling
                     if (header) break;
                 }
                 if (header) {
@@ -2282,6 +2282,8 @@ window.addEventListener('load', function() {
                 rollButton.style.borderRadius="20px";
                 rollButton.style.height="40px";
                 rollButton.style.padding="0 10px 0 10px";
+                rollButton.style.margin="5px 0px 0px 0px";
+                rollButton.style.display="block";
                 rollButton.innerHTML = \`
 <svg width="25px" viewBox="0 0 25 25" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;vertical-align:middle">
     <g transform="matrix(1,0,0,1,21.8613,7.4431)">
@@ -2292,7 +2294,7 @@ window.addEventListener('load', function() {
 </svg>
 <span>ROLL</span>
                 \`
-                wrapper.appendChild(rollButton)
+                table.querySelector("caption")?.appendChild(rollButton)||wrapper.appendChild(rollButton)
             }
             wrapper.appendChild(table)
         }
@@ -2558,7 +2560,12 @@ function displayModal(path,id) {
                         let title = ""
                         let headerId
                         let heading
-                        if (table.previousElementSibling?.tagName == "STRONG" || (!table.previousElementSibling?.tagName.match(/^t/i)&&table.previousElementSibling?.className.toLowerCase().includes("table"))) {
+                        let caption = table.querySelector('caption')
+                        if (caption) {
+                            title = caption.textContent.trim()
+                            headerId = caption.id
+                            heading = title
+                        } else if (table.previousElementSibling?.tagName == "STRONG" || (!table.previousElementSibling?.tagName.match(/^t/i)&&table.previousElementSibling?.className.toLowerCase().includes("table"))) {
                             title = table.previousElementSibling.textContent.trim()
                             headerId = table.previousElementSibling.id
                             heading = title
