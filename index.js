@@ -1304,14 +1304,14 @@ async function connectGameLog(gameId,userId,campaignName) {
                         return
                     }
                     var character = msgData.data.context.name?.trim() || ""
-                    if (character == "") {
+                    //if (character == "") {
                             for (var cchar of campaignChars) {
                                     if (cchar.id.toString() == msgData.data.context.entityId) {
                                             character = cchar.name.trim()
                                             break
                                     }
                             }
-                    }
+                    //}
                     if (!ignored.includes(character)) {
                             for (var roll of msgData.data.rolls) {
                                     let rollJson = {
