@@ -1285,8 +1285,23 @@ class DDB {
                 let type = monsterEntry._content.find(s=>s.type)
                 type.type = `swarm of ${this.ruledata.creatureSizes.find(s=>s.id===monster.swarm.sizeId).name} ${this.ruledata.monsterTypes.find(s=>s.id===monster.swarm.typeId)?.pluralizedName}`
             }
+            const skillList = await new Promise((resolve,reject)=>{
+                if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                    let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                    manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
+                }
+                let skillList = []
+                const db = new sqlite3.Database(path.join(app.getPath("userData"),"skeleton.db3"),()=>{
+                    db.each(`SELECT * FROM RPGMonsterSkillMapping WHERE RPGMonsterID=${monster.id}`,(e,r)=>{
+                        skillList.push({
+                            skillId: r.RPGSkillID, value: r.Value, additionalBonus: r.AdditionalBonus
+                        })
+                    },()=>resolve(skillList))
+                })
+            })
+            if (skillList?.length>0) monster.skills = skillList
             if (monster.skills)
-                monsterEntry._content.push({skill: monster.skills.map(s=>`${this.ruledata.abilitySkills.find(r=>r.id===s.skillId).name} ${s.value>0?'+':''}${s.value}${s.additionalBonus?` ${s.additionalBonus}`:''}`).join(', ')})
+                monsterEntry._content.push({skill: monster.skills.map(s=>`${this.ruledata.abilitySkills.find(r=>r.id===s.skillId).name} ${s.value>0?'+':''}${s.value+(s.additionalBonus||0)}`).join(', ')})
             if (monster.senses)
                 monsterEntry._content.push({senses: monster.senses.map(s=>`${this.ruledata.senses.find(r=>r.id===s.senseId).name} ${s.notes}`).join(', ')})
             if (monster.conditionImmunities)
@@ -1307,7 +1322,7 @@ class DDB {
             }
             var proficiency = this.ruledata.challengeRatings.find(s=>s.id===monster.challengeRatingId).proficiencyBonus
             monsterEntry._content.push({proficiency: proficiency})
-            monsterEntry._content.push({languages: monster.languages.map(l=>`${this.ruledata.languages.find(s=>s.id===l.languageId)?.name||l.languageId.toString()}${(l.notes)?` ${l.notes}`:""}`).join(", ")})
+            monsterEntry._content.push({languages: monster.languages.map(l=>`${this.ruledata.languages.find(s=>s.id===l.languageId)?.name||l.languageId.toString()}${(l.notes)?` ${l.notes}`:""}`).join(", ")+((monster.languageNote)?` ${monster.languageNote.trim()}`:"")})
             var environments = []
             for (let environ of monster.environments) {
                 environments.push(this.ruledata.environments.find(s=>s.id===environ)?.name||environ.toString())
