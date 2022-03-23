@@ -1419,7 +1419,7 @@ function connectEWS(msg=null,initial=false) {
                     const active = _eCreatures.filter( creature => { return creature.initiative != -10 } ).sort((a, b) => (a.rank > b.rank  ) ? 1 : -1)
                     const current = active[game.turn-1]
                     if (current && preferences.value("main.chatconditions")?.includes("turn")) {
-                        const knownCondition = _knownConditions.find(kc=>kc.name==current.name.trim())
+                        const knownCondition = _knownConditions.find(kc=>kc.name==current.name?.trim())
                         if (knownCondition && knownCondition.conditions) {
                             if (knownCondition.old) {
                                 for(c of knownCondition.old) {
