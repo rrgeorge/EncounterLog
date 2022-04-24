@@ -871,7 +871,7 @@ function requestCampaignChars(gameId,cobalt) {
                                         if (save.filePath) {
                                             let prog = new ProgressBar({title: "Converting campaign characters...", text: "Converting campaign characters...", detail: "Please wait..."})
                                             let dlProg
-                                            download(_win,`https://play5e.online/?api=true&tokenmap=true&circles=true&elcampaign=${JSON.stringify(campaignChars.map(c=>c.id))}`,{
+                                            download(_win,`https://play5e.online/?api=true&tokenmap=true&circles=true&campaignoverride=${encodeURIComponent(thisCampaign.label.replaceAll("&&","&"))}&elcampaign=${JSON.stringify(campaignChars.map(c=>c.id))}`,{
                                                 filename: path.basename(save.filePath),
                                                 directory: path.dirname(save.filePath),
                                                 onCompleted: (f) => {
