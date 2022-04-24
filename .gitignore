@@ -6,3 +6,4 @@
 node_modules
 **/.DS_Store
 dev-app-update.yml
+.yarn
