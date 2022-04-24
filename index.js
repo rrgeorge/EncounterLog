@@ -32,6 +32,7 @@ const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
     app.quit()
 }
+
 app.setAsDefaultProtocolClient('encounterlog')
 app.on('second-instance', (e,argv)=>{
     _win?.isMinimized() && _win.restore()
@@ -1284,7 +1285,7 @@ async function connectGameLog(gameId,userId,campaignName) {
                 }
 	})
 	ws.on('error',(e) => console.log(e))
-	ws.on('message',(data) => {
+        const msgEvent = (data,isBin) => {
                 try {
 		    const msgData = JSON.parse(data.toString()
                         .replaceAll(/\x18/g,"\u2018")
@@ -1301,6 +1302,14 @@ async function connectGameLog(gameId,userId,campaignName) {
                         return;
                     }
                     if (msgData.eventType != "dice/roll/fulfilled") {
+                        return
+                    }
+                    if (data.toString().match(/\uFFFD/u)) {
+                        console.log("Junk characters detected")
+                        ddb.getRequest(`https://game-log-rest-live.dndbeyond.com/v1/getmessages?gameId=${gameId}&userId=${userId}`,true).then(msgs=>{
+                            const msg = msgs?.data?.find(m=>m.id==msgData.id)
+                            msgEvent(Buffer.from(JSON.stringify(msg)),false)
+                        }).catch(e=>console.log(`Could not retrieve active log: ${e}`))
                         return
                     }
                     var character = msgData.data.context.name?.trim() || ""
@@ -1345,7 +1354,8 @@ async function connectGameLog(gameId,userId,campaignName) {
                     return
                 }
 
-	})
+	}
+        ws.on('message',msgEvent)
 }
 
 function getEAPI () {
