@@ -1,12 +1,11 @@
-const sharp = require('sharp');
-const cv = require('opencv4nodejs-prebuilt');
-
-async function getGrid (imgBuffer) {
-    const grn = new cv.Vec3(36,255,12);
-    const anchor= new cv.Point2(-1,-1);
-    let image = cv.imdecode(imgBuffer);
-    let gray = image.cvtColor(cv.COLOR_BGR2GRAY);
-    let thresh = gray.adaptiveThreshold(255,cv.ADAPTIVE_THRESH_GAUSSIAN_C,cv.THRESH_BINARY_INV,11,2)
+const { cv, cvErrorPrinter } = require('opencv-wasm');
+async function getGrid (imgBuffer,info,prog=null) {
+    let detail = prog?.detail
+    const grn = [ 36,255,12 ];
+    const anchor = new cv.Point( -1,-1 );
+    let image = cv.matFromImageData({data: imgBuffer, width: info.width, height: info.height});
+    cv.cvtColor(image,image,cv.COLOR_BGRA2GRAY);
+    cv.adaptiveThreshold(image,image,255,cv.ADAPTIVE_THRESH_GAUSSIAN_C,cv.THRESH_BINARY_INV,11,2)
     let grid = {
         size: 0,
         freq: 0,
@@ -14,30 +13,35 @@ async function getGrid (imgBuffer) {
         x: 0,
         y: 0
     }
+    const hKern = cv.getStructuringElement(cv.MORPH_RECT,new cv.Size(30,1));
+    const vKern = cv.getStructuringElement(cv.MORPH_RECT,new cv.Size(1,30));
     for (let iter = 18; iter > 0; iter --) {
-        const hSize = new cv.Size(30,1);
-        const hKern = cv.getStructuringElement(cv.MORPH_RECT,hSize);
-        const hDetect = thresh.morphologyEx(hKern,cv.MORPH_OPEN,anchor,iter);
-        const vSize = new cv.Size(1,30);
-        const vKern = cv.getStructuringElement(cv.MORPH_RECT,vSize);
-        const vDetect = thresh.morphologyEx(vKern,cv.MORPH_OPEN,anchor,iter);
-        const hLines = hDetect.findContours(cv.RETR_EXTERNAL,cv.CHAIN_APPROX_SIMPLE);
-        const vLines = vDetect.findContours(cv.RETR_EXTERNAL,cv.CHAIN_APPROX_SIMPLE);
-        
-
+        if (detail) prog.detail = `${detail} ${(100*((19-iter)/18)).toFixed()}%`
+        let hDetect = new cv.Mat();
+        let vDetect = new cv.Mat();
+        cv.morphologyEx(image,hDetect,cv.MORPH_OPEN,hKern,anchor,iter);
+        cv.morphologyEx(image,vDetect,cv.MORPH_OPEN,vKern,anchor,iter);
+        let hLines = new cv.MatVector();
+        let hHierarchy = new cv.Mat();
+        let vLines = new cv.MatVector();
+        let vHierarchy = new cv.Mat();
+        cv.findContours(hDetect,hLines,hHierarchy,cv.RETR_EXTERNAL,cv.CHAIN_APPROX_SIMPLE);
+        cv.findContours(vDetect,vLines,vHierarchy,cv.RETR_EXTERNAL,cv.CHAIN_APPROX_SIMPLE);
         let rows = [];
         let cols = [];
-        for(let line of hLines) {
-            let y = line.getPoints()[0].y
-            for( let xy of line.getPoints() ) {
-                y=(y+xy.y)/2
+        for(let i = 0; i < hLines.size(); ++i) {
+            let line = hLines.get(i).data32S
+            let y = line[0]
+            for( let xy = 0; xy < line.length; xy+=2 ) {
+                y=(y+line[xy])/2
             }
             rows.push(y);
         }
-        for(let line of vLines) {
-            let x = line.getPoints()[0].x
-            for( let xy of line.getPoints() ) {
-                x=(x+xy.x)/2
+        for(let i = 0; i < vLines.size(); ++i) {
+            let line = vLines.get(i).data32S
+            let x = line[1]
+            for( let xy = 1; xy < line.length; xy+=2 ) {
+                x=(x+line[xy])/2
             }
             cols.push(x);
         }

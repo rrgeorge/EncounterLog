@@ -15,7 +15,7 @@ const path = require('path')
 const url = require('url')
 const vision = require('@google-cloud/vision');
 const jsdom = require('jsdom');
-const cv = require('opencv4nodejs-prebuilt');
+const { cv, cvErrorPrinter } = require('opencv-wasm');
 const asyncPool = require('tiny-async-pool');
 const fs = require('fs');
 const semver = require('semver');
@@ -2945,8 +2945,8 @@ function doSearch(el,resId) {
                                     }
                                     if (meta) {
                                         console.log(`Found meta data for map ${mapTitle} ${meta.flags.ddb.ddbId} ${meta.name}`)
-                                        console.log(page.page.ddb)
-                                        console.log(figureIdx)
+                                        //console.log(page.page.ddb)
+                                        //console.log(figureIdx)
                                         const missing = ddbMeta.filter(mm=>
                                             mm.flags.ddb.ddbId>=90000 &&
                                             (mm.flags.ddb.ddbId-90000)>=meta.flags.ddb.ddbId &&
@@ -2973,9 +2973,12 @@ function doSearch(el,resId) {
                                         applyMeta(playerMap,meta,info,page,headings,siblingHeadings)
                                     }
                                 }
+                                let pcMapImg = await sharp(mapfile).ensureAlpha().raw().toBuffer()
                                 if (!playerMap._content.find(c=>c.gridSize)) {
                                     console.log(`No meta data found for ${mapTitle}`)
-                                    const grid = await getGrid(mapfile);
+                                    console.log(`Searching for grid ${mapTitle}`)
+                                    prog.detail = `${mapTitle} - Analyzing grid:`
+                                    const grid = await getGrid(pcMapImg,info,prog);
                                     console.log(`This might be a map: ${mapUrl}`)
                                     if (grid.freq > 0) {
                                         prog.detail = `${mapTitle} - Analyzing grid: ${grid.size}px`
@@ -2988,18 +2991,28 @@ function doSearch(el,resId) {
                                 prog.value += ((1/figures.length)*((1/mod._content.length)*3))
                                 if (this.maps == "markers" && !playerMap._content.find(c=>c.marker)) {
                                     if (dmMap) {
+                                        console.log(dmMap)
                                         let {data:dmMapImg,info:dmMapInfo} = await sharp(zip.readFile(dmMap)).toBuffer({resolveWithObject: true})
                                         let markerOffset = {x:0,y:0,s:1}
                                         if (dmMapInfo.width!=info.width||dmMapInfo.height!=info.height) {
-                                            let dmImage = cv.imdecode(dmMapImg)
-                                            let pcImage = cv.imdecode(mapfile).cvtColor(cv.COLOR_BGR2GRAY).canny(50,200)
+                                            try {
+                                            let dmMapImgRaw = await sharp(dmMapImg).ensureAlpha().raw().toBuffer()
+                                            let dmImage = cv.matFromImageData({data: dmMapImgRaw,width: dmMapInfo.width, height: dmMapInfo.height})
+                                            console.log("Aligning PC/DM Maps...",mapTitle)
+                                            let pcImage = cv.matFromImageData({data: pcMapImg,width: info.width, height: info.height})
                                             let correlation = 0;
                                             let rows = dmImage.rows
-                                            dmImage = dmImage.rescale(1.5)
+                                            cv.resize(dmImage,dmImage,new cv.Size(dmImage.cols*1.5,dmImage.rows*1.5))
                                             if (dmMapInfo.width>info.width||dmMapInfo.height>info.height) {
+                                                cv.cvtColor(pcImage,pcImage,cv.COLOR_BGRA2GRAY)
+                                                cv.Canny(pcImage,pcImage,50,200)
                                                 while(dmImage.rows >= pcImage.rows && dmImage.cols >= pcImage.cols) {
-                                                    let res = dmImage.cvtColor(cv.COLOR_BGR2GRAY).canny(50,200).matchTemplate(pcImage,cv.TM_CCOEFF)
-                                                    let loc = res.minMaxLoc()
+                                                    let res = new cv.Mat()
+                                                    let tmpImg = new cv.Mat()
+                                                    cv.cvtColor(dmImage,tmpImg,cv.COLOR_BGRA2GRAY)
+                                                    cv.Canny(tmpImg,tmpImg,50,200)
+                                                    cv.matchTemplate(tmpImg,pcImage,res,cv.TM_CCOEFF)
+                                                    let loc = cv.minMaxLoc(res)
                                                     if (loc.maxVal > correlation) {
                                                         markerOffset.x = -1*loc.maxLoc.x
                                                         markerOffset.y = -1*loc.maxLoc.y
@@ -3007,20 +3020,46 @@ function doSearch(el,resId) {
                                                         correlation = loc.maxVal
                                                         console.log(`${playerMap._attrs.id}: Better correlation @ ${markerOffset.s}`)
                                                     }
-                                                    dmImage = dmImage.rescale(.9)
+                                                    cv.resize(dmImage,dmImage,new cv.Size(dmImage.cols*.9,dmImage.rows*.9))
                                                 }
                                             } else {
-                                                console.log("DM Map is significantly smaller than PC Map")
-                                                dmImage=dmImage.cvtColor(cv.COLOR_BGR2GRAY)
-                                                let res = pcImage.matchTemplate(dmImage,cv.TM_CCOEFF)
-                                                let loc = res.minMaxLoc()
-                                                markerOffset.x = loc.maxLoc.x
-                                                markerOffset.y = loc.maxLoc.y
+                                                console.log("DM Map is significantly smaller than PC Map",dmImage.cols,pcImage.cols)
+                                                rows = pcImage.rows
+                                                cv.resize(pcImage,pcImage,new cv.Size(pcImage.cols*1.5,pcImage.rows*1.5))
+                                                cv.cvtColor(dmImage,dmImage,cv.COLOR_BGRA2GRAY)
+                                                cv.Canny(dmImage,dmImage,50,200)
+                                                while(dmImage.rows <= pcImage.rows && dmImage.cols <= pcImage.cols) {
+                                                    let res = new cv.Mat()
+                                                    let tmpImg = new cv.Mat()
+                                                    cv.cvtColor(pcImage,tmpImg,cv.COLOR_BGRA2GRAY)
+                                                    cv.Canny(tmpImg,tmpImg,50,200)
+                                                    cv.matchTemplate(tmpImg,dmImage,res,cv.TM_CCOEFF)
+                                                    let loc = cv.minMaxLoc(res)
+                                                    if (loc.maxVal > correlation) {
+                                                        markerOffset.x = loc.maxLoc.x
+                                                        markerOffset.y = loc.maxLoc.y
+                                                        markerOffset.s = pcImage.rows/rows
+                                                        correlation = loc.maxVal
+                                                        console.log(`${playerMap._attrs.id}: Better correlation @ ${markerOffset.s}`)
+                                                    }
+                                                    cv.resize(pcImage,pcImage,new cv.Size(pcImage.cols*.9,pcImage.rows*.9))
+                                                }
+                                            }
+                                            } catch (e) {
+                                                console.log("OpenCV Error: ",cvErrorPrinter(cv,e))
                                             }
                                             console.log(`${mapTitle} DM Map differs, offsetting markers by ${markerOffset.x},${markerOffset.y}${(markerOffset.s!=1)?`@${markerOffset.s}x`:''}`)
                                         }
                                         prog.value += ((1/figures.length)*((1/mod._content.length)*2))
-                                        if (dmMapImg.length > 10485760) dmMapImg = await sharp(dmMapImg).webp().toBuffer()
+                                        if (dmMapImg.length > 10485760) {
+                                            try {
+                                                console.log("Imagefile too big, making it smaller...",dmMap,dmMapImg)
+                                                dmMapImg = await sharp(dmMapImg).webp().toBuffer()
+                                            } catch (e) {
+                                                
+                                                console.log("WebP Error:",e)
+                                            }
+                                        }
                                             //(book.remotePrefix)?`${book.remotePrefix}${dmMap}`:await sharp(zip.readFile(dmMap)).toBuffer()
                                         let tasks = []
                                         prog.detail = `${mapTitle} - Scanning for markers with Google Vision`
