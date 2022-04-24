@@ -1716,6 +1716,7 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
     font-weight: normal;
 }
 body {
+    background: url(https://media-waterdeep.cursecdn.com/attachments/0/84/background_texture.png) #f9f9f9;
     font-family: '-apple-system', sans-serif;
     font-size: 1.3rem;
     line-height: 1.8rem;
@@ -2063,24 +2064,6 @@ width: auto;
 
 .image-float-clear {
 clear: both;
-}
-
-@media (min-width: 1024px) {
-    body {
-        background: url(https://media-waterdeep.cursecdn.com/attachments/6/480/ooxsq-diaint1k.jpg) no-repeat center 114px, url(https://media-waterdeep.cursecdn.com/attachments/0/84/background_texture.png) #f9f9f9;
-    }
-}
-
-@media (min-width: 1921px) {
-    body {
-        background: url(https://media-waterdeep.cursecdn.com/attachments/6/477/gbdtd-diaint2k.jpg) no-repeat center 114px, url(https://media-waterdeep.cursecdn.com/attachments/0/84/background_texture.png) #f9f9f9;
-    }
-}
-
-@media (min-width: 2561px) {
-    body {
-        background: url(https://media-waterdeep.cursecdn.com/attachments/6/479/mbupz-diaint4k.jpg) no-repeat center 114px, url(https://media-waterdeep.cursecdn.com/attachments/0/84/background_texture.png) #f9f9f9;
-    }
 }
 
 blockquote.adventure-read-aloud-text {
