@@ -21,11 +21,11 @@
     "build-mac": "security unlock;electron-builder build --mac",
     "build-win": "electron-builder build --win",
     "build-linux": "electron-builder build --linux",
-    "build-all": "yarn build-mac;yarn build-win;yarn build-linux",
+    "build-all": "electron-builder build -mwl",
     "publish-mac": "electron-builder -p always --mac",
     "publish-win": "electron-builder -p always --win",
     "publish-linux": "electron-builder -p always --linux",
-    "publish-all": "yarn publish-mac;yarn publish-win;yarn publish-linux",
+    "publish-all": "electron-builder -p always -mwl",
     "release": "source electron-builder.env;security unlock&&git tag -f \"v$(jq -r .version package.json)\"&&git push&&git push --tags&&yarn publish-all",
     "postinstall": "electron-builder install-app-deps",
     "app": "electron ."
@@ -188,8 +188,7 @@
     "@electron/universal": "^1.2.1",
     "electron": "^18.0.3",
     "electron-builder": "^23.0.3",
-    "electron-notarize": "^1.1.0",
-    "electron-rebuild": "^3.2.7"
+    "electron-notarize": "^1.1.0"
   },
   "packageManager": "yarn@3.2.0"
 }
