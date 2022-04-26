@@ -967,7 +967,7 @@ class DDB {
                 if (item.canAttune) {
                     let attunement = "requires attunement"
                     if (item.attunementDescription) attunement += ` by a ${item.attunementDescription}`
-                    itemEntry._content.push({attune: attunement})
+                    itemEntry._content.push({attunement: attunement})
                 }
                 let type = ((item.baseTypeId==this.ruledata.baseTypeArmorId)? "AA" :
                         (item.baseTypeId==this.ruledata.baseTypeWeaponId)? "WW" :
