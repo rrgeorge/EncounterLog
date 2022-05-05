@@ -2980,9 +2980,15 @@ function doSearch(el,resId) {
                                     const gridWorker = new BrowserWindow({show: false, webPreferences: { nodeIntegration: true, contextIsolation: false, sandbox: false } })
                                     gridWorker.webContents.on('console-message',(ev,lv,msg,line,src)=>console.log(`GRID: ${mapTitle}: ${msg}`))
                                     gridWorker.loadFile(path.join(__dirname,"getgrid.html"))
-                                    await new Promise(resolve=>ipcMain.on('openCVWorkerReady',(ev)=>{
-                                        if (ev.sender === gridWorker.webContents) resolve()
-                                    }))
+                                    await new Promise(resolve=>{
+                                        const openCVReady = (ev)=>{
+                                            if (ev.sender === gridWorker.webContents) {
+                                                ipcMain.off('openCVWorkerReady',openCVReady)
+                                                resolve()
+                                            }
+                                        }
+                                        ipcMain.on('openCVWorkerReady',openCVReady)
+                                    })
                                     const grid = await new Promise((resolve)=>{
                                         gridWorker.webContents.send("getGrid",pcMapImg,info)
                                         const gridProgress = (ev,gridProg)=>{
@@ -3021,9 +3027,15 @@ function doSearch(el,resId) {
                                             const offsetWorker = new BrowserWindow({show: false, webPreferences: { nodeIntegration: true, contextIsolation: false, sandbox: false } })
                                             offsetWorker.webContents.on('console-message',(ev,lv,msg,line,src)=>console.log(`OFFSET: ${mapTitle}: ${msg}`))
                                             offsetWorker.loadFile(path.join(__dirname,"getgrid.html"))
-                                            await new Promise(resolve=>ipcMain.on('openCVWorkerReady',(ev)=>{
-                                                if (ev.sender === offsetWorker.webContents) resolve()
-                                            }))
+                                            await new Promise(resolve=>{
+                                                const openCVReady = (ev)=>{
+                                                    if (ev.sender === offsetWorker.webContents) {
+                                                        ipcMain.off('openCVWorkerReady',openCVReady)
+                                                        resolve()
+                                                    }
+                                                }
+                                                ipcMain.on('openCVWorkerReady',openCVReady)
+                                            })
                                             let dmMapImgRaw = await sharp(dmMapImg).ensureAlpha().raw().toBuffer()
                                             offsetWorker.webContents.send("getOffset",dmMapImgRaw,dmMapInfo,pcMapImg,info)
                                             markerOffset = await new Promise((resolve)=>{
