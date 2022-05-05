@@ -1070,9 +1070,9 @@ class DDB {
                                 zip.deleteFile(item.avatarUrl||item.largeAvatarUrl)
                             } else {
                                 let imagesrc = await this.getImage(item.largeAvatarUrl||item.avatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
-                                if (!imagesrc) {
+                                if (!imagesrc || imagesrc.toString().substring(0,5).match(/^<\?xml/)) {
                                     let imgurl = new URL(item.largeAvatarUrl||item.avatarUrl)
-                                    imgurl.pathname = imgurl.pathname.replace(/[/][0-9]+\/[0-9]+[/]/,'/1000/1000/')
+                                    imgurl.pathname = imgurl.pathname.replace(/[/][0-9]+\/[0-9]+[/]([^/]+)$/,'/1000/1000/$1')
                                     imagesrc = await this.getImage(imgurl.toString()).catch(e=>console.log(`Could not retrieve image: ${e}`))
                                 }
                                 imageFile = `${path.basename(imageFile,path.extname(imageFile))}.webp`
@@ -1396,9 +1396,9 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                             zip.deleteFile(monster.basicAvatarUrl||monster.largeAvatarUrl)
                         } else if (!zip.getEntry(`monsters/${path.basename(imageFile,path.extname(imageFile))}.webp`)) {
                             let imagesrc = await this.getImage(monster.basicAvatarUrl||monster.largeAvatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
-                            if (!imagesrc) {
+                            if (!imagesrc || imagesrc.toString().substring(0,5).match(/^<\?xml/)) {
                                 let imgurl = new URL(monster.basicAvatarUrl||monster.largeAvatarUrl)
-                                imgurl.pathname = imgurl.pathname.replace(/[/][0-9]+\/[0-9]+[/]/,'/1000/1000/')
+                                imgurl.pathname = imgurl.pathname.replace(/[/][0-9]+\/[0-9]+[/]([^/]+)$/,'/1000/1000/$1')
                                 imagesrc = await this.getImage(imgurl.toString()).catch(e=>console.log(`Could not retrieve image: ${e}`))
                             }
                             imageFile = `${path.basename(imageFile,path.extname(imageFile))}.webp`
