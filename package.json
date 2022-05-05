@@ -171,7 +171,6 @@
     "jsdom": "^17.0.0",
     "jstoxml": "^2.0.6",
     "mac": "^0.4.0",
-    "opencv-wasm": "^4.3.0-10",
     "react-color": "^2.19.3",
     "react-modal": "^3.14.4",
     "sharp": "^0.30.3",

@@ -1,4 +1,4 @@
-const { net, session, app, dialog } = require('electron')
+const { net, session, app, dialog, BrowserWindow, ipcMain } = require('electron')
 const qs = require('querystring')
 const ProgressBar = require('electron-progressbar')
 const Slugify = require('slugify')
@@ -15,7 +15,6 @@ const path = require('path')
 const url = require('url')
 const vision = require('@google-cloud/vision');
 const jsdom = require('jsdom');
-const { cv, cvErrorPrinter } = require('opencv-wasm');
 const asyncPool = require('tiny-async-pool');
 const fs = require('fs');
 const semver = require('semver');
@@ -2823,7 +2822,7 @@ function doSearch(el,resId) {
                         ddbMeta.push(JSON.parse(ddbmeta.readAsText(entry)))
                     })
                     ddbMeta.sort((a,b)=>a.flags.ddb.ddbId-b.flags.ddb.ddbId)
-                    const getGrid = require('./getgrid')
+                    //const getGrid = require('./getgrid')
                     prog.detail = "Scanning pages..."
                     var mapJobs = []
                     if (this.mapsloc != "parent") {
@@ -2977,10 +2976,33 @@ function doSearch(el,resId) {
                                 if (!playerMap._content.find(c=>c.gridSize)) {
                                     console.log(`No meta data found for ${mapTitle}`)
                                     console.log(`Searching for grid ${mapTitle}`)
-                                    prog.detail = `${mapTitle} - Analyzing grid:`
-                                    const grid = await getGrid(pcMapImg,info,prog);
+                                    prog.detail = `${mapTitle} - Analyzing grid`
+                                    const gridWorker = new BrowserWindow({show: false, webPreferences: { nodeIntegration: true, contextIsolation: false, sandbox: false } })
+                                    gridWorker.webContents.on('console-message',(ev,lv,msg,line,src)=>console.log(`GRID: ${mapTitle}: ${msg}`))
+                                    gridWorker.loadFile(path.join(__dirname,"getgrid.html"))
+                                    await new Promise(resolve=>ipcMain.on('openCVWorkerReady',(ev)=>{
+                                        if (ev.sender === gridWorker.webContents) resolve()
+                                    }))
+                                    const grid = await new Promise((resolve)=>{
+                                        gridWorker.webContents.send("getGrid",pcMapImg,info)
+                                        const gridProgress = (ev,gridProg)=>{
+                                            if (ev.sender === gridWorker.webContents) prog.detail=`${mapTitle} - Analyzing grid: ${gridProg}`
+                                        }
+                                        ipcMain.on('gridProgress',gridProgress)
+                                        const grid = (ev,result)=>{
+                                            if (ev.sender === gridWorker.webContents) {
+                                                ipcMain.off('gridProgress',gridProgress)
+                                                ipcMain.off('grid',grid)
+                                                resolve(result)
+                                            }
+                                        }
+                                        ipcMain.on('grid',grid)
+                                    })
+                                    gridWorker.close()
+                                    console.log(grid)
+                                        //await getGrid(pcMapImg,info,prog,cv);
                                     console.log(`This might be a map: ${mapUrl}`)
-                                    if (grid.freq > 0) {
+                                    if (grid?.freq > 0) {
                                         prog.detail = `${mapTitle} - Analyzing grid: ${grid.size}px`
                                         playerMap._content.push( { gridSize: grid.size } )
                                         playerMap._content.push( { gridOffsetX: grid.x } )
@@ -2995,59 +3017,25 @@ function doSearch(el,resId) {
                                         let {data:dmMapImg,info:dmMapInfo} = await sharp(zip.readFile(dmMap)).toBuffer({resolveWithObject: true})
                                         let markerOffset = {x:0,y:0,s:1}
                                         if (dmMapInfo.width!=info.width||dmMapInfo.height!=info.height) {
-                                            try {
-                                            let dmMapImgRaw = await sharp(dmMapImg).ensureAlpha().raw().toBuffer()
-                                            let dmImage = cv.matFromImageData({data: dmMapImgRaw,width: dmMapInfo.width, height: dmMapInfo.height})
                                             console.log("Aligning PC/DM Maps...",mapTitle)
-                                            let pcImage = cv.matFromImageData({data: pcMapImg,width: info.width, height: info.height})
-                                            let correlation = 0;
-                                            let rows = dmImage.rows
-                                            cv.resize(dmImage,dmImage,new cv.Size(dmImage.cols*1.5,dmImage.rows*1.5))
-                                            if (dmMapInfo.width>info.width||dmMapInfo.height>info.height) {
-                                                cv.cvtColor(pcImage,pcImage,cv.COLOR_BGRA2GRAY)
-                                                cv.Canny(pcImage,pcImage,50,200)
-                                                while(dmImage.rows >= pcImage.rows && dmImage.cols >= pcImage.cols) {
-                                                    let res = new cv.Mat()
-                                                    let tmpImg = new cv.Mat()
-                                                    cv.cvtColor(dmImage,tmpImg,cv.COLOR_BGRA2GRAY)
-                                                    cv.Canny(tmpImg,tmpImg,50,200)
-                                                    cv.matchTemplate(tmpImg,pcImage,res,cv.TM_CCOEFF)
-                                                    let loc = cv.minMaxLoc(res)
-                                                    if (loc.maxVal > correlation) {
-                                                        markerOffset.x = -1*loc.maxLoc.x
-                                                        markerOffset.y = -1*loc.maxLoc.y
-                                                        markerOffset.s = dmImage.rows/rows
-                                                        correlation = loc.maxVal
-                                                        console.log(`${playerMap._attrs.id}: Better correlation @ ${markerOffset.s}`)
+                                            const offsetWorker = new BrowserWindow({show: false, webPreferences: { nodeIntegration: true, contextIsolation: false, sandbox: false } })
+                                            offsetWorker.webContents.on('console-message',(ev,lv,msg,line,src)=>console.log(`OFFSET: ${mapTitle}: ${msg}`))
+                                            offsetWorker.loadFile(path.join(__dirname,"getgrid.html"))
+                                            await new Promise(resolve=>ipcMain.on('openCVWorkerReady',(ev)=>{
+                                                if (ev.sender === offsetWorker.webContents) resolve()
+                                            }))
+                                            let dmMapImgRaw = await sharp(dmMapImg).ensureAlpha().raw().toBuffer()
+                                            offsetWorker.webContents.send("getOffset",dmMapImgRaw,dmMapInfo,pcMapImg,info)
+                                            markerOffset = await new Promise((resolve)=>{
+                                                const offset = (ev,result)=>{
+                                                    if (ev.sender === offsetWorker.webContents) {
+                                                        ipcMain.off('mapOffset',offset)
+                                                        resolve(result)
                                                     }
-                                                    cv.resize(dmImage,dmImage,new cv.Size(dmImage.cols*.9,dmImage.rows*.9))
                                                 }
-                                            } else {
-                                                console.log("DM Map is significantly smaller than PC Map",dmImage.cols,pcImage.cols)
-                                                rows = pcImage.rows
-                                                cv.resize(pcImage,pcImage,new cv.Size(pcImage.cols*1.5,pcImage.rows*1.5))
-                                                cv.cvtColor(dmImage,dmImage,cv.COLOR_BGRA2GRAY)
-                                                cv.Canny(dmImage,dmImage,50,200)
-                                                while(dmImage.rows <= pcImage.rows && dmImage.cols <= pcImage.cols) {
-                                                    let res = new cv.Mat()
-                                                    let tmpImg = new cv.Mat()
-                                                    cv.cvtColor(pcImage,tmpImg,cv.COLOR_BGRA2GRAY)
-                                                    cv.Canny(tmpImg,tmpImg,50,200)
-                                                    cv.matchTemplate(tmpImg,dmImage,res,cv.TM_CCOEFF)
-                                                    let loc = cv.minMaxLoc(res)
-                                                    if (loc.maxVal > correlation) {
-                                                        markerOffset.x = loc.maxLoc.x
-                                                        markerOffset.y = loc.maxLoc.y
-                                                        markerOffset.s = pcImage.rows/rows
-                                                        correlation = loc.maxVal
-                                                        console.log(`${playerMap._attrs.id}: Better correlation @ ${markerOffset.s}`)
-                                                    }
-                                                    cv.resize(pcImage,pcImage,new cv.Size(pcImage.cols*.9,pcImage.rows*.9))
-                                                }
-                                            }
-                                            } catch (e) {
-                                                console.log("OpenCV Error: ",cvErrorPrinter(cv,e))
-                                            }
+                                                ipcMain.on('mapOffset',offset)
+                                            })
+                                            offsetWorker.close()
                                             console.log(`${mapTitle} DM Map differs, offsetting markers by ${markerOffset.x},${markerOffset.y}${(markerOffset.s!=1)?`@${markerOffset.s}x`:''}`)
                                         }
                                         prog.value += ((1/figures.length)*((1/mod._content.length)*2))

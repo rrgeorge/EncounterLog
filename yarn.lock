@@ -1995,7 +1995,6 @@ __metadata:
     jsdom: ^17.0.0
     jstoxml: ^2.0.6
     mac: ^0.4.0
-    opencv-wasm: ^4.3.0-10
     react-color: ^2.19.3
     react-modal: ^3.14.4
     sharp: ^0.30.3
@@ -4381,13 +4380,6 @@ __metadata:
   dependencies:
     fn.name: 1.x.x
   checksum: fd008d7e992bdec1c67f53a2f9b46381ee12a9b8c309f88b21f0223546003fb47e8ad7c1fd5843751920a8d276c63bd4b45670ef80c61fb3e07dbccc962b5c7d
-  languageName: node
-  linkType: hard
-
-"opencv-wasm@npm:^4.3.0-10":
-  version: 4.3.0-alpha.2
-  resolution: "opencv-wasm@npm:4.3.0-alpha.2"
-  checksum: 87c1e21ca913376104600bb64a5f4e9efbd8527439d580e890036bee7a470b3acb36b97846a93a2ead8a0c6628d855dd8f709d1fa44bb1efcffa65d995b4d13e
   languageName: node
   linkType: hard
 
