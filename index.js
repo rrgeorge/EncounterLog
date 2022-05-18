@@ -1,4 +1,4 @@
-const {app, session, BrowserWindow, ipcMain, net, Menu, MenuItem, dialog, shell} = require('electron')
+const {app, session, BrowserWindow, ipcMain, net, Menu, MenuItem, dialog, shell, Notification} = require('electron')
 const ElectronPreferences = require('electron-preferences')
 const WebSocket = require('ws')
 const path = require('path')
@@ -61,6 +61,7 @@ const preferences = new ElectronPreferences({
             },
             'export': {
                 'art': [ 'artwork', 'tokens' ],
+                'legacy': 'mark',
                 'maps': 'nomaps',
                 'mapsloc': 'group',
             }
@@ -122,6 +123,16 @@ const preferences = new ElectronPreferences({
                                         'options': [
                                             { 'label': 'Artwork', 'value': 'artwork' },
                                             { 'label': 'Tokens', 'value': 'tokens' },
+                                        ]
+                                    },
+                                    {
+					'label': "Legacy Monsters",
+					'key': 'legacy',
+					'type': 'radio',
+                                        'options': [
+                                            { 'label': 'Prefer Legacy Monsters', 'value': 'uselegacy' },
+                                            { 'label': 'Prefer Updated Monsters', 'value': 'useupdated' },
+                                            { 'label': 'Keep Both and Mark Legacy Monsters', 'value': 'mark' },
                                         ]
                                     },
                                     {
@@ -253,6 +264,7 @@ app.on('ready', () => {
         ddb.art = preferences.value('export.art');
         ddb.maps = preferences.value('export.maps') ?? "nomaps";
         ddb.mapsloc = preferences.value('export.mapsloc') ?? "group";
+        ddb.legacy = preferences.value('export.legacy') ?? "mark";
 
         console.log(ddb.art,ddb.maps)
         preferences.on('save', (preferences) => {
@@ -262,6 +274,7 @@ app.on('ready', () => {
                 ddb.art = preferences.export.art
                 ddb.maps = preferences.export.maps
                 ddb.mapsloc = preferences.export.mapsloc
+                ddb.legacy = preferences.export.legacy
         })
 	var menu = Menu.buildFromTemplate([
 	      {
@@ -284,6 +297,11 @@ app.on('ready', () => {
                   { label: `${app.getName()} v${app.getVersion()}`, enabled: false }, 
                   { label: "About", click: () => shell.openExternal("https://github.com/rrgeorge/EncounterLog") },
                   { label: "Support this project", click: () => shell.openExternal("https://github.com/sponsors/rrgeorge") },
+                  { label: "Refresh menus",
+                      click: ()=>{
+                            populateCampaignMenu()
+                            populateCompendiumMenu()
+                    }},
                   {
                       'click': function() {
                             fs.rm(path.join(app.getPath("cache"),app.getName(),"imagecache"),{recursive: true},(e)=>{
@@ -334,8 +352,10 @@ app.on('ready', () => {
                 (() => new Promise(resolve => setTimeout(resolve, 500)))().then(()=>
                 ddb.getUserData()
                     .then(()=>{
-                        updateManifest().then(()=>
-                            populateCompendiumMenu()
+                        updateManifest().then(()=>{
+                                populateCampaignMenu()
+                                populateCompendiumMenu()
+                            }
                         )
                     })
                     .catch(e=>{
@@ -403,9 +423,7 @@ app.on('ready', () => {
                             _ws.close(1001,"Going away")
                     }
                     if (win.webContents.getURL().match(/dndbeyond.com\/my-campaigns/)) {
-                        (() => new Promise(resolve => setTimeout(resolve, 500)))().then(()=>
-                            ddb.userId && populateCampaignMenu()
-                        )
+                        ddb.userId && populateCampaignMenu()
                     }
                 })
             }
@@ -425,6 +443,7 @@ app.on('ready', () => {
 	    console.log(`EncounterPlus URL: ${encounterhost}`)
 	}
         win.loadURL('https://www.dndbeyond.com/my-campaigns',{httpReferrer: "https://www.dndbeyond.com"})
+        if (Notification.isSupported()) new Notification()
 });
 function displayError(e) {
     _win.loadURL("http://www.dndbeyond.com/my-campaigns",{httpReferrer: "https://www.dndbeyond.com"})

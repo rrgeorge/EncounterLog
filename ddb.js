@@ -1,4 +1,4 @@
-const { net, session, app, dialog, BrowserWindow, ipcMain } = require('electron')
+const { net, session, app, dialog, BrowserWindow, ipcMain, Notification } = require('electron')
 const qs = require('querystring')
 const ProgressBar = require('electron-progressbar')
 const Slugify = require('slugify')
@@ -43,11 +43,17 @@ function sanitize(text,rulesdata=null) {
                     }
                 }
                 if (elem?.attribs?.href) {
-                    elem.attribs.href=elem.attribs.href.replace(/^\/(monsters|spells|armor|weapons|adventuring-gear|magic-items)\//,(_,p1)=>{
+                    elem.attribs.href=elem.attribs.href.replace(/^\/(monsters|spells|armor|weapons|adventuring-gear|magic-items)\/(?:([0-9]+)(?:-.*)?)?/,(_,p1,p2)=>{
                         switch(p1) {
-                            case "monsters": return "/monster/"; break;
-                            case "spells": return "/spell/"; break;
-                            default: return "/item/"; break;
+                            case "monsters":
+                                return `/monster/${(p2)?uuid5(`ddb://${p1}/${p2}`,uuid5.URL):''}`;
+                                break;
+                            case "spells":
+                                return `/spell/${(p2)?uuid5(`ddb://${p1}/${p2}`,uuid5.URL):''}`;
+                                break;
+                            default:
+                                return `/item/${(p2)?uuid5(`ddb://${p1}/${p2}`,uuid5.URL):''}`;
+                                break;
                         }
                     })
                 }
@@ -679,6 +685,10 @@ class DDB {
             zip.writeZip(filename)
             prog.detail = `Saved campaign`
             setTimeout(()=>prog.setCompleted(),1000)
+            if (Notification.isSupported()) {
+                const notification = new Notification({title: "Export Complete", body: `Encounters exported to ${filename}`})
+                notification.show()
+            }
         }
         return campaign
     }
@@ -898,6 +908,10 @@ class DDB {
             zip.writeZip(filename)
             prog.detail = `Saved compendium`
             setTimeout(()=>prog.setCompleted(),1000)
+            if (Notification.isSupported()) {
+                const notification = new Notification({title: "Export Complete", body: `Compendium exported to ${filename}`})
+                notification.show()
+            }
         }
         return compendium
     }
@@ -924,7 +938,7 @@ class DDB {
             { code: "$", names: [ "wealth","gemstone" ] },
         ]
         const apiurl = "https://character-service.dndbeyond.com/character/v4/game-data/items"
-        const params = qs.stringify({ 'sharingSetting': 2 })
+        const params = (this.gameId)? qs.stringify({ 'sharingSetting': 2, 'campaignId': this.gameId }) : qs.stringify({ 'sharingSetting': 2 })
         await this.getCobaltAuth()
         const response = await this.getRequest(`${apiurl}?${params}`,true).catch((e)=>console.log(`Error getting items: ${e}`))
         if (response?.data) {
@@ -1102,6 +1116,10 @@ class DDB {
                 prog.detail = `Saved compendium`
                 setTimeout(()=>prog.setCompleted(),1000)
                 console.log("Wrote compendium")
+                if (Notification.isSupported()) {
+                    const notification = new Notification({title: "Export Complete", body: `Compendium exported to ${filename}`})
+                    notification.show()
+                }
             }
             return compendium
         }
@@ -1207,6 +1225,13 @@ class DDB {
             prog.detail = `Retrieved ${monsters.length}/${count}...`
         }
         monsters = monsters.sort((a,b)=>a.name.normalize().localeCompare(b.name.normalize()))
+        console.log(monsters.length,this.legacy)
+        if (this.legacy == "uselegacy") {
+            monsters = monsters.filter(m=>m.isLegacy||!monsters.find(up=>up.isLegacy&&up.name==m.name))
+        } else if (this.legacy == "useupdated") {
+            monsters = monsters.filter(m=>!m.isLegacy||!monsters.find(up=>!up.isLegacy&&up.name==m.name))
+        }
+        console.log(monsters.length)
         for (const monster of monsters) {
             if (!monster.isReleased&&!monster.isHomebrew) {
                 prog.value += (!filename)? (15*(1/count)) : 1
@@ -1243,6 +1268,10 @@ class DDB {
             prog.detail = `Saved compendium`
             console.log("Saved compendium.")
             setTimeout(()=>prog.setCompleted(),1000)
+            if (Notification.isSupported()) {
+                const notification = new Notification({title: "Export Complete", body: `Compendium exported to ${filename}`})
+                notification.show()
+            }
         }
         return compendium
     }
@@ -1252,8 +1281,8 @@ class DDB {
                 _name: "monster",
                 _attrs: { id: uuid5(`ddb://monsters/${monster.id}`,uuid5.URL) },
                 _content: [
-                    {name: monster.name},
-                    {slug: slugify(monster.name)},
+                    {name: (monster.isLegacy&&this.legacy=='mark')? `${monster.name} [Legacy]` : monster.name},
+                    {slug: slugify((monster.isLegacy&&this.legacy=='mark')? `${monster.name} [Legacy]` : monster.name)},
                     {size: this.ruledata.creatureSizes.find(s=>s.id===monster.sizeId).name.charAt(0).toUpperCase()},
                     {alignment: this.ruledata.alignments.find(s=>s.id===monster.alignmentId)?.name||monster.alignmentId},
                     {ac: `${monster.armorClass} ${monster.armorClassDescription}`},
@@ -3199,6 +3228,10 @@ function doSearch(el,resId) {
                 zip.writeZip()
                 prog.detail = "Module saved."
                 setTimeout(()=>prog.setCompleted(),1000)
+                if (Notification.isSupported()) {
+                    const notification = new Notification({title: "Export Complete", body: `Module exported to ${filename}`})
+                    notification.show()
+                }
             })
         })
         console.log("Closing database")
