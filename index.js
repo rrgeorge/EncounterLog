@@ -330,9 +330,11 @@ app.on('ready', () => {
                 '*://accounts.google.com/*'
             ]},
             (d,c)=>{
-                d.requestHeaders['User-Agent'] = firefox
+                const requestHeaders = {...d.requestHeaders, ...{
+                    ['User-Agent']: firefox
+                }}
                 c({
-                    requestHeaders: d.requestHeaders
+                    requestHeaders: requestHeaders
                 })
             }
         )
