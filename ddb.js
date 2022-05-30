@@ -100,8 +100,8 @@ function sanitize(text,rulesdata=null) {
 
 function applyMeta (playerMap,meta,info,page,headings,siblingHeadings) {
     let offset = {
-        x: Math.ceil(((meta.padding||.25) * meta.width) / meta.grid) * meta.grid,
-        y: Math.ceil(((meta.padding||.25) * meta.height) / meta.grid) * meta.grid,
+        x: Math.ceil((((meta.padding!=null)?meta.padding:.25) * meta.width) / meta.grid) * meta.grid,
+        y: Math.ceil((((meta.padding!=null)?meta.padding:.25) * meta.height) / meta.grid) * meta.grid,
     }
     offset.x -= meta.shiftX
     offset.y -= meta.shiftY
