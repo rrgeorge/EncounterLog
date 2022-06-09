@@ -1332,19 +1332,21 @@ async function connectGameLog(gameId,userId,campaignName) {
                             if (msg) {
                                 msgEvent(Buffer.from(JSON.stringify(msg)),false)
                             } else {
-                                console.log("Roll not in log... Trying again")
-                                (() => new Promise(resolve => setTimeout(resolve, 500)))().then(()=>{
-                                    ddb.getRequest(`https://game-log-rest-live.dndbeyond.com/v1/getmessages?gameId=${gameId}&userId=${userId}`,true).then(msgs=>{
-                                        const msg = msgs?.data?.find(m=>m.id==msgData.id)
-                                        if (msg) {
-                                            msgEvent(Buffer.from(JSON.stringify(msg)),false)
-                                        } else {
-                                            console.log("Roll not in log...")
-                                        }
-                                    }).catch(e=>console.log(`Could not retrieve active log: ${e}`))
-                                })
+                                throw("Roll not in log yet. Retrying")
                             }
-                        }).catch(e=>console.log(`Could not retrieve active log: ${e}`))
+                        }).catch(e=>{
+                            console.log(`Could not retrieve active log: ${e}`);
+                            (() => new Promise(resolve => setTimeout(resolve, 500)))().then(()=>{
+                                ddb.getRequest(`https://game-log-rest-live.dndbeyond.com/v1/getmessages?gameId=${gameId}&userId=${userId}`,true).then(msgs=>{
+                                    const msg = msgs?.data?.find(m=>m.id==msgData.id)
+                                    if (msg) {
+                                        msgEvent(Buffer.from(JSON.stringify(msg)),false)
+                                    } else {
+                                        console.log("Roll not in log...")
+                                    }
+                                }).catch(e=>console.log(`Could not retrieve active log: ${e}`))
+                            })
+                        })
                         return
                     }
                     var character = msgData.data.context.name?.trim() || ""
