@@ -462,7 +462,7 @@ class DDB {
                           fs.readFile(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),(e,f)=>{
                             if (e) {
                                 console.log(`Cache error: ${e}`)
-                                fs.rmSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)))
+                                fs.rmSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),{force: true})
                                 this.getImage(url,auth).then(img=>resolve(img)).catch(e=>reject(e))
                             } else {
                               resolve(f)
@@ -475,13 +475,13 @@ class DDB {
                             }
                             request.on('response', (response) => {
                               if (response.statusCode != 200 || cacheStat.mtime < Date(response.headers["last-modified"])) {
-                                  fs.rm(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),()=>{})
+                                  fs.rmSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),{force: true})
                                   this.getImage(url,auth).then(img=>resolve(img)).catch(e=>reject(e))
                               } else {
                                   fs.readFile(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),(e,f)=>{
                                     if (e) {
                                         console.log(`Cache error: ${e}`)
-                                        fs.rmSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)))
+                                        fs.rmSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),{force: true})
                                         this.getImage(url,auth).then(img=>resolve(img)).catch(e=>reject(e))
                                     } else {
                                         const cachecontrol = response.headers["cache-control"]
@@ -1232,28 +1232,37 @@ class DDB {
             monsters = monsters.filter(m=>!m.isLegacy||!monsters.find(up=>!up.isLegacy&&up.name==m.name))
         }
         console.log(monsters.length)
-        for (const monster of monsters) {
+        const getMonsterCompendium = monster => new Promise(resolve=>{
+        //for (const monster of monsters) {
             if (!monster.isReleased&&!monster.isHomebrew) {
                 prog.value += (!filename)? (15*(1/count)) : 1
                 console.log(`Skipping ${monster.name} ${monster.isReleased} ${monster.isHomebrew}`)
-                continue
+                //continue
+                resolve()
             }
             if (monster.isHomebrew !== homebrew) {
                 prog.value += (!filename)? (15*(1/count)) : 1
-                continue
+                //continue
+                resolve()
             }
             if (source !== 29 && monster.sourceId === 29) {
                 prog.value += (!filename)? (15*(1/count)) : 1
-                continue
+                //continue
+                resolve()
             }
             monster.avatarUrl = imageMap?.find(s=>s.id===monster.id&&s.type===monster.entityTypeId)?.avatar || monster.avatarUrl
             monster.basicAvatarUrl = imageMap?.find(s=>s.id===monster.id&&s.type===monster.entityTypeId)?.basicAvatar || monster.basicAvatarUrl
             monster.avatarUrl = monster.avatarUrl?.replace("www.dndbeyond.com.com","www.dndbeyond.com")
             monster.basicAvatarUrl = monster.basicAvatarUrl?.replace("www.dndbeyond.com.com","www.dndbeyond.com")
-            compendium._content.push(await this.getMonsterEntry(monster,zip))
-            prog.detail = `Converted ${monster.name}`
-            prog.value += (!filename)? (15*(1/count)) : 1
-        }
+            //compendium._content.push(await this.getMonsterEntry(monster,zip))
+            this.getMonsterEntry(monster,zip).then(entry=>{
+                compendium._content.push(entry)
+                prog.detail = `Converted ${monster.name}`
+                prog.value += (!filename)? (15*(1/count)) : 1
+                resolve()
+            })
+        })
+        await asyncPool(10,monsters,getMonsterCompendium)
         if (filename) {
             if (compendium._content.length === 0) {
                 dialog.showMessageBox({message:"No monsters are available from this source.",type:"info"})
