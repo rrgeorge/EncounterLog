@@ -369,7 +369,7 @@ class DDB {
         let query = { manifestVersion: v, token: this.cobaltsession }
         //sourceVersions:  {"3":17,"4":3,"27":16,"48":3,"79":1} 
         if (sv) {
-            query.sourceVersions = sv
+            query.sourceVersions = JSON.stringify(sv)
         }
         const body = qs.stringify(query)
         const res = await this.postRequest(url,body).catch(e => console.log(`Could not check manifest update: ${e}`))
@@ -1493,7 +1493,7 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
             let modsObj = {}
             modsObj[moduleId.toString()] = modVersion
             const manifest = await this.checkManifestVersion(manifestVersion,modsObj)
-            if (manifest?.sourceUpdatesAvailable?.[moduleId.toString()] !== false) {
+            if (manifest?.data?.sourceUpdatesAvailable?.[moduleId.toString()] !== true) {
                 console.log("Using cached Module")
                 prog = new ProgressBar({
                     title: "Converting module...",
@@ -2911,10 +2911,10 @@ function doSearch(el,resId) {
                                 } else {
                                     const caption = figure.querySelector("figcaption")
                                     if (!caption) continue
-                                    if (!caption.querySelector("A")?.dataset["title"]?.match(/[Pp]layer/)) continue
+                                    if (!caption.querySelector("A")?.dataset["title"]?.match(/(player|map)/i)&&!figure.id?.match(/map/i)) continue
                                     mapTitle = [...caption.childNodes].filter(c=>c.data).map(c=>c.data).join(' ')
-                                    mapUrl = caption.querySelector("A").getAttribute('href')
                                     dmMap = figure.querySelector("img").getAttribute('src')
+                                    mapUrl = caption.querySelector("A")?.getAttribute('href') || dmMap;
                                 }
                                 if (!mapTitle) {
                                     let figParent = figure
@@ -2959,7 +2959,9 @@ function doSearch(el,resId) {
                                         `${figure.id}-player` == meta.flags?.ddb?.contentChunkId ||
                                         meta.name.toLowerCase() == mapTitle.toLowerCase() ||
                                         meta.name.toLowerCase() == he.decode(mapTitle).toLowerCase() ||
-                                        meta.flags?.ddb?.originalLink?.endsWith("/"+mapUrl) ))
+                                        meta.flags?.ddb?.originalLink?.endsWith("/"+mapUrl) ||
+                                        mapTitle.toLowerCase() == meta.name.toLowerCase()+" map"
+                                    ))
                                 if (metaMatch.length>0) {
                                     let meta = metaMatch[0]
                                     if (metaMatch.length>1) {
