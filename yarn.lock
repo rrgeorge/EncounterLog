@@ -569,7 +569,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"adm-zip@npm:^0.5.5":
+"adm-zip@npm:^0.5.9":
   version: 0.5.9
   resolution: "adm-zip@npm:0.5.9"
   checksum: 4909bc04119fdd5e8f8ba43826e50623e5c427cf0a939c809d4f9456a6a03c6aa0544e82088739de9ba16b7649f71b99ccbbddc7b2c38bd6143f9c4726cc7ed9
@@ -1980,7 +1980,7 @@ __metadata:
     "@electron/universal": ^1.2.1
     "@google-cloud/vision": ^2.3.8
     "@journeyapps/sqlcipher": ^5.3.1
-    adm-zip: ^0.5.5
+    adm-zip: ^0.5.9
     build: ^0.1.4
     electron: ^18.0.3
     electron-builder: ^23.0.3

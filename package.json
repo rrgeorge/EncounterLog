@@ -1,7 +1,7 @@
 {
   "name": "encounterlog",
   "productName": "EncounterLog",
-  "version": "2.6.6",
+  "version": "2.6.7",
   "repository": {
     "type": "git",
     "url": "https://github.com/rrgeorge/encounterlog"
@@ -159,7 +159,7 @@
   "dependencies": {
     "@google-cloud/vision": "^2.3.8",
     "@journeyapps/sqlcipher": "^5.3.1",
-    "adm-zip": "^0.5.5",
+    "adm-zip": "^0.5.9",
     "build": "^0.1.4",
     "electron-dl": "^3.2.1",
     "electron-preferences": "^2.3.1",

@@ -1487,13 +1487,18 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                 manifestVersion = parseInt(manifest.readAsText("version.txt").trim())
             }
             let modVersion = 0
+            let bookkey = null
             let modCache = new AdmZip(path.join(app.getPath("cache"),app.getName(),"imagecache",`${book.name.toLowerCase()}.zip`))
-            modVersion = parseInt(modCache.readAsText("version.txt").trim())
-            const bookkey = modCache.getZipEntryComment(`${book.name.toLowerCase()}.db3`)
+            try {
+                bookkey = modCache.getZipEntryComment(`${book.name.toLowerCase()}.db3`)
+                modVersion = parseInt(modCache.readAsText("version.txt").trim())
+            } catch (e) {
+                console.log(`Error getting module version ${e}`)
+            }
             let modsObj = {}
             modsObj[moduleId.toString()] = modVersion
             const manifest = await this.checkManifestVersion(manifestVersion,modsObj)
-            if (manifest?.data?.sourceUpdatesAvailable?.[moduleId.toString()] !== true) {
+            if (bookkey && manifest?.data?.sourceUpdatesAvailable?.[moduleId.toString()] !== true) {
                 console.log("Using cached Module")
                 prog = new ProgressBar({
                     title: "Converting module...",
@@ -2916,6 +2921,8 @@ function doSearch(el,resId) {
                                     dmMap = figure.querySelector("img").getAttribute('src')
                                     mapUrl = caption.querySelector("A")?.getAttribute('href') || dmMap;
                                 }
+                                dmMap = encodeURI(dmMap)
+                                mapUrl = encodeURI(mapUrl)
                                 if (!mapTitle) {
                                     let figParent = figure
                                     while(figParent = figParent.parentElement) {
