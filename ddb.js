@@ -216,7 +216,7 @@ function applyMeta (playerMap,meta,info,page,headings,siblingHeadings) {
                     label: marker.textContent.substring(0,marker.textContent.indexOf('.')),
                     color: "#ff0000",
                     shape: "circle",
-                    size: "medium",
+                    size: (grid<20)?"huge":(grid<50)?"large":"medium",
                     hidden: "YES",
                     locked: "YES",
                     x: Math.round(((d.x+(d.width/2))-offset.x)*scale),
@@ -261,7 +261,7 @@ function applyMeta (playerMap,meta,info,page,headings,siblingHeadings) {
                         label: marker.textContent.substring(0,marker.textContent.indexOf('.')),
                         color: "#ff0000",
                         shape: "circle",
-                        size: "medium",
+                        size: (grid<20)?"huge":(grid<50)?"large":"medium",
                         hidden: "YES",
                         locked: "YES",
                         x: Math.round((pos.x-offset.x)*scale),
@@ -2923,6 +2923,7 @@ function doSearch(el,resId) {
                                 }
                                 dmMap = encodeURI(dmMap)
                                 mapUrl = encodeURI(mapUrl)
+                                if (mapUrl == "map-0.01-Spelljammer-Academy-player.jpg") mapUrl = "map-1.01-Spelljammer-Academy-player.jpg"
                                 if (!mapTitle) {
                                     let figParent = figure
                                     while(figParent = figParent.parentElement) {
@@ -2940,7 +2941,7 @@ function doSearch(el,resId) {
                                 }
                                 mapTitle = mapTitle.trim()
                                 mapsort ++
-                                prog.detail = `Found: ${mapTitle}`
+                                prog.detail = `Found: ${mapTitle} - ${mapUrl}`
                                 let { data: mapfile, info } = await sharp(zip.readFile(mapUrl)).toBuffer({resolveWithObject: true})
                                 let playerMap = {
                                     _name: "map",
@@ -3167,7 +3168,7 @@ function doSearch(el,resId) {
                                                         label: marker.textContent.substring(0,marker.textContent.indexOf('.')),
                                                         color: "#ff0000",
                                                         shape: "circle",
-                                                        size: "medium",
+                                                        size: (playerMap._content.find(g=>g.gridSize)?.gridSize<30)? "huge" : (playerMap._content.find(g=>g.gridSize)?.gridSize<50)? "large":"medium",
                                                         hidden: "YES",
                                                         locked: "YES",
                                                         x: Math.round((x+(w/2)+markerOffset.x)*markerOffset.s),
