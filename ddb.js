@@ -37,7 +37,7 @@ function sanitize(text,rulesdata=null) {
                         if (ddburl) {
                             let source = rulesdata.sources?.find(s=>s.sourceURL.toLowerCase()==ddburl[1].toLowerCase())
                             if (source) {
-                                elem.attribs.href=elem.attribs.href.replaceAll(new RegExp(`https:\/\/(?:www\.)?dndbeyond\.com\/${source.sourceURL}`,'ig'),`/module/${source.name.toLowerCase()}/page`).replaceAll(/\/page$/g,'/page/table-of-contents')
+                                elem.attribs.href=elem.attribs.href.replaceAll(new RegExp(`https:\/\/(?:www\.)?dndbeyond\.com\/${source.sourceURL}`,'ig'),`/module/${source.name.toLowerCase()}/page`).replaceAll(/\/page$/g,`/page/${source.name.toLowerCase()}`)
                             }
                         }
                     }
@@ -99,61 +99,72 @@ function sanitize(text,rulesdata=null) {
 
 
 function applyMeta (playerMap,meta,info,page,headings,siblingHeadings) {
+    let grid = (typeof(meta.grid) === "object")? meta.grid : {
+        type: meta.gridType,
+        size: meta.grid,
+        color: meta.gridColor,
+        alpha: meta.gridAlpha,
+        distance: meta.gridDistance,
+        units: meta.gridUnits
+      }
+    grid.osize = grid.size
+    console.log(meta,grid)
     let offset = {
-        x: Math.ceil((((meta.padding!=null)?meta.padding:.25) * meta.width) / meta.grid) * meta.grid,
-        y: Math.ceil((((meta.padding!=null)?meta.padding:.25) * meta.height) / meta.grid) * meta.grid,
+        x: Math.ceil((((meta.padding!=null)?meta.padding:.25) * meta.width) / grid.size) * grid.size,
+        y: Math.ceil((((meta.padding!=null)?meta.padding:.25) * meta.height) / grid.size) * grid.size,
     }
-    offset.x -= meta.shiftX
-    offset.y -= meta.shiftY
-    let grid = meta.grid
+    offset.x -= meta.shiftX || meta.background?.offsetX || 0
+    offset.y -= meta.shiftY || meta.background?.offsetY || 0
     let scale = 1
     if (info.width!=meta.width||info.height!=meta.height) {
         scale = (info.width/meta.width)
         console.log(`Meta ${meta.width}x${meta.height} != ${info.width}x${info.height} (${scale})`)
-        console.log(offset,grid)
-        grid = Math.round(grid * scale)
+        console.log(offset,grid.size)
+        grid.size = Math.round(grid.size * scale)
     }
-    if (meta.gridDistance) playerMap._content.push( { gridScale: meta.gridDistance } )
-    if (meta.gridUnits) playerMap._content.push( { gridUnits: meta.gridUnits } )
-    if (meta.gridType>1) {
-        grid = Math.round((meta.grid*scale)/2.0)
-        let shiftX = Math.round(meta.shiftX*scale)
-        let shiftY = Math.round(meta.shiftY*scale)
-        let gridScale = grid/((meta.grid*scale)/2.0)
+    if (grid.distance) playerMap._content.push( { gridScale: grid.distance } )
+    if (grid.units) playerMap._content.push( { gridUnits: grid.units } )
+    if (grid.type>1) {
+        grid.size = Math.round((grid.size*scale)/2.0)
+        let shiftX = Math.round((meta.shiftX || meta.background?.offsetX || 0)*scale)
+        let shiftY = Math.round((meta.shiftY || meta.background?.offsetY || 0)*scale)
+        let gridScale = grid.size/((grid.osize*scale)/2.0)
         scale *= gridScale
-        switch (meta.gridType) {
+        switch (grid.type) {
             case 2:
-                shiftY += grid
+                shiftY += grid.size
                 break
             case 3:
-                shiftY -= grid/2.0
+                shiftY -= grid.size/2.0
                 break
             case 4:
-                shiftY += grid/2.0
-                shiftX -= grid
+                shiftY += grid.size/2.0
+                shiftX -= grid.size
                 break
             case 5:
-                shiftY += grid/2.0
-                shiftX += grid/2.0
+                shiftY += grid.size/2.0
+                shiftX += grid.size/2.0
                 break
         }
-        playerMap._content.push( { gridSize: grid } )
+        playerMap._content.push( { gridSize: grid.size } )
         playerMap._content.push( { gridOffsetX: shiftX } )
         playerMap._content.push( { gridOffsetY: shiftY } )
         playerMap._content.push( { scale: gridScale } )
-        playerMap._content.push( { gridType: (meta.gridType>=4)?"hexPointy":"hexFlat" } )
+        playerMap._content.push( { gridType: (grid.type>=4)?"hexPointy":"hexFlat" } )
     } else {
-        let gridScale = grid/(meta.grid*scale)
+        console.log(`Scale: ${scale}`)
+        let gridScale = grid.size/(grid.osize*scale)
         scale *= gridScale
-        playerMap._content.push( { gridSize: grid } )
-        playerMap._content.push( { gridOffsetX: Math.round(meta.shiftX*scale) } )
-        playerMap._content.push( { gridOffsetY: Math.round(meta.shiftY*scale) } )
+        console.log(`Grid Scale: ${gridScale} -> ${scale}`)
+        playerMap._content.push( { gridSize: grid.size } )
+        playerMap._content.push( { gridOffsetX: Math.round((meta.shiftX || meta.background?.offsetX || 0)*scale) } )
+        playerMap._content.push( { gridOffsetY: Math.round((meta.shiftY || meta.background?.offsetY || 0)*scale) } )
         playerMap._content.push( { scale: gridScale } )
     }
-    playerMap._content.push( { gridColor: meta.gridColor||"#000000" } )
-    playerMap._content.push( { gridVisible: (meta.gridAlpha>0)?"YES":"NO" } )
+    playerMap._content.push( { gridColor: grid.color||"#000000" } )
+    playerMap._content.push( { gridVisible: (grid.alpha>0)?"YES":"NO" } )
     if (meta.gridAlpha)
-        playerMap._content.push( { gridOpacity: meta.gridAlpha } )
+        playerMap._content.push( { gridOpacity: grid.alpha } )
     if (meta.lights)
     playerMap._content.push( { lineOfSight: (meta.tokenVision)?"YES":"NO" } )
     if (meta.fogExploration) {
@@ -182,8 +193,8 @@ function applyMeta (playerMap,meta,info,page,headings,siblingHeadings) {
         playerMap._content.push( { token: {
             _attrs: { id: uuid5(`token-${playerMap._content.filter(f=>f.token).length}`,playerMap._attrs.id) },
             name: t.name.trim(),
-            x: Math.round(((t.x - offset.x)*scale) + (t.width*grid/2)),
-            y: Math.round(((t.y - offset.y)*scale) + (t.height*grid/2)),
+            x: Math.round(((t.x - offset.x)*scale) + (t.width*grid.size/2)),
+            y: Math.round(((t.y - offset.y)*scale) + (t.height*grid.size/2)),
             hidden: (t.hidden)? "YES" : "NO",
             size: (t.width!=t.height)?`${t.width}x${t.height}`:(t.width>4)?"C":(t.width>3)?"G":(t.width>2)?"H":(t.width>1)?"L":(t.width<.5||t.scale<=.5)?"T":(t.width<1||t.scale<1)?"S":"M",
             rotation: t.rotation||0,
@@ -216,7 +227,7 @@ function applyMeta (playerMap,meta,info,page,headings,siblingHeadings) {
                     label: marker.textContent.substring(0,marker.textContent.indexOf('.')),
                     color: "#ff0000",
                     shape: "circle",
-                    size: (grid<20)?"huge":(grid<50)?"large":"medium",
+                    size: (grid.size<20)?"huge":(grid.size<50)?"large":"medium",
                     hidden: "YES",
                     locked: "YES",
                     x: Math.round(((d.x+(d.width/2))-offset.x)*scale),
@@ -261,7 +272,7 @@ function applyMeta (playerMap,meta,info,page,headings,siblingHeadings) {
                         label: marker.textContent.substring(0,marker.textContent.indexOf('.')),
                         color: "#ff0000",
                         shape: "circle",
-                        size: (grid<20)?"huge":(grid<50)?"large":"medium",
+                        size: (grid.size<20)?"huge":(grid.size<50)?"large":"medium",
                         hidden: "YES",
                         locked: "YES",
                         x: Math.round((pos.x-offset.x)*scale),
@@ -1692,6 +1703,7 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                     return
                 }
                 prog.detail = c.Title
+                if (c.Slug=="table-of-contents") c.Slug = book.name.toLowerCase()
                 let page = {
                     page: {
                         _attrs: { id: uuid5(`https://www.dndbeyond.com/${book.sourceURL}/${c.Slug}`, uuid5.URL), sort: c.ID},
@@ -1702,12 +1714,12 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
             <div class="chapterart view-cover-art" style="background-image: url(images/chapter-backgrounds/${c.Slug}.jpg);">
                 <a href="images/chapter-backgrounds/${c.Slug}.jpg">View Art</a>
             </div>
-                        `:(c.Slug=="table-of-contents")?`
+                        `:(c.Slug==book.name.toLowerCase())?`
             <div class="chapterart view-cover-art">
                 <a href="images/cover.jpg">View Cover Art</a>
             </div>
                         `:'') +
-                        `<div id="content" class="site site-main container main content-container primary-content ${(c.Slug=='table-of-contents')?'body-category':'body-page'}"><article class="p-article p-article-a"><div class="p-article-content u-typography-format" id="mainpage">${(c.Slug=='table-of-contents')?`
+                        `<div id="content" class="site site-main container main content-container primary-content ${(c.Slug==book.name.toLowerCase())?'body-category':'body-page'}"><article class="p-article p-article-a"><div class="p-article-content u-typography-format" id="mainpage">${(c.Slug==book.name.toLowerCase())?`
 <script src="./assets/js/fuse.min.js"></script>
 <script src="./assets/js/search.js"></script>
 <div class="searchbox" style="text-align: center">
@@ -1716,10 +1728,37 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
 </div>
 `:''}` +
                         he.decode(c.RenderedHtml
-                            .replaceAll(/ddb:\/\/compendium\/([^\/\"]*?)\"/g,"/module/$1/page/table-of-contents\"")
+                            .replaceAll(/ddb:\/\/compendium\/([^\/\"]*?)\"/g,"/module/$1/page/$1\"")
                             .replaceAll(/ddb:\/\/compendium\/([^\/\"]*?)\//g,"/module/$1/page/")
                             .replaceAll(/\/page\/([^\"]*#[^\"]*)/g,m=>m.replace(/#(?=.*?#)/g,'-'))
                             .replaceAll(new RegExp(`ddb:\/\/image\/${book.name.toLowerCase()}\/`,'g'),"")
+                            .replaceAll(new RegExp(`ddb:\/\/file\/${book.name.toLowerCase()}\/(.*?)\"`,'g'),(m,p1)=>{
+                                const refGroup = uuid5(`https://www.dndbeyond.com/${book.sourceURL}/file/`,uuid5.URL)
+                                const refUUID = uuid5(`https://www.dndbeyond.com/${book.sourceURL}/file/${p1}`,uuid5.URL)
+                                const refCount = mod._content.filter(r=>r.reference).length
+                                if (refCount == 0) {
+                                    mod._content.push(
+                                        {
+                                            _name: "group",
+                                            _attrs: { id: refGroup, sort: 999999999999999 },
+                                            _content: [
+                                                { name: "Files" },
+                                                { slug: 'files' }
+                                            ]
+                                        })
+                                }
+                                if (!mod._content.find(r=>r.reference&&r.reference._attrs?.id==refUUID)) {
+                                    mod._content.push({
+                                        reference: {
+                                            _attrs: { id: refUUID, sort: refCount+1, parent: refGroup },
+                                            name: p1,
+                                            slug: slugify(p1),
+                                            reference: p1
+                                        }
+                                    })
+                                }
+                                return `/reference/${refUUID}"`
+                            })
                             .replaceAll(new RegExp(`\\./${book.name.toLowerCase()}/`,'g'),"")
                             ) +
                             '</div></article></div>'
@@ -2366,7 +2405,7 @@ window.addEventListener('load', function() {
             topNext.classList.add("disabled")
         }
         var topLink = document.createElement('a')
-        topLink.href = "/page/table-of-contents"
+        topLink.href = "/page/${book.name.toLowerCase()}"
         topLink.innerText = "Table of Contents"
         topTop.appendChild(topLink)
         topNav.appendChild(topPrev)
