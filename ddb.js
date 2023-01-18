@@ -108,7 +108,6 @@ function applyMeta (playerMap,meta,info,page,headings,siblingHeadings) {
         units: meta.gridUnits
       }
     grid.osize = grid.size
-    console.log(meta,grid)
     let offset = {
         x: Math.ceil((((meta.padding!=null)?meta.padding:.25) * meta.width) / grid.size) * grid.size,
         y: Math.ceil((((meta.padding!=null)?meta.padding:.25) * meta.height) / grid.size) * grid.size,
@@ -2960,8 +2959,8 @@ function doSearch(el,resId) {
                                     dmMap = figure.querySelector("img").getAttribute('src')
                                     mapUrl = caption.querySelector("A")?.getAttribute('href') || dmMap;
                                 }
-                                dmMap = encodeURI(dmMap)
-                                mapUrl = encodeURI(mapUrl)
+                                if (dmMap) dmMap = encodeURI(dmMap)
+                                if (mapUrl) mapUrl = encodeURI(mapUrl)
                                 if (mapUrl == "map-0.01-Spelljammer-Academy-player.jpg") mapUrl = "map-1.01-Spelljammer-Academy-player.jpg"
                                 if (!mapTitle) {
                                     let figParent = figure
@@ -3030,7 +3029,7 @@ function doSearch(el,resId) {
                                             })
                                     }
                                     if (meta) {
-                                        console.log(`Found meta data for map ${mapTitle} ${meta.flags.ddb.ddbId} ${meta.name}`)
+                                        console.log(`Found meta data for map ${mapTitle} ${meta.flags.ddb.ddbId} ${meta.name}--`)
                                         //console.log(page.page.ddb)
                                         //console.log(figureIdx)
                                         const missing = ddbMeta.filter(mm=>
