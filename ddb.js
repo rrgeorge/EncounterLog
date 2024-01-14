@@ -2962,6 +2962,8 @@ function doSearch(el,resId) {
                                 if (dmMap) dmMap = encodeURI(dmMap)
                                 if (mapUrl) mapUrl = encodeURI(mapUrl)
                                 if (mapUrl == "map-0.01-Spelljammer-Academy-player.jpg") mapUrl = "map-1.01-Spelljammer-Academy-player.jpg"
+                                if (mapUrl == "map-4.01-city-street-and-sewers%20-map.png") mapUrl = "map-4.01-city-street-and-sewers+-map.png"
+                                if (dmMap == "map-4.01-city-street-and-sewers%20-map.png") dmMap = "map-4.01-city-street-and-sewers+-map.png"
                                 if (!mapTitle) {
                                     let figParent = figure
                                     while(figParent = figParent.parentElement) {
@@ -2980,7 +2982,14 @@ function doSearch(el,resId) {
                                 mapTitle = mapTitle.trim()
                                 mapsort ++
                                 prog.detail = `Found: ${mapTitle} - ${mapUrl}`
-                                let { data: mapfile, info } = await sharp(zip.readFile(mapUrl)).toBuffer({resolveWithObject: true})
+                                let mapfile, info
+                                try {
+                                    ({ data: mapfile, info } = await sharp(zip.readFile(mapUrl)).toBuffer({resolveWithObject: true}))
+                                } catch (e) {
+                                    console.log(`invalid map data ${e} for ${mapTitle} - ${mapUrl}`)
+                                    continue
+                                }
+
                                 let playerMap = {
                                     _name: "map",
                                     _attrs: { id: uuid5(`https://www.dndbeyond.com/${book.sourceURL}/image/${figure.id||mapUrl}`, uuid5.URL), parent: (this.mapsloc!="group")? page.page._attrs.id : mapgroup, sort: mapsort},
@@ -3215,7 +3224,7 @@ function doSearch(el,resId) {
                                                     }
                                                 })
                                             } else {
-                                                console.log(`No matching heading found for "${txt}"`)
+                                                //console.log(`No matching heading found for "${txt}"`)
                                             }
                                         })
                                     }
