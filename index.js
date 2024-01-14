@@ -62,7 +62,7 @@ const preferences = new ElectronPreferences({
             'export': {
                 'art': [ 'artwork', 'tokens' ],
                 'legacy': 'mark',
-                'maps': 'nomaps',
+                'maps': 'maps',
                 'mapsloc': 'group',
             }
         },
