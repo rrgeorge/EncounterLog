@@ -87,7 +87,6 @@
       ],
       "files": [
         "**/*",
-        "!**/node_modules/sharp/vendor/**/include/*",
         "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
         "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
         "!**/node_modules/*.d.ts",
@@ -141,7 +140,8 @@
       "*.otf"
     ],
     "asarUnpack": [
-      "**/node_modules/sharp/**"
+      "**/node_modules/sharp/**/*",
+      "**/node_modules/@img/**/*"
     ],
     "publish": [
       "github"
@@ -183,7 +183,7 @@
   "devDependencies": {
     "@electron/universal": "^1.2.1",
     "electron": "^28.1.3",
-    "electron-builder": "^24.9.1"
+    "electron-builder": "24.11.0"
   },
-  "packageManager": "yarn@3.2.0"
+  "packageManager": "yarn@4.0.2"
 }
