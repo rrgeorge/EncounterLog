@@ -89,6 +89,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@electron/notarize@npm:^2.2.0":
+  version: 2.2.0
+  resolution: "@electron/notarize@npm:2.2.0"
+  dependencies:
+    debug: ^4.1.1
+    fs-extra: ^9.0.1
+    promise-retry: ^2.0.1
+  checksum: 14a983b65443ce681363ef8562dbb3cf12ef817fefe6a3041eca7d05854faaeaf3d474b0d08d206a3e07606da6b68b63563565e89c682a78a69893e5b3bece06
+  languageName: node
+  linkType: hard
+
 "@electron/universal@npm:^1.2.1":
   version: 1.2.1
   resolution: "@electron/universal@npm:1.2.1"
@@ -1846,16 +1857,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"electron-notarize@npm:^1.1.0":
-  version: 1.2.1
-  resolution: "electron-notarize@npm:1.2.1"
-  dependencies:
-    debug: ^4.1.1
-    fs-extra: ^9.0.1
-  checksum: d109136a855b31020cb833a51dcf5a3aa6c0ee5b95ca8f6aa5d6296a299aa8fe46bb15cc2fa9189ab97da8c4402c675af7c592c46d7940f0e2662c59a9e499fd
-  languageName: node
-  linkType: hard
-
 "electron-osx-sign@npm:^0.6.0":
   version: 0.6.0
   resolution: "electron-osx-sign@npm:0.6.0"
@@ -1977,6 +1978,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "encounterlog@workspace:."
   dependencies:
+    "@electron/notarize": ^2.2.0
     "@electron/universal": ^1.2.1
     "@google-cloud/vision": ^2.3.8
     "@journeyapps/sqlcipher": ^5.3.1
@@ -1985,7 +1987,6 @@ __metadata:
     electron: ^18.0.3
     electron-builder: ^23.0.3
     electron-dl: ^3.2.1
-    electron-notarize: ^1.1.0
     electron-preferences: ^2.3.1
     electron-progressbar: ^2.0.1
     electron-updater: ^4.3.9
