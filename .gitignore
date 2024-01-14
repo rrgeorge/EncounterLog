@@ -3,6 +3,7 @@
 /scripts
 .gkey.json
 *.env
+*.p8
 node_modules
 **/.DS_Store
 dev-app-update.yml
