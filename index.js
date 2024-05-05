@@ -1362,17 +1362,24 @@ async function connectGameLog(gameId,userId,campaignName) {
                     //}
                     if (!ignored.includes(character)) {
                             for (var roll of msgData.data.rolls) {
+                                //{"diceNotation":{"set":[{"count":1,"dieType":"d4","dice":[{"dieType":"d4","dieValue":1}],"operation":0}],"constant":1},"rollType":"damage","rollKind":"","result":{"constant":1,"values":[1],"total":2,"text":"1+1"}}
+                                let formula = roll.diceNotation?.set?.map(m=>{
+                                        return `${m.count||''}${m.dieType||''}`
+                                    })?.join('+')
+                                    if (roll.diceNotation?.constant != 0) {
+                                        formula += `${roll.diceNotation.constant<0?'':'+'}${roll.diceNotation.constant}`
+                                    }
                                     let rollJson = {
                                         "source": character,
                                         "type":     "roll",
                                         "content": {
-                                                "formula": roll.diceNotationStr,
+                                                "formula": formula || "",
                                                 "result": roll.result.total,
                                                 "detail": roll.result.text,
                                                 "name":   msgData.data.action
                                         }
                                     };
-                                    if (["check","save","attack","damage","heal"].includes(roll.rollType)) {
+                                if (["check","save","attack","damage","heal"].includes(roll.rollType)) {
                                             rollJson.content.type = roll.rollType;
                                     } else if (roll.rollType == "to hit") {
                                             rollJson.content.type = "attack";
