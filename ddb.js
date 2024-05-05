@@ -9,7 +9,7 @@ const { toXML } = require('jstoxml')
 const AdmZip = require('adm-zip')
 const sharp = require('sharp')
 const {download} = require("electron-dl")
-const sqlite3 = require('@journeyapps/sqlcipher').verbose()
+const sqlite3 = require('better-sqlite3-multiple-ciphers')
 const tmp = require('tmp')
 const path = require('path')
 const url = require('url')
@@ -253,10 +253,10 @@ function applyMeta (playerMap,meta,info,page,headings,siblingHeadings) {
     if (meta.flags?.ddb?.notes)
     for (const n of meta.flags.ddb.notes) {
         let pageslug = page.page.slug
-        let marker = headings.find(h=>h.dataset.contentChunkId==n.flags?.ddb?.contentChunkId)
+        let marker = headings.find(h=>h.dataset.contentChunkId==n.flags?.ddb?.contentChunkId||h.id==n.flags?.ddb?.slugLink)
         if (!marker && siblingHeadings) {
             for(let sibling of siblingHeadings) {
-                marker = sibling.headings.find(h=>h.dataset.contentChunkId==n.flags?.ddb?.contentChunkId)
+                marker = sibling.headings.find(h=>h.dataset.contentChunkId==n.flags?.ddb?.contentChunkId||h.id==n.flags?.ddb?.slugLink)
                 if (marker) {
                     pageslug = sibling.slug
                     break
@@ -268,7 +268,7 @@ function applyMeta (playerMap,meta,info,page,headings,siblingHeadings) {
                 playerMap._content.push({
                     marker: {
                         name: "",
-                        label: marker.textContent.substring(0,marker.textContent.indexOf('.')),
+                        label: marker.textContent.substring(0,marker.textContent.match(/[.:]/)?.index||-1),
                         color: "#ff0000",
                         shape: "circle",
                         size: (grid.size<20)?"huge":(grid.size<50)?"large":"medium",
@@ -755,14 +755,14 @@ class DDB {
             }
             let classes = []
             if (source == 10) source = 4
-            const db = new sqlite3.Database(path.join(app.getPath("userData"),"skeleton.db3"),()=>{
-                db.each(`SELECT C.ID AS ID, C.Name AS Name, SC.Name AS Parent FROM RPGSpell S LEFT JOIN RPGClassSpellMapping AS M ON S.ID = M.RPGSpellID LEFT JOIN RPGClass AS C ON M.RPGClassID = C.ID LEFT JOIN RPGClass AS SC ON SC.ID = C.ParentClassID ${(source)?` WHERE S.RPGSourceID=${source}`:''} GROUP BY C.ID`,(e,r)=>{
+            const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
+            db.prepare(`SELECT C.ID AS ID, C.Name AS Name, SC.Name AS Parent FROM RPGSpell S LEFT JOIN RPGClassSpellMapping AS M ON S.ID = M.RPGSpellID LEFT JOIN RPGClass AS C ON M.RPGClassID = C.ID LEFT JOIN RPGClass AS SC ON SC.ID = C.ParentClassID ${(source)?` WHERE S.RPGSourceID=${source}`:''} GROUP BY C.ID`).all().forEach(r=>{
                     prog.detail = `Retrieving class list ${(r.Parent)?`${r.Parent}/${r.Name}`:r.Name}`
                     classes.push({
                         id: r.ID, name: (r.Parent)?`${r.Parent}/${r.Name}`:r.Name, baseClass:(r.Parent)?r.Parent:undefined
                     })
-                },()=>resolve(classes))
             })
+            resolve(classes)
         })
         return classlist
     }
@@ -1141,10 +1141,10 @@ class DDB {
                     let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
                     manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
                 }
-                const db = new sqlite3.Database(path.join(app.getPath("userData"),"skeleton.db3"),()=>{
-                    db.all(`SELECT COUNT(*) AS C FROM RPGMonster${(source)?` WHERE RPGSourceID == ${source}`:''}`,
-                        (e,r)=>resolve(r?.[0]?.C))
-                })
+                const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
+                db.prepare(`SELECT COUNT(*) AS C FROM RPGMonster${(source)?` WHERE RPGSourceID == ${source}`:''}`).all().forEach(
+                    r=>resolve(r?.[0]?.C)
+                )
             })
             return count
         }
@@ -1188,10 +1188,10 @@ class DDB {
                         manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
                     }
                     let ids = []
-                    const db = new sqlite3.Database(path.join(app.getPath("userData"),"skeleton.db3"),()=>{
-                        db.each(`SELECT ID FROM RPGMonster${(source)?` WHERE RPGSourceID == ${source}`:''}`,
-                            (e,r)=>r?.ID&&ids.push(r.ID),()=>resolve(ids))
-                    })
+                    const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
+                    db.prepare(`SELECT ID FROM RPGMonster${(source)?` WHERE RPGSourceID == ${source}`:''}`).all().forEach(
+                            r=>r?.ID&&ids.push(r.ID),()=>resolve(ids)
+                    )
                 })
                 let id_chunks = []
                 for (let i=0;i<ids.length;i+=15) {
@@ -1338,13 +1338,13 @@ class DDB {
                     manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
                 }
                 let skillList = []
-                const db = new sqlite3.Database(path.join(app.getPath("userData"),"skeleton.db3"),()=>{
-                    db.each(`SELECT * FROM RPGMonsterSkillMapping WHERE RPGMonsterID=${monster.id}`,(e,r)=>{
+                const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
+                db.prepare(`SELECT * FROM RPGMonsterSkillMapping WHERE RPGMonsterID= ?`).all(monster.id).forEach(r=>{
                         skillList.push({
                             skillId: r.RPGSkillID, value: r.Value, additionalBonus: r.AdditionalBonus
                         })
-                    },()=>resolve(skillList))
-                })
+                    })
+                resolve(skillList)
             })
             if (skillList?.length>0) monster.skills = skillList
             if (monster.skills)
@@ -1592,7 +1592,7 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
         modVer = modVer.map(Number)
         mod._attrs.version = (modVer[0] * (1000**3)) + (modVer[1] * (1000**2)) + (modVer[2] * 1000) + (modVer[3])
         zip.extractEntryTo(`${book.name.toLowerCase()}.db3`,temp.name,false,true)
-        var db = new sqlite3.Database(path.join(temp.name,`${book.name.toLowerCase()}.db3`))
+        var db = sqlite3(path.join(temp.name,`${book.name.toLowerCase()}.db3`),{ verbose: console.log })
         var imageMap = []
         var slugIdMap = {}
         prog.detail = `Loading images..`
@@ -1641,66 +1641,40 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
             })
             await asyncPool(10,files,getFile)
         }
-        db.serialize(() => {
-            db.run(`PRAGMA key='${Buffer.from(key,'base64').toString('utf8')}'`)
-            db.run("PRAGMA cipher_compatibility = 3")
-            var pageCount = 0
-            var pos = 0
-            db.all("SELECT ID FROM Content",(e,c)=>{
-                if (e) {
-                    console.log(e)
-                    return
-                }
-                pageCount = c.length
-            })
-            db.each("SELECT M.*, A.FileName as AFile FROM RPGSource M LEFT JOIN Avatar AS A ON M.AvatarID = A.ID",(e,c)=>{
-                if (e) {
-                    console.log(e)
-                    return
-                }
+        db.pragma(`cipher='sqlcipher'`)
+        db.pragma(`legacy=3`)
+        db.pragma(`key='${Buffer.from(key,'base64').toString('utf8')}'`);
+        //db.pragma(`cipher_compatibility = 3`)
+        const pageCount = db.prepare("SELECT ID FROM Content").all().length
+        let pos = 0
+        db.prepare("SELECT M.*, A.FileName as AFile FROM RPGSource M LEFT JOIN Avatar AS A ON M.AvatarID = A.ID").all().forEach(c=>{
                 if (c.ID===moduleId) {
                     mod._content.find(s=>s.image).image = `listing_images/${c.AFile}`
                     mod._content.push({code: c.Name||''})
                 }
-            })
-            db.each("SELECT M.ID,A.EntityID AS AID,A.EntityTypeID AS AET,B.EntityID AS BID,B.EntityTypeID AS BET,A.FileName as AFile,B.FileName as BFile FROM RPGMonster M LEFT JOIN Avatar AS A ON M.AvatarID = A.ID LEFT JOIN Avatar AS B ON M.BasicAvatarID = B.ID WHERE M.AvatarID IS NOT NULL OR M.BasicAvatarID IS NOT NULL",(e,c)=>{
-                if (e) {
-                    console.log(e)
-                    return
-                }
+        })
+        db.prepare("SELECT M.ID,A.EntityID AS AID,A.EntityTypeID AS AET,B.EntityID AS BID,B.EntityTypeID AS BET,A.FileName as AFile,B.FileName as BFile FROM RPGMonster M LEFT JOIN Avatar AS A ON M.AvatarID = A.ID LEFT JOIN Avatar AS B ON M.BasicAvatarID = B.ID WHERE M.AvatarID IS NOT NULL OR M.BasicAvatarID IS NOT NULL").all().forEach(c=>{
                 imageMap.push( {
                     id: c.ID||c.AID||c.BID,
                     type: c.AET||c.BET,
                     avatar: (c.AFile)?`listing_images/${c.AFile}`:null,
                     basicAvatar: (c.BFile)?`listing_images/${c.BFile}`:null
                 } )
-            })
-            db.each("SELECT M.ID,A.EntityID as AID,A.EntityTypeID as AET,A.FileName as AFile,B.EntityID AS BID,B.EntityTypeID as BET,B.FileName as BFile FROM RPGMagicItem M LEFT JOIN Avatar AS A ON M.AvatarID = A.ID LEFT JOIN Avatar AS B ON M.LargeAvatarID = B.ID WHERE M.AvatarID IS NOT NULL OR M.LargeAvatarID IS NOT NULL",(e,c)=>{
-                if (e) {
-                    console.log(e)
-                    return
-                }
-                imageMap.push( {
-                    id: c.ID||c.AID||c.BID,
-                    type: c.AET||c.BET,
-                    avatar: (c.AFile)?`listing_images/${c.AFile}`:null,
-                    largeAvatar: (c.BFile)?`listing_images/${c.BFile}`:null
-                } )
-            })
-            let monsterIds = []
-            db.each("SELECT * FROM RPGMonster",(e,c)=>{
-                if (e) {
-                    console.log(e)
-                    return
-                }
-                monsterIds.push(c.ID)
-            })
-            prog.text = "Converting pages..."
-            db.each("SELECT C.*,P.Slug AS ParentSlug FROM Content C LEFT JOIN Content P ON P.CobaltID = C.ParentID ORDER BY C.ParentID ASC, C.CobaltID ASC, C.ID ASC",(e,c)=>{
-                if (e) {
-                    console.log(e)
-                    return
-                }
+        })
+        db.prepare("SELECT M.ID,A.EntityID as AID,A.EntityTypeID as AET,A.FileName as AFile,B.EntityID AS BID,B.EntityTypeID as BET,B.FileName as BFile FROM RPGMagicItem M LEFT JOIN Avatar AS A ON M.AvatarID = A.ID LEFT JOIN Avatar AS B ON M.LargeAvatarID = B.ID WHERE M.AvatarID IS NOT NULL OR M.LargeAvatarID IS NOT NULL").all().forEach(c=>{
+            imageMap.push( {
+                id: c.ID||c.AID||c.BID,
+                type: c.AET||c.BET,
+                avatar: (c.AFile)?`listing_images/${c.AFile}`:null,
+                largeAvatar: (c.BFile)?`listing_images/${c.BFile}`:null
+            } )
+        })
+        let monsterIds = []
+        db.prepare("SELECT * FROM RPGMonster").all().forEach(c=>{
+            monsterIds.push(c.ID)
+        })
+        prog.text = "Converting pages..."
+        db.prepare("SELECT C.*,P.Slug AS ParentSlug FROM Content C LEFT JOIN Content P ON P.CobaltID = C.ParentID ORDER BY C.ParentID ASC, C.CobaltID ASC, C.ID ASC").all().forEach(c=>{
                 prog.detail = c.Title
                 if (c.Slug=="table-of-contents") c.Slug = book.name.toLowerCase()
                 let page = {
@@ -1780,11 +1754,10 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                 }
                 pos += 1
                 prog.value = 25+((pos/pageCount)*5)
-            },
-            async () => {
-                prog.detail = "Writing stylesheets"
-                var globalcss = "@import '../../css/book.css';\n"
-                var customcss = `
+        })
+        prog.detail = "Writing stylesheets"
+        var globalcss = "@import '../../css/book.css';\n"
+        var customcss = `
 @font-face {
     font-family: "Scaly Sans Caps Bold";
     src: url("../fonts/scalysanscapsbold.otf") format("opentype");
@@ -3298,8 +3271,6 @@ function doSearch(el,resId) {
                     const notification = new Notification({title: "Export Complete", body: `Module exported to ${filename}`})
                     notification.show()
                 }
-            })
-        })
         console.log("Closing database")
         db.close()
     }
