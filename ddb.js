@@ -367,7 +367,7 @@ class DDB {
     async getCampaignCharacterStatus(characterIds) {
         if (!this.cobaltsession) await this.setCobaltSession()
         await this.getCobaltAuth()
-        const url = "https://character-service-scds.dndbeyond.com/v1/characters"
+        const url = "https://character-service-scds.dndbeyond.com/v2/characters"
         const body = JSON.stringify({ 'characterIds': characterIds })
         const res = await this.postRequest(url,body,true).catch(e => console.log(`Could not retrieve character statuses: ${e}`))
         return res?.foundCharacters
