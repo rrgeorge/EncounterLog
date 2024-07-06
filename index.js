@@ -556,31 +556,6 @@ function populateCompendiumMenu() {
                   })
                   compendiumMenu.submenu.append(categoryMenu)
               }
-              if (book.bookCode.toLowerCase() == 'tftyp') {
-                  var tftypMenu = menu.getMenuItemById(`tftyp-menu`)
-                  if (!tftypMenu) {
-                      tftypMenu = new MenuItem({
-                          id: 'tftyp-menu',
-                          label: he.decode("Tales from the Yawning Portal").replaceAll("&","&&"),
-                          toolTip: he.decode("TftYP"),
-                          submenu: []
-                      })
-                      categoryMenu.submenu.append(tftypMenu)
-                  }
-                  continue
-              } else if (book.url.startsWith('https://www.dndbeyond.com/sources/tftyp/')) {
-                  var tftypMenu = menu.getMenuItemById(`tftyp-menu`)
-                  if (!tftypMenu) {
-                      tftypMenu = new MenuItem({
-                          id: 'tftyp-menu',
-                          label: he.decode("Tales from the Yawning Portal").replaceAll("&","&&"),
-                          toolTip: he.decode("TftYP"),
-                          submenu: []
-                      })
-                      categoryMenu.submenu.append(tftypMenu)
-                  }
-                  categoryMenu = tftypMenu
-              }
               categoryMenu.submenu.append( new MenuItem({
                   label: he.decode(book.book).replaceAll("&","&&"),
                   toolTip: he.decode(book.bookCode),
