@@ -1143,7 +1143,7 @@ class DDB {
                 }
                 const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
                 db.prepare(`SELECT COUNT(*) AS C FROM RPGMonster${(source)?` WHERE RPGSourceID == ${source}`:''}`).all().forEach(
-                    r=>resolve(r?.[0]?.C)
+                    r=>resolve(r?.C)
                 )
             })
             return count
@@ -1190,8 +1190,9 @@ class DDB {
                     let ids = []
                     const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
                     db.prepare(`SELECT ID FROM RPGMonster${(source)?` WHERE RPGSourceID == ${source}`:''}`).all().forEach(
-                            r=>r?.ID&&ids.push(r.ID),()=>resolve(ids)
+                            r=>r?.ID&&ids.push(r.ID)
                     )
+                    resolve(ids)
                 })
                 let id_chunks = []
                 for (let i=0;i<ids.length;i+=15) {
