@@ -947,7 +947,7 @@ class DDB {
             { code: "G", names: [ "adventuring gear" ] },
             { code: "$", names: [ "wealth","gemstone" ] },
         ]
-        const apiurl = "https://character-service.dndbeyond.com/character/v4/game-data/items"
+        const apiurl = "https://character-service.dndbeyond.com/character/v5/game-data/items"
         const params = (this.gameId)? qs.stringify({ 'sharingSetting': 2, 'campaignId': this.gameId }) : qs.stringify({ 'sharingSetting': 2 })
         await this.getCobaltAuth()
         const response = await this.getRequest(`${apiurl}?${params}`,true).catch((e)=>console.log(`Error getting items: ${e}`))
