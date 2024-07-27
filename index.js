@@ -807,6 +807,9 @@ function requestCampaignChars(gameId,cobalt) {
 		  response.on('end', () => {
 			try {
                             campaignChars = JSON.parse(body).data
+                            campaignChars.forEach(character=>{
+                                ddb.getCharacterSheet(character.id).then(sheet=>character.sheet = sheet)
+                            })
                             const menu = Menu.getApplicationMenu()
                             const campaignMenu = menu.getMenuItemById('campaignMenu')
                             const thisCampaign = campaignMenu.submenu.getMenuItemById(parseInt(gameId))
@@ -866,24 +869,65 @@ function requestCampaignChars(gameId,cobalt) {
                                         defaultPath: `${thisCampaign.label.replaceAll("&&","&")}.compendium`,
                                     }).then((save) => {
                                         if (save.filePath) {
-                                            let prog = new ProgressBar({title: "Converting campaign characters...", text: "Converting campaign characters...", detail: "Please wait..."})
-                                            let dlProg
-                                            download(_win,`https://play5e.online/?api=true&tokenmap=true&circles=true&campaignoverride=${encodeURIComponent(thisCampaign.label.replaceAll("&&","&"))}&elcampaign=${JSON.stringify(campaignChars.map(c=>c.id))}`,{
-                                                filename: path.basename(save.filePath),
-                                                directory: path.dirname(save.filePath),
-                                                onCompleted: (f) => {
-                                                    try {
-                                                        prog.setCompleted()
-                                                        new AdmZip(save.filePath)
-                                                    } catch (e) {
-                                                        prog.text = "Error"
-                                                        const err = fs.readFileSync(save.filePath).toString()
-                                                        prog.detail = err
-                                                        fs.rm(save.filePath,()=>{})
-                                                        dialog.showErrorBox("Error",`Could not convert characters:\n${err}`)
-                                                    }
-                                                }
-                                            }).catch(e=>console.log(e))
+                                            console.log(JSON.stringify(campaignChars).length);
+                                            let prog = new ProgressBar({title: "Converting campaign characters...", text: "Converting campaign characters...", detail: "Uploading character data...",maxValue: 1,indeterminate: false})
+                                            const request = net.request({url: "https://play5e.online",method: "POST"})
+                                            request.setHeader('Content-Type', "application/json")
+                                            request.chunkedEncoding = true
+                                            request.on('response', (response) => {
+                                              let body = new Buffer.alloc(0)
+                                              let size = 1
+                                              if (response.statusCode == 422) {
+                                                  prog.text = "Error"
+                                                  prog.detail = "Error converting characters."
+                                                  prog.close()
+                                                  let err = response.headers["x-ddb-error"]
+                                                  console.log(err)
+                                                  dialog.showErrorBox("Error",`Could not convert characters:\n${err}`)
+                                              } else if (response.statusCode == 200) {
+                                                  prog.detail = "Downloading..."
+                                                  size = response.headers["content-length"]*1.00
+                                                  prog.value = 0;
+                                              } else {
+                                                  prog.text = "Error"
+                                                  prog.detail = "Error converting characters."
+                                                  prog.close()
+                                                  dialog.showErrorBox("Error",`Could not convert characters:\nError ${response.statusCode}`)
+                                              }
+                                              response.on('data', (chunk) => {
+                                                  body = Buffer.concat([body,chunk])
+                                                  prog.value = ((body.length*1.00)/(size*1.00))
+                                              })
+                                              response.on('end', () => {
+                                                  if (response.statusCode == 200) {
+                                                      try {
+                                                        fs.writeFileSync(save.filePath,body)
+                                                          const notification = new Notification({title: "Export Complete", body: `Characters exported to ${save.filePath}`})
+                                                          notification.show()
+                                                      } catch (e) {
+                                                            fs.rm(save.filePath,()=>{})
+                                                            if (prog.isInProgress()) prog.close()
+                                                            dialog.showErrorBox("Error",`Could not convert characters: ${e}`)
+                                                      }
+                                                      if (prog.isInProgress()) prog.close()
+                                                  }
+                                              })
+                                            })
+                                            prog.detail = "Uploading data..."
+                                            request.write(JSON.stringify({
+                                                api: true,
+                                                tokenmap: true,
+                                                circles: true,
+                                                campaignoverride: thisCampaign.label.replaceAll("&&","&"),
+                                                characterSheets: campaignChars.map(c=>c.sheet)
+                                            }),()=>prog.detail = "Processing (this could take a minute)...")
+                                            let upload
+                                            while(upload = request.getUploadProgress()) {
+                                                if (!upload.active) break;
+                                                if (!upload.started) continue;
+                                                prog.detail = "Uploading data..."+((upload.current*100.00)/(upload.total*1.00)).toFixed(0)+"%"
+                                            }
+                                            request.end()
                                         }
                                     })
                                 }

@@ -372,6 +372,13 @@ class DDB {
         const res = await this.postRequest(url,body,true).catch(e => console.log(`Could not retrieve character statuses: ${e}`))
         return res?.foundCharacters
     }
+    async getCharacterSheet(characterId) {
+        if (!this.cobaltsession) await this.setCobaltSession()
+        await this.getCobaltAuth()
+        const url = `https://character-service.dndbeyond.com/character/v5/character/${characterId}`
+        const res = await this.getRequest(url,true).catch(e => console.log(`Could not retrieve character statuses: ${e}`))
+        return res?.data
+    }
     async checkManifestVersion(v=0,sv=null) {
         if (!this.cobaltsession) await this.setCobaltSession()
         if (!this.cobaltauth) await this.getCobaltAuth()
