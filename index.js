@@ -15,6 +15,7 @@ const { convert } = require('html-to-text')
 
 var _ws = null
 var _eWs = null
+var _eWsDelay = 1000;
 var _eCreatures = []
 var _eTokens = []
 var _knownConditions = []
@@ -1421,9 +1422,16 @@ function connectEWS(msg=null,initial=false) {
         let epWs = new URL("ws",encounterhost)
         epWs.protocol = epWs.protocol.replace("http","ws")
         _eWs = new WebSocket(epWs.href)
-        _eWs.on('error',(e)=>console.log(e))
+        _eWs.on('error',(e)=>{
+            console.log(e)
+            if (_eWsDelay < 60000) {
+                _eWsDelay += 1000;
+            }
+            console.log(`Increasing delay to ${_eWsDelay/1000}`)
+        })
         _eWs.on('open',() => {
             console.log("Connected to E+")
+            _eWsDelay = 1000;
             _win.webContents.executeJavaScript(`{
                 let eplusws = document.getElementById('eWsStatus')
                 if (!eplusws) {
@@ -1491,7 +1499,7 @@ function connectEWS(msg=null,initial=false) {
                 eplusws.innerHTML = "&#x1F534; Disconnected from EncounterPlus at ${encounterhost}"
                 }`,true).catch(e=>console.log(e))
             if (!_ws?.isDisconnecting) {
-                    setTimeout(connectEWS,1000)
+                    setTimeout(connectEWS,_eWsDelay)
             }
         })
         if (msg)
