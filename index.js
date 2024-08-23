@@ -453,7 +453,7 @@ app.on('ready', () => {
                             _ws.close(1001,"Going away")
                     }
                     if (win.webContents.getURL().match(/dndbeyond.com\/my-campaigns/)) {
-                        win.webContents.executeJavaScript("Array.from(document.querySelectorAll('.ddb-campaigns-listing-active .ddb-campaigns-list-item-body-title')).map(t=>t?.textContent?.trim())").then(r=>{
+                        ddb.userId && win.webContents.executeJavaScript("Array.from(document.querySelectorAll('.ddb-campaigns-listing-active .ddb-campaigns-list-item-body-title')).map(t=>t?.textContent?.trim())").then(r=>{
                             const c = ddb.campaigns.map(c=>he.decode(c.name))
                             if (!r.every(i=>c.includes(i)) || !c.every(i=>r.includes(i))) {
                                 console.log("Campaign list differs, repopulating")
