@@ -1,4 +1,4 @@
-const {app, session, BrowserWindow, ipcMain, net, Menu, MenuItem, dialog, shell, Notification} = require('electron')
+const {app, session, BrowserWindow, ipcMain, net, Menu, MenuItem, dialog, shell, Notification, webContents} = require('electron')
 const ElectronPreferences = require('electron-preferences')
 const WebSocket = require('ws')
 const path = require('path')
@@ -23,8 +23,8 @@ var _win = null
 var _dmScreen = null
 var ddb
 let platform = app.userAgentFallback.match(/\(([^)]+)\)/)[1]
-const firefox = `Mozilla/5.0 (${platform}; rv:94.0) Gecko/20100101 Firefox/94.0`
-const chrome = `Mozilla/5.0 (${platform}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36`
+const firefox = `Mozilla/5.0 (${platform}; rv:129.0) Gecko/20100101 Firefox/129.0`
+const chrome = `Mozilla/5.0 (${platform}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36`
 app.userAgentFallback = chrome
 var ignored = []
 var campaignChars = []
@@ -33,7 +33,9 @@ const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
     app.quit()
 }
-
+process.on("uncaughtException", err => {
+      dialog.showErrorBox("Uh oh...", `${err}`);
+});
 app.setAsDefaultProtocolClient('encounterlog')
 app.on('second-instance', (e,argv)=>{
     _win?.isMinimized() && _win.restore()
@@ -206,6 +208,24 @@ app.on('ready', () => {
         if (!fs.existsSync(path.join(app.getPath("cache"),app.getName(),"imagecache"))) {
             fs.mkdir(path.join(app.getPath("cache"),app.getName(),"imagecache"),{recursive:true},()=>{})
         }
+        if (!fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache"))) {
+            fs.mkdir(path.join(app.getPath("cache"),app.getName(),"datacache"),{recursive:true},()=>{})
+        }
+        if (!fs.existsSync(path.join(app.getPath("cache"),app.getName(),"modcache"))) {
+            fs.mkdir(path.join(app.getPath("cache"),app.getName(),"modcache"),{recursive:true},()=>{})
+        }
+        const imgcache = path.join(app.getPath("cache"),app.getName(),"imagecache")
+        const modcache = path.join(app.getPath("cache"),app.getName(),"modcache")
+        fs.readdir(imgcache,(e,files)=>{
+            if (e) {
+                console(e)
+                return
+            }
+            files.forEach(f=>{
+                if (!f.match(/\.zip$/)) return
+                fs.rename(path.join(imgcache,f),path.join(modcache,f),()=>{})
+            })
+        })
         autoUpdater.autoDownload = false
         autoUpdater.on('update-available',update=>
             dialog.showMessageBox(_win,{
@@ -245,6 +265,7 @@ app.on('ready', () => {
                 preload: path.join(__dirname,'preload.js')
             }
         })
+        //win.webContents.openDevTools()
 	_win = win
         ddb = new DDB()
         if (preferences.value('main.art')) {
@@ -291,8 +312,8 @@ app.on('ready', () => {
 	      },
               {role: 'editMenu'},
               {role: 'viewMenu'},
-              {label: "Campaigns", id: 'campaignMenu', submenu: [ { label: "Please Login", enabled: false } ] },
-              {label: "Compendium", id: 'compendium', submenu: [ {label: "Please Login", enabled: false } ] },
+              {label: "Campaigns", id: 'campaignMenu', submenu: [ { label: "-- Not available yet--", enabled: false } ] },
+              {label: "Compendium", id: 'compendium', submenu: [ {label: "-- Not available yet--", enabled: false }] },
               {role: 'windowMenu'},
               {role: 'help', submenu: [
                   { label: `${app.getName()} v${app.getVersion()}`, enabled: false }, 
@@ -300,8 +321,8 @@ app.on('ready', () => {
                   { label: "Support this project", click: () => shell.openExternal("https://github.com/sponsors/rrgeorge") },
                   { label: "Refresh menus",
                       click: ()=>{
-                            populateCampaignMenu()
-                            populateCompendiumMenu()
+                            populateCampaignMenu(true)
+                            populateCompendiumMenu(true)
                     }},
                   {
                       'click': function() {
@@ -319,7 +340,7 @@ app.on('ready', () => {
                   {
                       'click': function() {
                           win.webContents.session.clearStorageData().then(()=>
-                              dialog.showMessageBox(_win,{title:"Data Cleared",message: "All cache and cookies have been cleared."}).then(()=>_win.loadURL("http://www.dndbeyond.com")))
+                              dialog.showMessageBox(_win,{title:"Data Cleared",message: "All cache and cookies have been cleared."}).then(()=>_win.loadURL("https://www.dndbeyond.com/sign-in?returnUrl=/my-campaigns",{httpReferrer: "https://www.dndbeyond.com/my-campaigns"})))
                       },
                       'label': "Clear all Cache and Cookies",
                   },
@@ -350,9 +371,11 @@ app.on('ready', () => {
         win.once('ready-to-show', () => {
             win.show()
         })
+        
         const checkLogin = (e,u,r,m) => {
-            if (r == 200) {
-                (() => new Promise(resolve => setTimeout(resolve, 500)))().then(()=>
+            console.log(e,u,r,m)
+            if (r == 200 && u.startsWith("https://www.dndbeyond.com")) {
+                (() => new Promise(resolve => setTimeout(resolve, Math.floor(Math.random()*500))))().then(()=>
                 ddb.getUserData()
                     .then(()=>{
                         updateManifest().then(()=>{
@@ -362,6 +385,9 @@ app.on('ready', () => {
                         )
                     })
                     .catch(e=>{
+                        if (e == "Not logged in" && !u.startsWith("https://www.dndbeyond.com/sign-in")) {
+                            win.loadURL("https://www.dndbeyond.com/sign-in?returnUrl=/my-campaigns",{httpReferrer: "https://www.dndbeyond.com/my-campaigns"})
+                        }
                         console.log(`Unable to get userdata: ${e}`)
                         win.webContents.once('did-navigate',checkLogin)
                     })
@@ -370,7 +396,7 @@ app.on('ready', () => {
                 win.webContents.once('did-navigate',checkLogin)
             }
         }
-        win.webContents.once('did-navigate',checkLogin)
+          
         win.webContents.on('will-navigate',(e,u)=>{
             if (u.match(/\/characters?\/[0-9]+/)) {
                 e.preventDefault()
@@ -383,6 +409,7 @@ app.on('ready', () => {
                         contextIsolation: true,
                         nativeWindowOpen: true,
                         sandbox: true,
+                        plugins: true,
                     }
                 })
                 newWin.loadURL(u)
@@ -426,7 +453,14 @@ app.on('ready', () => {
                             _ws.close(1001,"Going away")
                     }
                     if (win.webContents.getURL().match(/dndbeyond.com\/my-campaigns/)) {
-                        ddb.userId && populateCampaignMenu()
+                        win.webContents.executeJavaScript("Array.from(document.querySelectorAll('.ddb-campaigns-listing-active .ddb-campaigns-list-item-body-title')).map(t=>t?.textContent?.trim())").then(r=>{
+                            const c = ddb.campaigns.map(c=>he.decode(c.name))
+                            if (!r.every(i=>c.includes(i)) || !c.every(i=>r.includes(i))) {
+                                console.log("Campaign list differs, repopulating")
+                                populateCampaignMenu(true)
+                            }
+                        })
+                        //ddb.userId && populateCampaignMenu()
                     }
                 })
             }
@@ -445,11 +479,27 @@ app.on('ready', () => {
 	if (encounterhost !== undefined) {
 	    console.log(`EncounterPlus URL: ${encounterhost}`)
 	}
-        win.loadURL('https://www.dndbeyond.com/my-campaigns',{httpReferrer: "https://www.dndbeyond.com"})
+        console.log("Checking menu cache...")
+    if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache",`campaignscache.json`))) {
+            const res = JSON.parse(fs.readFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`campaignscache.json`)))
+            if (res && ddb.manifestTimestamp<res.lastUpdate) {
+                console.log("Using cached campagins")
+                populateCampaignMenu()
+            }
+        }
+        if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache",`sourcescache.json`))) {
+            const res = JSON.parse(fs.readFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`sourcescache.json`)))
+            if (res && ddb.manifestTimestamp<res.lastUpdate) {
+                console.log("Using cached compendium")
+                populateCompendiumMenu()
+            }
+        }
+        win.webContents.once('did-navigate',checkLogin)
+        win.loadURL("https://www.dndbeyond.com/my-campaigns" )
         if (Notification.isSupported()) new Notification()
 });
 function displayError(e) {
-    _win.loadURL("http://www.dndbeyond.com/my-campaigns",{httpReferrer: "https://www.dndbeyond.com"})
+    _win.loadURL("https://www.dndbeyond.com/my-campaigns")
     console.log(e)
     dialog.showErrorBox("Error",e)
 }
@@ -489,7 +539,7 @@ function updateManifest() {
                     }
                 }).catch(e=>{
                     console.log(`Manifest Download Error: ${e}`)
-                    reject(e)
+                    return reject(e)
                 })
             } else {
                 console.log(res)
@@ -498,9 +548,9 @@ function updateManifest() {
         })
     })
 }
-function populateCampaignMenu() {
+function populateCampaignMenu(force=false) {
     const menu = Menu.getApplicationMenu()
-    ddb.populateCampaigns().then(() => {
+    ddb.populateCampaigns(force).then(() => {
         const campaignMenu = menu.getMenuItemById('campaignMenu')
         campaignMenu.submenu.clear()
         campaignMenu.submenu.append( new MenuItem({
@@ -535,13 +585,12 @@ function populateCampaignMenu() {
             }
         }))
         Menu.setApplicationMenu(menu)
-    }).then(
-    ).catch(e=>displayError(`Error populating campaigns: ${e}`))
+    }).catch(e=>displayError(`Error populating campaigns: ${e}`))
 }
-function populateCompendiumMenu() {
+function populateCompendiumMenu(force=false) {
     return new Promise((resolve,reject)=>{
         const menu = Menu.getApplicationMenu()
-        ddb.getSources().then(() => {
+        ddb.getSources(force).then(() => {
             const compendiumMenu = menu.getMenuItemById('compendium')
             while (compendiumMenu.submenu.items.length > 0) {
                 compendiumMenu.submenu.items.pop()
@@ -618,6 +667,20 @@ function populateCompendiumMenu() {
                             }).then((save) => {
                                 if (save.filePath)
                                     ddb.getSpells(book.id,save.filePath)
+                                }
+                            )
+                          }
+                      }),
+                      new MenuItem({
+                          label: "Download Only v5 Compendium",
+                          click: () => {
+                            dialog.showSaveDialog(_win,{
+                                title: "Save V5 compendium",
+                                filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
+                                defaultPath: `${book.bookCode.toLowerCase()}-v5.compendium`,
+                            }).then((save) => {
+                                if (save.filePath)
+                                    ddb.getV5Compendium(book.id,save.filePath)
                                 }
                             )
                           }
@@ -780,12 +843,26 @@ function populateCompendiumMenu() {
                     )
                 }
                 }))
+            compendiumMenu.submenu.append( new MenuItem({
+                  label: "Download v5 Compendium",
+                  click: () => {
+                    dialog.showSaveDialog(_win,{
+                        title: "Save V5 compendium",
+                        filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
+                        defaultPath: `v5.compendium`,
+                    }).then((save) => {
+                        if (save.filePath)
+                            ddb.getV5Compendium(null,save.filePath)
+                        }
+                    )
+                  }
+              }))
             compendiumMenu.enabled = true
             Menu.setApplicationMenu(menu)
             resolve(menu)
         }).catch(e=>{
             displayError(`Error populating sources: ${e}`)
-            reject(e)
+            return reject(e)
         })
     })
 }
@@ -793,18 +870,36 @@ function populateCompendiumMenu() {
 
 function requestCampaignChars(gameId,cobalt) {
 	return new Promise((resolve,reject) => {
-		const url = `https://www.dndbeyond.com/api/campaign/stt/active-characters/${gameId}`
+		const url = `https://www.dndbeyond.com/api/campaign/characters/${gameId}`
 		const request = net.request({url: url})
 		request.setHeader('Authorization',`Bearer ${cobalt}`)
+                request.setHeader('Cookie',`CobaltSession=${ddb.cobaltsession}`)
+                request.setHeader('Accept','application/json')
 		let body = ''
 		request.on('response', (response) => {
-		  if (response.statusCode != 200) {
-			  reject(response.StatusCode)
-		  }
 		  response.on('data', (chunk) => {
 		    body += chunk.toString()
 		  })
 		  response.on('end', () => {
+                        if (response.statusCode != 200) {
+                            /*
+                            const newWin = new BrowserWindow({
+                                show: true,
+                                width: 800,
+                                height: 600,
+                                webPreferences: {
+                                    nodeIntegration: false,
+                                    contextIsolation: true,
+                                    nativeWindowOpen: true,
+                                    sandbox: true,
+                                    plugins: true,
+                                }
+                            })
+                        newWin.a
+                        */  console.log(body)
+                            return reject(response.statusCode)
+                        }
+                        console.log(response.statusCode)
 			try {
                             campaignChars = JSON.parse(body).data
                             campaignChars.forEach(character=>{
@@ -934,10 +1029,9 @@ function requestCampaignChars(gameId,cobalt) {
                             }))
                             Menu.setApplicationMenu(menu)
 			} catch (e) {
-			  console.log(e.message)
-			  console.log(body)
+                          return reject(e.message)
 			}
-		    	resolve(campaignChars)
+		    	return resolve(campaignChars)
 		  })
 		})
 		request.end()
@@ -1241,13 +1335,13 @@ async function connectGameLog(gameId,userId,campaignName) {
 		_ws.close(1001,"Going away")
 	}
 	const ws = new WebSocket(url.toString())
-	ws.on('open',() => {
+        ws.on('open',() => {
 		_ws = ws
 		_ws.isDisconnecting = false
 		_ws.pingInterval = setInterval(() => _ws.ping(), 5000);
 		_win.webContents.executeJavaScript(`
-		if (document.getElementsByClassName('gamelog-button')[0]) {
-			document.getElementsByClassName('gamelog-button')[0].style.backgroundColor = 'LimeGreen';
+		if (document.querySelector('#game-log-client button')) {
+			document.querySelector('#game-log-client button').style.backgroundColor = 'LimeGreen';
 		}
 		`,true).catch((e) => console.log(e))
             /*
@@ -1273,7 +1367,12 @@ async function connectGameLog(gameId,userId,campaignName) {
                         if (!eplusws) {
                             eplusws = document.createElement('div')
                             eplusws.id = 'eWsStatus'
-                            document.getElementsByClassName('gamelog-button')[0]?.parentElement?.appendChild(eplusws)
+                            eplusws.style.position = 'fixed'
+                            eplusws.style.top = '53px'
+                            eplusws.style.right = '0'
+                            eplusws.style.width = 'auto'
+                            eplusws.style.zIndex = '99999999999'
+                            document.body.appendChild(eplusws)
                         }
                         eplusws.innerHTML = "&#x1F7E2; Connected to EncounterPlus at ${encounterhost}"
                         }`,true).catch(e=>console.log(e))
@@ -1283,7 +1382,12 @@ async function connectGameLog(gameId,userId,campaignName) {
                         if (!eplusws) {
                             eplusws = document.createElement('div')
                             eplusws.id = 'eWsStatus'
-                            document.getElementsByClassName('gamelog-button')[0]?.parentElement?.appendChild(eplusws)
+                            eplusws.style.position = 'fixed'
+                            eplusws.style.top = '53px'
+                            eplusws.style.right = '0'
+                            eplusws.style.width = 'auto'
+                            eplusws.style.zIndex = '99999999999'
+                            document.body.appendChild(eplusws)
                         }
                         eplusws.innerHTML = "&#x1F534; EncounterPlus remote host not configured"
                         }`,true).catch(e=>console.log(e))
@@ -1293,7 +1397,12 @@ async function connectGameLog(gameId,userId,campaignName) {
                         if (!eplusws) {
                             eplusws = document.createElement('div')
                             eplusws.id = 'eWsStatus'
-                            document.getElementsByClassName('gamelog-button')[0]?.parentElement?.appendChild(eplusws)
+                            eplusws.style.position = 'fixed'
+                            eplusws.style.top = '53px'
+                            eplusws.style.right = '0'
+                            eplusws.style.width = 'auto'
+                            eplusws.style.zIndex = '99999999999'
+                            document.body.appendChild(eplusws)
                         }
                         eplusws.innerHTML = "&#x1F534; Disconnected from EncounterPlus at ${encounterhost}"
                         }`,true).catch(e=>console.log(e))
@@ -1305,8 +1414,8 @@ async function connectGameLog(gameId,userId,campaignName) {
 		console.log(`WebSocket closed: ${reason} (${code})`)
                 if (_dmScreen) clearTimeout(_dmScreen)
 		_win?.webContents?.executeJavaScript(`
-		if (document.getElementsByClassName('gamelog-button')[0]) {
-			document.getElementsByClassName('gamelog-button')[0].style.backgroundColor = 'Crimson';
+		if (document.querySelector('#game-log-client button')) {
+			document.querySelector('#game-log-client button').style.backgroundColor = 'Crimson';
 		}
 		`,true).catch((e) => console.log(e))
 		if (_ws?.pingInterval) clearInterval(_ws.pingInterval);
@@ -1481,7 +1590,12 @@ function connectEWS(msg=null,initial=false) {
                 if (!eplusws) {
                     eplusws = document.createElement('div')
                     eplusws.id = 'eWsStatus'
-                    document.getElementsByClassName('gamelog-button')[0]?.parentElement?.appendChild(eplusws)
+                    eplusws.style.position = 'fixed'
+                    eplusws.style.top = '53px'
+                    eplusws.style.right = '0'
+                    eplusws.style.width = 'auto'
+                    eplusws.style.zIndex = '99999999999'
+                    document.body.appendChild(eplusws)
                 }
                 eplusws.innerHTML = "&#x1F7E2; Connected to EncounterPlus at ${encounterhost}"
                 }`,true).catch(e=>console.log(e))
@@ -1538,7 +1652,12 @@ function connectEWS(msg=null,initial=false) {
                 if (!eplusws) {
                     eplusws = document.createElement('div')
                     eplusws.id = 'eWsStatus'
-                    document.getElementsByClassName('gamelog-button')[0]?.parentElement?.appendChild(eplusws)
+                    eplusws.style.position = 'fixed'
+                    eplusws.style.top = '53px'
+                    eplusws.style.right = '0'
+                    eplusws.style.width = 'auto'
+                    eplusws.style.zIndex = '99999999999'
+                    document.body.appendChild(eplusws)
                 }
                 eplusws.innerHTML = "&#x1F534; Disconnected from EncounterPlus at ${encounterhost}"
                 }`,true).catch(e=>console.log(e))

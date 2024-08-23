@@ -18,44 +18,67 @@ const jsdom = require('jsdom');
 const asyncPool = require('tiny-async-pool');
 const fs = require('fs');
 const semver = require('semver');
+const turndown = require('turndown');
+const turndownGfm = require('turndown-plugin-gfm');
+
+const RATE = 10000
+
+const numbers = {
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10
+}
 
 function slugify(str) {
     return Slugify(str,{ lower: true, strict: true })
+}
+function fixDDBLinks(text,rulesdata) {
+        text = text.replace(/^https:\/\/dndbeyond.com\/linkout\?remoteUrl=/,'')
+        if (rulesdata) {
+            if (text.match(/^\/compendium\/rules\/basic-rules\/.*/)) {
+                text = text.replace(/^\/compendium\/rules\//,"https://www.dndbeyond.com/sources/")
+            }
+            let ddburl = text.match(/^https:\/\/(?:www\.)?dndbeyond\.com\/(sources\/[^\/]*)/)
+            if (ddburl) {
+                let source = rulesdata.sources?.find(s=>{
+                    if (s.sourceURL.toLowerCase()==ddburl[1].toLowerCase()) {
+                        return true
+                    } else if (s.sourceURL.toLowerCase().replace('/dnd')==ddburl[1].toLowerCase()) {
+                        return true
+                    }
+                    return false
+                })
+                if (source) {
+                    text=text.replaceAll(new RegExp(`https:\/\/(?:www\.)?dndbeyond\.com\/${source.sourceURL}`,'ig'),`/module/${source.name.toLowerCase()}/page`).replaceAll(/\/page$/g,`/page/${source.name.toLowerCase()}`)
+                }
+            }
+        }
+        text=text.replace(/^\/(monsters|spells|armor|weapons|adventuring-gear|magic-items)\/(?:([0-9]+)(?:-.*)?)?/,(_,p1,p2)=>{
+            switch(p1) {
+                case "monsters":
+                    return `/monster/${(p2)?uuid5(`ddb://${p1}/${p2}`,uuid5.URL):''}`;
+                case "spells":
+                    return `/spell/${(p2)?uuid5(`ddb://${p1}/${p2}`,uuid5.URL):''}`;
+                default:
+                    return `/item/${(p2)?uuid5(`ddb://${p1}/${p2}`,uuid5.URL):''}`;
+            }
+        })
+        return text
 }
 function sanitize(text,rulesdata=null) {
     return convert(text,{
         wordwrap: null,
         formatters: {
             'keepA': function (elem, walk, builder, formatOptions) {
-                if (rulesdata) {
-                    if (elem?.attribs?.href) {
-                        elem.attribs.href = elem.attribs.href.replace(/^https:\/\/dndbeyond.com\/linkout\?remoteUrl=/,'')
-                        if (elem.attribs.href.match(/^\/compendium\/rules\/basic-rules\/.*/)) {
-                            elem.attribs.href = elem.attribs.href.replace(/^\/compendium\/rules\//,"https://www.dndbeyond.com/sources/")
-                        }
-                        let ddburl = elem.attribs.href.match(/^https:\/\/(?:www\.)?dndbeyond\.com\/(sources\/[^\/]*)/)
-                        if (ddburl) {
-                            let source = rulesdata.sources?.find(s=>s.sourceURL.toLowerCase()==ddburl[1].toLowerCase())
-                            if (source) {
-                                elem.attribs.href=elem.attribs.href.replaceAll(new RegExp(`https:\/\/(?:www\.)?dndbeyond\.com\/${source.sourceURL}`,'ig'),`/module/${source.name.toLowerCase()}/page`).replaceAll(/\/page$/g,`/page/${source.name.toLowerCase()}`)
-                            }
-                        }
-                    }
-                }
                 if (elem?.attribs?.href) {
-                    elem.attribs.href=elem.attribs.href.replace(/^\/(monsters|spells|armor|weapons|adventuring-gear|magic-items)\/(?:([0-9]+)(?:-.*)?)?/,(_,p1,p2)=>{
-                        switch(p1) {
-                            case "monsters":
-                                return `/monster/${(p2)?uuid5(`ddb://${p1}/${p2}`,uuid5.URL):''}`;
-                                break;
-                            case "spells":
-                                return `/spell/${(p2)?uuid5(`ddb://${p1}/${p2}`,uuid5.URL):''}`;
-                                break;
-                            default:
-                                return `/item/${(p2)?uuid5(`ddb://${p1}/${p2}`,uuid5.URL):''}`;
-                                break;
-                        }
-                    })
+                    elem.attribs.href = fixDDBLinks(elem.attribs.href,rulesdata)
                 }
                 builder.addInline(`<${elem.name} href="${elem.attribs.href}">`)
                 walk(elem.children, builder);
@@ -395,8 +418,16 @@ class DDB {
     async getRuleData() {
         //const url = "https://character-service.dndbeyond.com/character/v4/rule-data"
         if (this.userId) await this.getCobaltAuth()
-        const url = "https://www.dndbeyond.com/api/config/json"
-        const res = await this.getRequest(url,(this.cobaltauth)?true:false).catch(e => console.log(`Could not retrieve rule data: ${e}`))
+        let res
+        if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache",`rulecache.json`))) {
+             res = JSON.parse(fs.readFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`rulecache.json`)))
+        }
+        if (!res || this.manifestTimestamp > res.lastUpdate) {
+            const url = "https://www.dndbeyond.com/api/config/json"
+            res = await this.getRequest(url,(this.cobaltauth)?true:false).catch(e =>{ console.log(`Could not retrieve rule data: ${e}`); throw `Could not retrieve rule data: ${e}`; })
+            res.lastUpdate = (new Date()).getTime()
+            fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`rulecache.json`),JSON.stringify(res))
+        }
         this.ruledata = res
     }
     async getCobaltAuth() {
@@ -415,11 +446,16 @@ class DDB {
     }
 
     postRequest(url,postbody='',auth=false) {
+        //console.log("POST request",url)
             return new Promise((resolve,reject) => {
-                    const request = net.request({url: url,useSessionCookies: true,method: "POST"})
+                    const request = net.request({url: url,useSessionCookies: false,method: "POST"})
                     request.setHeader('Content-Type', "application/x-www-form-urlencoded")
                     if (auth) {
 		        request.setHeader('Authorization',`Bearer ${this.cobaltauth}`)
+                    }
+                    if (url.match(/^https:\/\/[^\/]*.dndbeyond.com/i)) {
+                        //console.log(`CobaltSession=${this.cobaltsession}`)
+                        request.setHeader('Cookie',`CobaltSession=${this.cobaltsession}`)
                     }
                     request.on('response', (response) => {
                       let body = ''
@@ -439,26 +475,42 @@ class DDB {
                         }
                       })
                     })
-                    request.write(postbody)
-                    request.end()
+                    const ratelimit = ()=>{
+                        if (this.ratelimit < RATE) {
+                            if (url.startsWith("https://www.dndbeyond.com/"))
+                                this.ratelimit += 1
+                            request.write(postbody)
+                            request.end()
+                        } else {
+                            setTimeout(ratelimit,Math.floor(Math.random()*1000)+1000)
+                        }
+                    }
+                    ratelimit()
             })
     }
 
     getRequest(url,auth=false) {
+        //console.log("GET request",url)
             return new Promise((resolve,reject) => {
-                    const request = net.request({url: url,useSessionCookies: true})
+                    const request = net.request({url: url,useSessionCookies: false})
                     if (auth) {
 		        request.setHeader('Authorization',`Bearer ${this.cobaltauth}`)
                     }
+                    if (url.match(/^https:\/\/[^\/]*.dndbeyond.com/i)) {
+                        //console.log(`CobaltSession=${this.cobaltsession}`)
+                        request.setHeader('Cookie',`CobaltSession=${this.cobaltsession}`)
+                        request.setHeader('Accept','application/json')
+                    }
                     request.on('response', (response) => {
                       let body = ''
-                      if (response.statusCode != 200) {
-                              reject(response.statusCode)
-                      }
                       response.on('data', (chunk) => {
                         body += chunk.toString()
                       })
                       response.on('end', () => {
+                          if (response.statusCode != 200) {
+                              console.log(body)
+                            reject(response.statusCode)
+                          }
                         try{
                             resolve(JSON.parse(body))
                         } catch(e) {
@@ -466,13 +518,30 @@ class DDB {
                         }
                       })
                     })
-                    request.end()
+                    const ratelimit = ()=>{
+                        if (this.ratelimit < RATE) {
+                            if (url.startsWith("https://www.dndbeyond.com/"))
+                                this.ratelimit += 1
+                            request.end()
+                        } else {
+                            setTimeout(ratelimit,Math.floor(Math.random()*1000)+1000)
+                        }
+                    }
+                    ratelimit()
             })
     }
 
     getImage(url,auth=false) {
             return new Promise((resolve,reject) => {
                 try {
+                    let alt = new URL(url)
+                    alt.pathname = alt.pathname.replace(/[/][0-9]+\/[0-9]+[/]([^/]+)$/,'/1000/1000/$1')
+                    if (!fs.existsSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)))
+                        && alt.toString()!=url
+                        && fs.existsSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(alt.toString(),uuid5.URL)))
+                    ) {
+                        url = alt.toString()
+                    }
                     if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)))) {
                         const cacheStat = fs.statSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)))
                         if (cacheStat.mtime > (new Date())) {
@@ -486,7 +555,8 @@ class DDB {
                             }
                           })
                         } else {
-                            const request = net.request({url: url,useSessionCookies: true,method:"HEAD"})
+                            //console.log("IMG HEAD request",url)
+                            const request = net.request({url: url,useSessionCookies: false,method:"HEAD"})
                             if (auth) {
                                 request.setHeader('Authorization',`Bearer ${this.cobaltauth}`)
                             }
@@ -507,7 +577,7 @@ class DDB {
                                             const maxAge = /max-age=([0-9]+)/.exec(cachecontrol||'')
                                             if (maxAge) {
                                                 let exp = new Date()
-                                                exp.setSeconds(exp.getSeconds() + parseInt(maxAge[1]))
+                                                exp.setSeconds(parseInt(maxAge[1]))
                                                 if (response.headers["age"]) {
                                                     exp.setSeconds(exp.getSeconds() - parseInt(response.headers["age"]))
                                                 }
@@ -535,10 +605,20 @@ class DDB {
                                 fs.rmSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)))
                                 this.getImage(url,auth).then(img=>resolve(img)).catch(e=>reject(e))
                             })
-                            request.end(null, null)
+                            const ratelimit = ()=>{
+                                if (this.ratelimit < RATE) {
+                                    if (url.startsWith("https://www.dndbeyond.com/"))
+                                        this.ratelimit += 1
+                                    request.end(null, null)
+                                } else {
+                                    setTimeout(ratelimit,Math.floor(Math.random()*1000)+1000)
+                                }
+                            }
+                            ratelimit()
                         }
                     } else {
-                        const request = net.request({url: url,useSessionCookies: true})
+                        //console.log("IMG GET request - no cache",url)
+                        const request = net.request({url: url,useSessionCookies: false})
                         if (auth) {
                             request.setHeader('Authorization',`Bearer ${this.cobaltauth}`)
                         }
@@ -585,7 +665,16 @@ class DDB {
                           response.on('error',(e)=>reject(e))
                         })
                         request.on('error',(e)=>reject(e))
-                        request.end(null, null)
+                        const ratelimit = ()=>{
+                            if (this.ratelimit < RATE) {
+                                if (url.startsWith("https://www.dndbeyond.com/"))
+                                    this.ratelimit += 1
+                                request.end(null, null)
+                            } else {
+                                setTimeout(ratelimit,Math.floor(Math.random()*1000)+1000)
+                            }
+                        }
+                        ratelimit()
                     }
                 } catch(e) {
                     console.log(`Could not retrieve ${url}: ${e}`)
@@ -594,16 +683,27 @@ class DDB {
             })
     }
 
-    async populateCampaigns() {
+    async populateCampaigns(refresh=false) {
         const url = "https://www.dndbeyond.com/api/campaign/active-campaigns"
-        const res = await this.getRequest(url).catch(e => console.log(`Could not populate campaings: ${e}`))
+        //const url = "https://www.dndbeyond.com/api/campaign/stt/user-campaigns"
+        if (!this.cobaltsession) await this.setCobaltSession()
+        const cachename = 'campaigns'
+        let res
+        if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`))) {
+             res = JSON.parse(fs.readFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`)))
+        }
+        if (refresh || !res || this.manifestTimestamp>res.lastUpdate) {
+            res = await this.getRequest(url,true).catch(e => {console.log(`Could not populate campaings: ${e}`); throw e})
+            res.lastUpdate = (new Date()).getTime()
+            fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`),JSON.stringify(res))
+        }
         this.campaigns = res?.data || []
     }
     async getEncounterCount(campaignIds=null) {
         const url = "https://encounter-service.dndbeyond.com/v1/encounters"
         const params = (campaignIds)? qs.stringify({ 'skip': 0, 'take': 1,campaignIds: campaignIds }) : qs.stringify({ 'skip': 0, 'take': 1 })
         await this.getCobaltAuth()
-        const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting encounter count for source id ${source}: ${e}`))
+        const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting encounter count for source id ${campaignIds}: ${e}`))
         return response.pagination.total
     }
     async getEncounters(campaignIds=null,filename = null,zip = null){
@@ -709,11 +809,21 @@ class DDB {
         }
         return campaign
     }
-    async getSources() {
+    async getSources(force=false) {
         if (!this.cobaltsession) await this.setCobaltSession()
         const url = "https://www.dndbeyond.com/mobile/api/v6/available-user-content"
         const body = (this.cobaltsession)?qs.stringify({ 'token': this.cobaltsession }):''
-        const sources = await this.postRequest(url,body).then(r => r.data).catch(e =>{ throw new Error(`Cannot retrieve avaialable sources: ${e}`)})
+        const cachename = 'sources'
+        let res
+        if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`))) {
+             res = JSON.parse(fs.readFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`)))
+        }
+        if (force || !res || this.manifestTimestamp>res.lastUpdate) {
+            res = await this.postRequest(url,body).then(r => r.data).catch(e =>{ throw new Error(`Cannot retrieve avaialable sources: ${e}`)})
+            res.lastUpdate = (new Date()).getTime()
+            fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`),JSON.stringify(res))
+        }
+        const sources = res
         if (!this.ruledata) await this.getRuleData().catch(e=>{throw new Error(e)})
         const books = sources.Licenses.filter(f => f.EntityTypeID == "496802664")
                 .map((block) =>
@@ -787,15 +897,26 @@ class DDB {
             }
             console.log(`Retrieving spells for ${ddbClass.name}`)
             //if (/(ua|archived)/i.test(ddbClass.name)) continue
-            let requests = []
+            let allResponses = []
             for (const url of urls) {
                 const params = (this.gameId)? qs.stringify({ 'sharingSetting': 2, 'classId': ddbClass.id, "classLevel": 20, 'campaignId': this.gameId }) : qs.stringify({ 'sharingSetting': 2, 'classId': ddbClass.id, "classLevel": 20 })
                 //const response = await 
-                requests.push(
-                    this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting spells: ${e}`))
-                )
+                let classSpells
+                if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache",`spellscache_${ddbClass.id}_${url.split('/').pop()}.json`))) {
+                     classSpells = JSON.parse(fs.readFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`spellscache_${ddbClass.id}_${url.split('/').pop()}.json`)))
+                }
+                if (!classSpells || this.manifestTimestamp>classSpells.lastUpdate) {
+                    classSpells = await this.getRequest(`${url}?${params}`,true).catch((e)=>{
+                        console.log(`Error getting spells: ${e}`)
+                        throw `Error getting spells: ${e}`
+                    })
+                    classSpells.lastUpdate = (new Date()).getTime()
+                    fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`spellscache_${ddbClass.id}_${url.split('/').pop()}.json`),JSON.stringify(classSpells))
+                    const delay = ms => new Promise(res => setTimeout(res, ms));
+                    await delay(Math.floor(Math.random()*1000));
+                }
+                allResponses.push(classSpells)
             }
-            const allResponses = await Promise.all(requests)
             for(const response of allResponses) {
                 if (response?.data) {
                     for (let spell of response.data) {
@@ -834,7 +955,7 @@ class DDB {
         return allSpells
     }
 
-    async getSpells(source=null,filename,zip=null,prog=null,homebrew=false) {
+    async getSpells(source=null,filename,zip=null,prog=null,homebrew=false,tdSvc=null) {
         const spellSchools = [
             { code: "A", name: "abjuration" },
             { code: "C", name: "conjuration" },
@@ -855,7 +976,7 @@ class DDB {
             _content: []
         }
         for (let spell of spells) {
-            prog.detail = spell.name
+            prog.detail = `Converting spell: ${spell.name}`
             if (filename) {
                 prog.value += (1/spells.length)*90
             } else {
@@ -871,10 +992,10 @@ class DDB {
                     {name: spell.name},
                     {slug: slugify(spell.name)},
                     {level: spell.level},
-                    {school: spellSchools.find(s=>s.name==spell.school.toLowerCase())?.code||spell.school},
-                    {ritual: (spell.ritual)?'YES':"NO"},
+                    {school: (tdSvc)?spell.school.toLowerCase():spellSchools.find(s=>s.name==spell.school.toLowerCase())?.code||spell.school},
+                    {ritual: (tdSvc)?spell.ritual:(spell.ritual)?'YES':"NO"},
                     {time: `${spell.activation.activationTime} ${this.ruledata.activationTypes.find(s=>s.id==spell.activation.activationType)?.name}`},
-                    {classes: spell.classes.join(",")},
+                    {classes: (tdSvc)?spell.classes:spell.classes.join(",")},
                 ]
             }
             let components = []
@@ -891,25 +1012,42 @@ class DDB {
             } else {
                 spellEntry._content.push({duration: `${spell.duration.durationType}, ${spell.duration.durationInterval} ${spell.duration.durationUnit}${(spell.duration.durationInterval>1)?"s":""}`})
             }
-            let range
-            if (spell.range.origin == "Ranged") {
-                range =`${spell.range.rangeValue} ft`
-            } else if (spell.range.origin == "Self" && spell.range.rangeValue) {
-                range =`${spell.range.origin} (${spell.range.rangeValue} ft radius)`
+            if (!tdSvc) {
+                let range
+                if (spell.range.origin == "Ranged") {
+                    range =`${spell.range.rangeValue} ft`
+                } else if (spell.range.origin == "Self" && spell.range.rangeValue) {
+                    range =`${spell.range.origin} (${spell.range.rangeValue} ft radius)`
+                } else {
+                    range = spell.range.origin
+                }
+                if (spell.range.aoeType && spell.range.aoeValue) range += ` (${spell.range.aoeValue} ft ${spell.range.aoeType})`
+                spellEntry._content.push({range: range})
             } else {
-                range = spell.range.origin
+                if (spell.range.aoeType)
+                    spellEntry._content.push({areaEffectShape: spell.range.aoeType.toLowerCase()})
+                if (spell.range.aoeValue)
+                    spellEntry._content.push({areaEffectSize: spell.range.aoeValue})
+                if (spell.range.rangeValue)
+                    spellEntry._content.push({range: spell.range.rangeValue})
+                if (spell.range.origin != "Ranged")
+                    spellEntry._content.push({rangeType: spell.range.origin.toLowerCase()})
             }
-            if (spell.range.aoeType && spell.range.aoeValue) range += ` (${spell.range.aoeValue} ft ${spell.range.aoeType})`
-            spellEntry._content.push({range: range})
-            let description = sanitize(spell.description,this.ruledata)
+            let description = (tdSvc)?tdSvc.turndown(spell.description):sanitize(spell.description,this.ruledata)
             let sources = []
             for (let source of spell.sources) {
                 let sourceName = this.ruledata.sources.find(s=>s.id===source.sourceId)?.description
                 sources.push((source.pageNumber)?`${sourceName} p. ${source.pageNumber}`:sourceName)
             }
-            if (sources.length>0) description += `\n<i>Source: ${sources.join(', ')}</i>`
+            if (!tdSvc) {
+                if (sources.length>0) description += `\n<i>Source: ${sources.join(', ')}</i>`
+                spellEntry._content.push({source: sources.join(", ")})
+            } else {
+                spellEntry._content.push({source: this.ruledata.sources.find(s=>s.id===spell.sources[0]?.sourceId)?.description||'' })
+                if (spell.sources[0]?.pageNumber) 
+                    spellEntry._content.push({page: spell.sources[0]?.pageNumber})
+            }
             spellEntry._content.push({text: description})
-            spellEntry._content.push({source: sources.join(", ")})
             compendium._content.push(spellEntry)
         }
         if (filename) {
@@ -933,31 +1071,42 @@ class DDB {
         return compendium
     }
 
-    async getItems(source=null,filename,zip=null,imageMap=null,prog=null,homebrew=false) {
+    async getItems(source=null,filename,zip=null,imageMap=null,prog=null,homebrew=false,tdSvc=null) {
         const itemTypeCodes = [
             { code: "AA", names: [ "armor" ] },
             { code: "WW", names: [ "weapon" ] },
             { code: "LA", names: [ "light armor" ] },
             { code: "MA", names: [ "medium armor" ] },
             { code: "HA", names: [ "heavy armor" ] },
-            { code: "S", names: [ "shield" ] },
-            { code: "M", names: [ "melee weapon" ] },
-            { code: "R", names: [ "ranged weapon" ] },
-            { code: "A", names: [ "ammunition" ] },
+            { code: "S",  names: [ "shield" ] },
+            { code: "M",  names: [ "melee weapon" ] },
+            { code: "R",  names: [ "ranged weapon" ] },
+            { code: "A",  names: [ "ammunition" ] },
             { code: "RD", names: [ "rod" ] },
             { code: "ST", names: [ "staff" ] },
             { code: "WD", names: [ "wand" ] },
             { code: "RG", names: [ "ring" ] },
-            { code: "P", names: [ "potion" ] },
+            { code: "P",  names: [ "potion" ] },
             { code: "SC", names: [ "scroll" ] },
-            { code: "W", names: [ "wondrous item" ] },
-            { code: "G", names: [ "adventuring gear" ] },
-            { code: "$", names: [ "wealth","gemstone" ] },
+            { code: "W",  names: [ "wondrous item" ] },
+            { code: "G",  names: [ "adventuring gear" ] },
+            { code: "$",  names: [ "wealth","gemstone" ] },
         ]
         const apiurl = "https://character-service.dndbeyond.com/character/v5/game-data/items"
         const params = (this.gameId)? qs.stringify({ 'sharingSetting': 2, 'campaignId': this.gameId }) : qs.stringify({ 'sharingSetting': 2 })
         await this.getCobaltAuth()
-        const response = await this.getRequest(`${apiurl}?${params}`,true).catch((e)=>console.log(`Error getting items: ${e}`))
+        let response
+        if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache",`itemscache.json`))) {
+             response = JSON.parse(fs.readFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`itemscache.json`)))
+        }
+        if (!response || this.manifestTimestamp>response.lastUpdate) {
+            response = await this.getRequest(`${apiurl}?${params}`,true).catch((e)=>{
+                console.log(`Error getting items: ${e}`)
+                throw `Error getting items: ${e}`
+            })
+            response.lastUpdate = (new Date()).getTime()
+            fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`itemscache.json`),JSON.stringify(response))
+        }
         if (response?.data) {
             const items = response.data.filter(s=>(source)?(s.sources.some(b=>b.sourceId===source&&b.sourceId!==29)||(source<=2&&s.sources.length==0)):true)
             if (!prog) prog = new ProgressBar({title: "Please wait...",text: "Converting items...", detail: "Please wait...", indeterminate: false, maxValue: items.length})
@@ -971,7 +1120,7 @@ class DDB {
                     prog.value += (!filename)? (15*(1/items.length)) : 1
                     continue
                 }
-                prog.detail = item.name
+                prog.detail = `Converting item: ${item.name}`
                 let itemurl = "ddb://"
                 let itemType = "Item"
                 if (item.magic) {
@@ -992,11 +1141,28 @@ class DDB {
 			{value: item.cost||''},
 			{weight: item.weight||''},
 			{rarity: item.rarity||''},
+                        {container: item.isContainer },
                     ]
                 }
+                let tags = item.tags || []
+                if (item.groupedId) {
+                    const group = items.find(g=>g.id===item.groupedId)
+                    if (group) tags.push(group.name)
+                } else if (items.some(s=>s.groupedId===item.id)) {
+                    tags.push(item.name)
+                }
+                itemEntry._content.push({tags: tags})
+                if (item.container) {
+                    itemEntry._content.push({capacity: item.capacityWeight})
+                }
                 if (item.canAttune) {
-                    let attunement = "requires attunement"
-                    if (item.attunementDescription) attunement += ` by a ${item.attunementDescription}`
+                    let attunement = (tdSvc)? true : "requires attunement"
+                    if (item.attunementDescription) {
+                        if (tdSvc)
+                            itemEntry._content.push({attunementDetail: `requires attunement by a ${item.attunementDescription}`})
+                        else
+                            attunement += ` by a ${item.attunementDescription}`
+                    }
                     itemEntry._content.push({attunement: attunement})
                 }
                 let type = ((item.baseTypeId==this.ruledata.baseTypeArmorId)? "AA" :
@@ -1033,24 +1199,33 @@ class DDB {
                         }
                         itemEntry._content.push({dmg1: damage.join(" ") })
                     }
-                    let props = []
-                    for (let prop of item.properties) {
-                        switch(prop.name) {
-                            case "Loading":
-                                props.push("LD"); break
-                            case "Range":
-                                props.push("RN"); break
-                            case "Two-Handed":
-                                props.push("2H"); break
-                            case "Versatile":
-                                props.push("V"); itemEntry._content.push({dmg2: prop.notes}); break
-                            default:
-                                props.push(prop.name[0])
+                    if (tdSvc) {
+                        if (item.properties.length > 0) {
+                            itemEntry._content.push({
+                                properties: item.properties.map(m=>
+                                    m.name.trim().replace(/^\w|\b\w/g,(w,i)=>(i===0)?w.toLowerCase():w.toUpperCase()).replace(/\s+|-/g,'')
+                                )})
                         }
+                    } else {
+                        let props = []
+                        for (let prop of item.properties) {
+                            switch(prop.name) {
+                                case "Loading":
+                                    props.push("LD"); break
+                                case "Range":
+                                    props.push("RN"); break
+                                case "Two-Handed":
+                                    props.push("2H"); break
+                                case "Versatile":
+                                    props.push("V"); itemEntry._content.push({dmg2: prop.notes}); break
+                                default:
+                                    props.push(prop.name[0])
+                            }
+                        }
+                        if (props.length > 0) itemEntry._content.push({property: props.join(",")})
                     }
-                    if (props.length > 0) itemEntry._content.push({property: props.join(",")})
                     if (item.damageType) {
-                        itemEntry._content.push({dmgType: item.damageType[0] })
+                        itemEntry._content.push({dmgType: (tdSvc)?item.damageType.toLowerCase():item.damageType[0] })
                     }
                     if (item.range) {
                         itemEntry._content.push({range: (item.longRange)?`${item.range}/${item.longRange}`:item.range})
@@ -1061,11 +1236,27 @@ class DDB {
                         ||n==item.type?.toLowerCase()
                         ||n==item.subType?.toLowerCase()))?.code || type
                 }
+                if (tdSvc) {
+                    if (item.baseTypeId==this.ruledata.baseTypeWeaponId) {
+                        type = `${(item.attackType == 2)? "rangedWeapon" : "meleeWeapon"}`
+                    } else if (item.baseTypeId==this.ruledata.baseTypeArmorId) {
+                        type = this.ruledata.armorTypes.find(n=>n.id===item.armorTypeId)?.name?.trim().replace(/^\w|\b\w/g,(w,i)=>(i===0)?w.toLowerCase():w.toUpperCase()).replace(/\s+|-/g,'') || "armor"
+                    } else if (item.baseTypeId==this.ruledata.baseTypeGearId) {
+                        type = (
+                                item.type=="Gear" && !item.subType &&
+                                this.ruledata.gearTypes.find(g=>g.id===item.gearTypeId)?.name?.trim()
+                                .replace(/^\w|\b\w/g,(w,i)=>(i===0)?w.toLowerCase():w.toUpperCase()).replace(/\s+|-/g,'')
+                            ) || item.subType?.replace(/^\w|\b\w/g,(w,i)=>(i===0)?w.toLowerCase():w.toUpperCase()).replace(/\s+|-/g,'')
+                            || item.type?.replace(/^\w|\b\w/g,(w,i)=>(i===0)?w.toLowerCase():w.toUpperCase()).replace(/\s+|-/g,'')
+                            || "adventuringGear"
+                    }
+
+                }
                 itemEntry._content.push({type: type})
-                let description = sanitize(item.description,this.ruledata)
+                let description = (tdSvc)?item.description:sanitize(item.description,this.ruledata)
                 if (items.some(s=>s.groupedId===item.id)) {
                     let linkedItems = items.filter(s=>s.groupedId===item.id)
-                    description += `\nApplicable ${itemType}${(itemType!="Armor"&&linkedItems.length>1)?'s':''}\n`
+                    description += `\n\nApplicable ${itemType}${(itemType!="Armor"&&linkedItems.length>1)?'s':''}\n`
                     for (let linked of linkedItems) {
                         let linkedurl = "ddb://"
                         if (linked.magic) {
@@ -1086,9 +1277,16 @@ class DDB {
                     let sourceName = this.ruledata.sources.find(s=>s.id===source.sourceId)?.description
                     sources.push((source.pageNumber)?`${sourceName} p. ${source.pageNumber}`:sourceName)
                 }
-                if (sources.length>0) description += `\n<i>Source: ${sources.join(', ')}</i>`
-		itemEntry._content.push({text: description})
-		itemEntry._content.push({source: sources.join(", ")})
+                if (!tdSvc) {
+                    if (sources.length>0) description += `\n<i>Source: ${sources.join(', ')}</i>`
+                    itemEntry._content.push({text: description})
+		    itemEntry._content.push({source: sources.join(", ")})
+                } else {
+                    itemEntry._content.push({text: tdSvc.turndown(description)})
+                    itemEntry._content.push({source: this.ruledata.sources.find(s=>s.id===item.sources[0]?.sourceId)?.description||'' })
+                    if (item.sources[0]?.pageNumber) 
+                        itemEntry._content.push({page: item.sources[0]?.pageNumber})
+                }
                 try{
                     item.avatarUrl = imageMap?.find(s=>s.id===item.id&&s.type===item.entityTypeId)?.avatar || item.avatarUrl
                     item.largeAvatarUrl = imageMap?.find(s=>s.id===item.id&&s.type===item.entityTypeId)?.largeAvatar || item.largeAvatarUrl
@@ -1141,6 +1339,1133 @@ class DDB {
             return compendium
         }
     }
+
+    async getClasses(source=null,filename,zip=null,imageMap=null,prog=null,homebrew=false) {
+        const apiurl = "https://character-service.dndbeyond.com/character/v5/game-data/classes"
+        const params = (this.gameId)? qs.stringify({ 'sharingSetting': 2, 'campaignId': this.gameId }) : qs.stringify({ 'sharingSetting': 2 })
+        await this.getCobaltAuth()
+        if (!this.ruledata) await this.getRuleData().catch(e=>{throw new Error(e)})
+        let response
+        const cachename = 'classes'
+        if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`))) {
+             response = JSON.parse(fs.readFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`)))
+        }
+        if (!response || this.manifestTimestamp>response.lastUpdate) {
+            response = await this.getRequest(`${apiurl}?${params}`,true).catch((e)=>{ console.log(`Error getting classes: ${e}`); throw `Error getting classes: ${e}`; })
+            response.lastUpdate = (new Date()).getTime()
+            fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`),JSON.stringify(response))
+        }
+        if (response?.data) {
+            const classes = response.data.filter(s=>(source)?(s.sources.some(b=>b.sourceId===source)||(source<=2&&s.sources.length==0)):true)
+            if (!prog) prog = new ProgressBar({title: "Please wait...",text: "Converting classes...", detail: "Please wait...", indeterminate: false, maxValue: classes.length})
+            if (filename) zip = new AdmZip() 
+            var compendium = []
+            var subcompendium = []
+            for (const cls of classes) {
+                if (cls.isHomebrew !== homebrew) {
+                    prog.value += (!filename)? (5*(1/classes.length)) : 1
+                    continue
+                }
+                prog.detail = `Converting class: ${cls.name}`
+                let fullEntry = this.getClassObj(cls)
+                try{
+                    if ((cls.largeAvatarUrl||cls.avatarUrl)&&this.art?.includes('artwork')) {
+                        var imageFile = `${uuid5(cls.largeAvatarUrl||cls.avatarUrl,uuid5.URL)}${path.extname(cls.largeAvatarUrl||cls.avatarUrl)}`
+                        if (!zip.getEntry(`resources/classes/${imageFile}`)) {
+                            if ((cls.largeAvatarUrl||cls.avatarUrl).startsWith("listing_images/")) {
+                                await zip.addFile(`resources/classes/${imageFile}`,zip.readFile(cls.largeAvatarUrl||cls.avatarUrl))
+                                zip.deleteFile(cls.largeAvatarUrl||cls.avatarUrl)
+                            } else if (!zip.getEntry(`resources/classes/${path.basename(imageFile,path.extname(imageFile))}.webp`)) {
+                                let imagesrc = await this.getImage(cls.largeAvatarUrl||cls.avatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                                if (!imagesrc || imagesrc.toString().substring(0,5).match(/^<\?xml/)) {
+                                    let imgurl = new URL(cls.largeAvatarUrl||cls.avatarUrl)
+                                    imgurl.pathname = imgurl.pathname.replace(/[/][0-9]+\/[0-9]+[/]([^/]+)$/,'/1000/1000/$1')
+                                    imagesrc = await this.getImage(imgurl.toString()).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                                }
+                                imageFile = `${path.basename(imageFile,path.extname(imageFile))}.webp`
+                                let image = await sharp(imagesrc).webp().toBuffer()
+                                await zip.addFile(`resources/classes/${imageFile}`,image)
+                            }
+                        }
+                        fullEntry.image = imageFile
+                    }
+                } catch (e) {
+                    console.log(`Error adding artwork: ${e}\n${cls.name}: ${cls.largeAvatarUrl||cls.avatarUrl}`)
+                }
+                try {
+                    if (cls.portraitAvatarUrl&&this.art?.includes('tokens')) {
+                        if (!zip.getEntry(`resources/classes/${uuid5(cls.portraitAvatarUrl,uuid5.URL)}_token.webp`)) {
+                            let imagesrc = (cls.portraitAvatarUrl.startsWith('listing_images/'))? zip.readFile(cls.portraitAvatarUrl) : await this.getImage(cls.portraitAvatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                            let image = sharp(imagesrc)
+                            let metadata = await image.metadata().catch(e=>console.log(`Could not read image: ${e}`))
+                            let r = (metadata.width>metadata.height)?metadata.height:metadata.width
+                            image = await image
+                                .composite([{
+                                    input:Buffer.from(`<svg><circle cx="${r/2}" cy="${r/2}" r="${r/2}"/></svg>`),
+                                    blend: 'dest-in'
+                                }])
+                                .webp().toBuffer().catch(e=>console.log(`Could not create token: ${e}`))
+                            await zip.addFile(`resources/classes/${uuid5(cls.portraitAvatarUrl,uuid5.URL)}_token.webp`,image)
+                        }
+                        fullEntry.token = `${uuid5(cls.portraitAvatarUrl,uuid5.URL)}_token.webp`
+                    }
+                } catch (e) {
+                    console.log(`Error creating token: ${e}\n${cls.portraitAvatarUrl}`)
+                }
+                compendium.push(fullEntry)
+                
+
+
+                const sapiurl = "https://character-service.dndbeyond.com/character/v5/game-data/subclasses"
+                const sparams = (this.gameId)? qs.stringify({ 'sharingSetting': 2, 'campaignId': this.gameId, 'baseClassId': cls.id }) : qs.stringify({ 'sharingSetting': 2, 'baseClassId': cls.id })
+                await this.getCobaltAuth()
+                if (!this.ruledata) await this.getRuleData().catch(e=>{throw new Error(e)})
+
+                let sresponse
+                const scachename = `subclasses_${cls.id}`
+                if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${scachename}cache.json`))) {
+                     sresponse = JSON.parse(fs.readFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${scachename}cache.json`)))
+                }
+                if (!sresponse || this.manifestTimestamp>sresponse.lastUpdate) {
+                    sresponse = await this.getRequest(`${sapiurl}?${sparams}`,true).catch((e)=>{ console.log(`Error getting subclasses: ${e}`); throw `Error getting subclasses: ${e}`; })
+                    sresponse.lastUpdate = (new Date()).getTime()
+                    fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${scachename}cache.json`),JSON.stringify(sresponse))
+                }
+                if (sresponse?.data) {
+                    const subclasses = sresponse.data.filter(s=>(source)?(s.sources.some(b=>b.sourceId===source)||(source<=2&&s.sources.length==0)):true)
+                    for (const subcls of subclasses) {
+                        prog.detail = `Converting subclass: ${cls.name}/${subcls.name}`
+                        let fullEntry = this.getClassObj(subcls,cls)
+                        try{
+                            if ((subcls.largeAvatarUrl||subcls.avatarUrl)&&this.art?.includes('artwork')) {
+                                var imageFile = `${uuid5(subcls.largeAvatarUrl||subcls.avatarUrl,uuid5.URL)}${path.extname(subcls.largeAvatarUrl||subcls.avatarUrl)}`
+                                if (!zip.getEntry(`resources/subclasses/${imageFile}`)) {
+                                    if ((subcls.largeAvatarUrl||subcls.avatarUrl).startsWith("listing_images/")) {
+                                        await zip.addFile(`resources/subclasses/${imageFile}`,zip.readFile(subcls.largeAvatarUrl||subcls.avatarUrl))
+                                        zip.deleteFile(subcls.largeAvatarUrl||subcls.avatarUrl)
+                                    } else if (!zip.getEntry(`resources/subclasses/${path.basename(imageFile,path.extname(imageFile))}.webp`)) {
+                                        let imagesrc = await this.getImage(subcls.largeAvatarUrl||subcls.avatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                                        if (!imagesrc || imagesrc.toString().substring(0,5).match(/^<\?xml/)) {
+                                            let imgurl = new URL(subcls.largeAvatarUrl||subcls.avatarUrl)
+                                            imgurl.pathname = imgurl.pathname.replace(/[/][0-9]+\/[0-9]+[/]([^/]+)$/,'/1000/1000/$1')
+                                            imagesrc = await this.getImage(imgurl.toString()).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                                        }
+                                        imageFile = `${path.basename(imageFile,path.extname(imageFile))}.webp`
+                                        let image = await sharp(imagesrc).webp().toBuffer()
+                                        await zip.addFile(`resources/subclasses/${imageFile}`,image)
+                                    }
+                                }
+                                fullEntry.image = imageFile
+                            }
+                        } catch (e) {
+                            console.log(`Error adding artwork: ${e}\n${subcls.name}: ${subcls.largeAvatarUrl||subcls.avatarUrl}`)
+                        }
+                        try {
+                            if (subcls.portraitAvatarUrl&&this.art?.includes('tokens')) {
+                                if (!zip.getEntry(`resources/subclasses/${uuid5(subcls.portraitAvatarUrl,uuid5.URL)}_token.webp`)) {
+                                    let imagesrc = (subcls.portraitAvatarUrl.startsWith('listing_images/'))? zip.readFile(subcls.portraitAvatarUrl) : await this.getImage(subcls.portraitAvatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                                    let image = sharp(imagesrc)
+                                    let metadata = await image.metadata().catch(e=>console.log(`Could not read image: ${e}`))
+                                    let r = (metadata.width>metadata.height)?metadata.height:metadata.width
+                                    image = await image
+                                        .composite([{
+                                            input:Buffer.from(`<svg><circle cx="${r/2}" cy="${r/2}" r="${r/2}"/></svg>`),
+                                            blend: 'dest-in'
+                                        }])
+                                        .webp().toBuffer().catch(e=>console.log(`Could not create token: ${e}`))
+                                    await zip.addFile(`resources/subclasses/${uuid5(subcls.portraitAvatarUrl,uuid5.URL)}_token.webp`,image)
+                                }
+                                fullEntry.token = `${uuid5(subcls.portraitAvatarUrl,uuid5.URL)}_token.webp`
+                            }
+                        } catch (e) {
+                            console.log(`Error creating token: ${e}\n${subcls.portraitAvatarUrl}`)
+                        }
+                        subcompendium.push(fullEntry)
+                    }
+                }
+
+                prog.value += (!filename)? (5*(1/classes.length)) : 1
+            }
+            console.log(`Total classes ${compendium.length}`)
+            console.log(`Total subclasses ${subcompendium.length}`)
+            if (filename) {
+                if (compendium.length === 0) {
+                    dialog.showMessageBox({message:"No classes are available from this source.",type:"info"})
+                        .then(prog.setCompleted())
+                    return
+                }
+                await zip.addFile("classes.json",Buffer.from(JSON.stringify(compendium),'utf8'),null)
+                if (subcompendium.length > 0)
+                    await zip.addFile("subclasses.json",Buffer.from(JSON.stringify(subcompendium),'utf8'),null)
+                prog.detail = `Writing compendium file`
+                zip.writeZip(filename)
+                prog.detail = `Saved compendium`
+                setTimeout(()=>prog.setCompleted(),1000)
+                console.log("Wrote compendium")
+                if (Notification.isSupported()) {
+                    const notification = new Notification({title: "Export Complete", body: `Compendium exported to ${filename}`})
+                    notification.show()
+                }
+            }
+            return { classes: compendium, subclasses: subcompendium}
+        }
+    }
+
+    getClassObj (cls,parentClass = null) {
+            const tdSvc = new turndown()
+            tdSvc.use(turndownGfm.gfm)
+            let entry = {}
+            entry.name = cls.name
+            entry.ddbraw = cls
+            let sources = []
+            for (let source of cls.sources) {
+                let sourceName = this.ruledata.sources.find(s=>s.id===source.sourceId)?.description
+                sources.push((source.pageNumber)?`${sourceName} p. ${source.pageNumber}`:sourceName)
+                if (!entry.source) entry.source = sourceName
+                if (!entry.page && source.pageNumber) entry.page = source.pageNumber
+            }
+            if (!parentClass && cls.canCastSpells) {
+                entry.spellcasting = {
+                    ability: this.ruledata.stats.find(s=>s.id==cls.spellCastingAbilityId).key.toLowerCase(),
+                    levels: Array(20),
+                    ritualCaster: cls.spellRules.isRitualSpellCaster
+                }
+                for (let lvl = 1; lvl <= 20; lvl ++) {
+                    entry.spellcasting.levels[lvl-1] = {
+                        cantrips: cls.spellRules.levelCantripsKnownMaxes[lvl],
+                        spellSlots: {
+                            "1": cls.spellRules.levelSpellSlots[lvl][0],
+                            "2": cls.spellRules.levelSpellSlots[lvl][1],
+                            "3": cls.spellRules.levelSpellSlots[lvl][2],
+                            "4": cls.spellRules.levelSpellSlots[lvl][3],
+                            "5": cls.spellRules.levelSpellSlots[lvl][4],
+                            "6": cls.spellRules.levelSpellSlots[lvl][5],
+                            "7": cls.spellRules.levelSpellSlots[lvl][6],
+                            "8": cls.spellRules.levelSpellSlots[lvl][7],
+                            "9": cls.spellRules.levelSpellSlots[lvl][8]
+                        },
+                        spells: cls.spellRules.levelSpellKnownMaxes[lvl] 
+                    }             
+                }                 
+            }                     
+            entry.features = []   
+                                  
+            for (const feat of cls.classFeatures.sort((a,b)=>a.displayOrder-b.displayOrder)) {
+                if (parentClass?.classFeatures.find(c=>c.id==feat.id)) continue
+                if (!parentClass && feat.name == "Proficiencies") {
+                    const desc = convert(feat.description,{wordwrap: null})
+                    const armor = /armor:(.*)/i.exec(desc)
+                    const weapons = /weapons:(.*)/i.exec(desc)
+                    const tools = /tools:(.*)/i.exec(desc)
+                    const saves = /saving throws:(.*)/i.exec(desc)
+                    const skills = /skills:(.*)/i.exec(desc)
+                    if (armor) {
+                        entry.armor = []
+                        for (const a of armor[1].split(/,/)) {
+                            let m
+                            if (m = a.trim().match(/(light|medium|heavy) armor/i)) {
+                                entry.armor.push(m[1].toLowerCase())
+                                continue
+                            }
+                            if (m = a.trim().match(/(shield)s?/i)) {
+                                entry.armor.push(m[1])
+                                continue
+                            }
+                            entry.armor.push(a.trim().replace(/^and /i,''))
+                        }
+                    }
+                    if (weapons) {
+                        entry.weapons = []
+                        for (const a of weapons[1].split(/,/)) {
+                            let m
+                            if (m = a.trim().match(/(firearm|martial|simple)(s| weapons)?/i)) {
+                                entry.weapons.push(m[1].toLowerCase())
+                                continue
+                            }
+                            entry.weapons.push(a.trim().replace(/^and /i,''))
+                        }
+                    }
+                    if (saves) {
+                        entry.savingThrows = []
+                        for (const save of saves[1].split(/,/)) {
+                            entry.savingThrows.push(this.ruledata.stats.find(s=>s.name.toLowerCase()==save.trim().toLowerCase()).key.toLowerCase())
+                        }
+                    }
+                    if (skills) {
+                        entry.skills = []
+                        let m
+                        if (m = skills[1].trim().match(/choose any (.*)/i)) {
+                            entry.skillsNumber = numbers[m[1].toLowerCase()]
+                            entry.skills.push("any")
+                        } else if (m = skills[1].trim().match(/choose (.*) from (.*)/i)) {
+                            entry.skillsNumber = numbers[m[1].toLowerCase()]
+                            for (let sk of m[2].split(/,/)) {
+                                sk = sk.replace(/^ ?and /i,'')
+                                entry.skills.push(sk.trim().replace(/^\w|\b\w/g,(w,i)=>(i===0)?w.toLowerCase():w.toUpperCase()).replace(/\s+/g,''))
+                            }
+                        } else {
+                            for (let sk of skills[1].split(/,/)) {
+                                sk = sk.replace(/^ ?and /i,'')
+                                entry.skills.push(sk.trim().toLowerCase())
+                            }
+                        }
+                    }
+                    if (tools) entry.tools = tools[1].trim().split(/, ?/)
+                }
+                if (["Hit Points","Proficiencies","Equipment"].includes(feat.name)) continue
+                entry.features.push({
+                    level: feat.requiredLevel,
+                    name: feat.name,
+                    text: tdSvc.turndown(feat.description),
+                    prerequisite: feat.prerequisite&&tdSvc.turndown(feat.prerequisite),
+                })
+            }
+            if (parentClass) {
+                entry.class = parentClass.name
+            } else {
+                entry.hd = cls.hitDice
+                entry.equipment = tdSvc.turndown(cls.equipmentDescription)
+            }
+            let fullEntry = {
+                id: uuid5(`ddb://classes/${(parentClass)?`${cls.parentClassId}/${cls.id}`:cls.id}`,uuid5.URL),
+                name: cls.name,
+                descr: tdSvc.turndown(cls.description),
+                source: entry.source,
+                page: entry.page,
+                data: entry
+            }
+            return fullEntry
+    }
+
+    async getRaces(source=null,filename,zip=null,imageMap=null,prog=null,homebrew=false) {
+        const apiurl = "https://character-service.dndbeyond.com/character/v5/game-data/races"
+        const params = (this.gameId)? qs.stringify({ 'sharingSetting': 2, 'campaignId': this.gameId }) : qs.stringify({ 'sharingSetting': 2 })
+        await this.getCobaltAuth()
+        if (!this.ruledata) await this.getRuleData().catch(e=>{throw new Error(e)})
+        let response
+        const cachename = 'races'
+        if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`))) {
+             response = JSON.parse(fs.readFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`)))
+        }
+        if (!response || this.manifestTimestamp>response.lastUpdate) {
+            response = await this.getRequest(`${apiurl}?${params}`,true).catch((e)=>{ console.log(`Error getting races: ${e}`); throw `Error getting races: ${e}`; })
+            response.lastUpdate = (new Date()).getTime()
+            fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`),JSON.stringify(response))
+        }
+        if (response?.data) {
+            const tdSvc = new turndown()
+            tdSvc.use(turndownGfm.gfm)
+            const races = response.data.filter(s=>(source)?(s.sources.some(b=>b.sourceId===source)||(source<=2&&s.sources.length==0)):true)
+            if (!prog) prog = new ProgressBar({title: "Please wait...",text: "Converting Races...", detail: "Please wait...", indeterminate: false, maxValue: races.length})
+            if (filename) zip = new AdmZip() 
+            var compendium = []
+            for (const race of races) {
+                if (race.isHomebrew !== homebrew) {
+                    prog.value += (!filename)? (5*(1/races.length)) : 1
+                    continue
+                }
+                prog.detail = `Converting race: ${race.fullName}`
+                let entry = {}
+                let sources = []
+                for (let source of race.sources) {
+                    let sourceName = this.ruledata.sources.find(s=>s.id===source.sourceId)?.description
+                    sources.push((source.pageNumber)?`${sourceName} p. ${source.pageNumber}`:sourceName)
+                    if (!entry.source) entry.source = sourceName
+                    if (!entry.page && source.pageNumber) entry.page = source.pageNumber
+                }
+                entry.traits = []
+                for (const trait of race.racialTraits) {
+                    entry.traits.push({
+                        name: trait.definition.name,
+                        text: tdSvc.turndown(trait.definition.description)
+                    })
+                }
+                entry.speed = {}
+                if (race.weightSpeeds?.normal?.walk) entry.speed.walk = race.weightSpeeds.normal.walk
+                if (race.weightSpeeds?.normal?.burrow) entry.speed.burrow = race.weightSpeeds.normal.burrow
+                if (race.weightSpeeds?.normal?.climb) entry.speed.climb = race.weightSpeeds.normal.climb
+                if (race.weightSpeeds?.normal?.fly) entry.speed.fly = race.weightSpeeds.normal.fly
+                if (race.weightSpeeds?.normal?.swim) entry.speed.swim = race.weightSpeeds.normal.swim
+                entry.size = this.ruledata.creatureSizes.find(s=>s.id==race.sizeId).name.charAt(0)
+                let fullEntry = {
+                    id: uuid5(`ddb://races/${race.entityRaceId}`,uuid5.URL),
+                    name: race.fullName,
+                    descr: tdSvc.turndown(race.description),
+                    source: entry.source,
+                    url: `https://dndbeyond.com${race.moreDetailsUrl}`,
+                    page: entry.page,
+                    data: entry
+                }
+                try{
+                    if ((race.largeAvatarUrl||race.avatarUrl)&&this.art?.includes('artwork')) {
+                        var imageFile = `${uuid5(race.largeAvatarUrl||race.avatarUrl,uuid5.URL)}${path.extname(race.largeAvatarUrl||race.avatarUrl)}`
+                        if (!zip.getEntry(`resources/races/${imageFile}`)) {
+                            if ((race.largeAvatarUrl||race.avatarUrl).startsWith("listing_images/")) {
+                                await zip.addFile(`resources/races/${imageFile}`,zip.readFile(race.largeAvatarUrl||race.avatarUrl))
+                                zip.deleteFile(race.largeAvatarUrl||race.avatarUrl)
+                            } else if (!zip.getEntry(`resources/races/${path.basename(imageFile,path.extname(imageFile))}.webp`)) {
+                                let imagesrc = await this.getImage(race.largeAvatarUrl||race.avatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                                if (!imagesrc || imagesrc.toString().substring(0,5).match(/^<\?xml/)) {
+                                    let imgurl = new URL(race.largeAvatarUrl||race.avatarUrl)
+                                    imgurl.pathname = imgurl.pathname.replace(/[/][0-9]+\/[0-9]+[/]([^/]+)$/,'/1000/1000/$1')
+                                    imagesrc = await this.getImage(imgurl.toString()).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                                }
+                                imageFile = `${path.basename(imageFile,path.extname(imageFile))}.webp`
+                                let image = await sharp(imagesrc).webp().toBuffer()
+                                await zip.addFile(`resources/races/${imageFile}`,image)
+                            }
+                        }
+                        fullEntry.image = imageFile
+                    }
+                } catch (e) {
+                    console.log(`Error adding artwork: ${e}\n${race.name}: ${race.largeAvatarUrl||race.avatarUrl}`)
+                }
+                try {
+                    if (race.portraitAvatarUrl&&this.art?.includes('tokens')) {
+                        if (!zip.getEntry(`resources/races/${uuid5(race.portraitAvatarUrl,uuid5.URL)}_token.webp`)) {
+                            let imagesrc = (race.portraitAvatarUrl.startsWith('listing_images/'))? zip.readFile(race.portraitAvatarUrl) : await this.getImage(race.portraitAvatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                            let image = sharp(imagesrc)
+                            let metadata = await image.metadata().catch(e=>console.log(`Could not read image: ${e}`))
+                            let r = (metadata.width>metadata.height)?metadata.height:metadata.width
+                            image = await image
+                                .composite([{
+                                    input:Buffer.from(`<svg><circle cx="${r/2}" cy="${r/2}" r="${r/2}"/></svg>`),
+                                    blend: 'dest-in'
+                                }])
+                                .webp().toBuffer().catch(e=>console.log(`Could not create token: ${e}`))
+                            await zip.addFile(`resources/races/${uuid5(race.portraitAvatarUrl,uuid5.URL)}_token.webp`,image)
+                        }
+                        fullEntry.token = `${uuid5(race.portraitAvatarUrl,uuid5.URL)}_token.webp`
+                    }
+                } catch (e) {
+                    console.log(`Error creating token: ${e}\n${race.portraitAvatarUrl}`)
+                }
+                compendium.push(fullEntry)
+                prog.value += (!filename)? (5*(1/races.length)) : 1
+            }
+            console.log(`Total races ${compendium.length}`)
+            if (filename) {
+                if (compendium.length === 0) {
+                    dialog.showMessageBox({message:"No races are available from this source.",type:"info"})
+                        .then(prog.setCompleted())
+                    return
+                }
+                await zip.addFile("races.json",Buffer.from(JSON.stringify(compendium),'utf8'),null)
+                prog.detail = `Writing compendium file`
+                zip.writeZip(filename)
+                prog.detail = `Saved compendium`
+                setTimeout(()=>prog.setCompleted(),1000)
+                console.log("Wrote compendium")
+                if (Notification.isSupported()) {
+                    const notification = new Notification({title: "Export Complete", body: `Compendium exported to ${filename}`})
+                    notification.show()
+                }
+            }
+            return compendium
+        }
+    }
+
+
+    async getBackgrounds(source=null,filename,zip=null,imageMap=null,prog=null,homebrew=false) {
+        const apiurl = "https://character-service.dndbeyond.com/character/v5/game-data/backgrounds"
+        const params = (this.gameId)? qs.stringify({ 'sharingSetting': 2, 'campaignId': this.gameId }) : qs.stringify({ 'sharingSetting': 2 })
+        await this.getCobaltAuth()
+        if (!this.ruledata) await this.getRuleData().catch(e=>{throw new Error(e)})
+
+        let response
+        const cachename = 'backgrounds'
+        if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`))) {
+             response = JSON.parse(fs.readFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`)))
+        }
+        if (!response || this.manifestTimestamp>response.lastUpdate) {
+            response = await this.getRequest(`${apiurl}?${params}`,true).catch((e)=>{ console.log(`Error getting backgrounds: ${e}`); throw `Error getting backgrounds: ${e}`; })
+            response.lastUpdate = (new Date()).getTime()
+            fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`),JSON.stringify(response))
+        }
+        if (response?.data) {
+            const tdSvc = new turndown()
+            tdSvc.use(turndownGfm.gfm)
+            const backgrounds = response.data.filter(s=>(source)?(s.sources.some(b=>b.sourceId===source)||(source<=2&&s.sources.length==0)):true)
+            if (!prog) prog = new ProgressBar({title: "Please wait...",text: "Converting Backgrounds...", detail: "Please wait...", indeterminate: false, maxValue: backgrounds.length})
+            if (filename) zip = new AdmZip() 
+            var compendium = []
+            for (const background of backgrounds) {
+                if (background.isHomebrew !== homebrew) {
+                    prog.value += (!filename)? (5*(1/backgrounds.length)) : 1
+                    continue
+                }
+                prog.detail = `Converting background: ${background.name}`
+                let entry = {}
+                let sources = []
+                for (let source of background.sources) {
+                    let sourceName = this.ruledata.sources.find(s=>s.id===source.sourceId)?.description
+                    sources.push((source.pageNumber)?`${sourceName} p. ${source.pageNumber}`:sourceName)
+                    if (!entry.source) entry.source = sourceName
+                    if (!entry.page && source.pageNumber) entry.page = source.pageNumber
+                }
+                if (background.skillProficienciesDescription) {
+                    entry.skills = []
+                    let skills = background.skillProficienciesDescription.trim().split(/,/)
+                    for (let sk of skills) {
+                        sk = sk.replace(/^ ?and /i,'')
+                        entry.skills.push(sk.trim().replace(/^\w|\b\w/g,(w,i)=>(i===0)?w.toLowerCase():w.toUpperCase()).replace(/\s+/g,''))
+                    }
+                }
+                if (background.languagesDescription) {
+                    entry.languages = [convert(background.languagesDescription,{wordwrap:null})]
+                }
+                entry.value = background.equipmentDescription
+                entry.entries = [{
+                    name: background.featureName,
+                    text: tdSvc.turndown(background.featureDescription)
+                }]
+                let fullEntry = {
+                    id: uuid5(`ddb://backgrounds/${background.id}`,uuid5.URL),
+                    name: background.name,
+                    descr: tdSvc.turndown(background.description),
+                    source: entry.source,
+                    url: `https://dndbeyond.com${background.moreDetailsUrl}`,
+                    page: entry.page,
+                    data: entry
+                }
+                try{
+                    if ((background.largeAvatarUrl||background.avatarUrl)&&this.art?.includes('artwork')) {
+                        var imageFile = `${uuid5(background.largeAvatarUrl||background.avatarUrl,uuid5.URL)}${path.extname(background.largeAvatarUrl||background.avatarUrl)}`
+                        if (!zip.getEntry(`resources/backgrounds/${imageFile}`)) {
+                            if ((background.largeAvatarUrl||background.avatarUrl).startsWith("listing_images/")) {
+                                await zip.addFile(`resources/backgrounds/${imageFile}`,zip.readFile(background.largeAvatarUrl||background.avatarUrl))
+                                zip.deleteFile(background.largeAvatarUrl||background.avatarUrl)
+                            } else if (!zip.getEntry(`resources/backgrounds/${path.basename(imageFile,path.extname(imageFile))}.webp`)) {
+                                let imagesrc = await this.getImage(background.largeAvatarUrl||background.avatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                                if (!imagesrc || imagesrc.toString().substring(0,5).match(/^<\?xml/)) {
+                                    let imgurl = new URL(background.largeAvatarUrl||background.avatarUrl)
+                                    imgurl.pathname = imgurl.pathname.replace(/[/][0-9]+\/[0-9]+[/]([^/]+)$/,'/1000/1000/$1')
+                                    imagesrc = await this.getImage(imgurl.toString()).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                                }
+                                imageFile = `${path.basename(imageFile,path.extname(imageFile))}.webp`
+                                let image = await sharp(imagesrc).webp().toBuffer()
+                                await zip.addFile(`resources/backgrounds/${imageFile}`,image)
+                            }
+                        }
+                        fullEntry.image = imageFile
+                    }
+                } catch (e) {
+                    console.log(`Error adding artwork: ${e}\n${background.name}: ${background.largeAvatarUrl||background.avatarUrl}`)
+                }
+                try {
+                    if (background.portraitAvatarUrl&&this.art?.includes('tokens')) {
+                        if (!zip.getEntry(`resources/backgrounds/${uuid5(background.portraitAvatarUrl,uuid5.URL)}_token.webp`)) {
+                            let imagesrc = (background.portraitAvatarUrl.startsWith('listing_images/'))? zip.readFile(background.portraitAvatarUrl) : await this.getImage(background.portraitAvatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                            let image = sharp(imagesrc)
+                            let metadata = await image.metadata().catch(e=>console.log(`Could not read image: ${e}`))
+                            let r = (metadata.width>metadata.height)?metadata.height:metadata.width
+                            image = await image
+                                .composite([{
+                                    input:Buffer.from(`<svg><circle cx="${r/2}" cy="${r/2}" r="${r/2}"/></svg>`),
+                                    blend: 'dest-in'
+                                }])
+                                .webp().toBuffer().catch(e=>console.log(`Could not create token: ${e}`))
+                            await zip.addFile(`resources/backgrounds/${uuid5(background.portraitAvatarUrl,uuid5.URL)}_token.webp`,image)
+                        }
+                        fullEntry.token = `${uuid5(background.portraitAvatarUrl,uuid5.URL)}_token.webp`
+                    }
+                } catch (e) {
+                    console.log(`Error creating token: ${e}\n${background.portraitAvatarUrl}`)
+                }
+                compendium.push(fullEntry)
+                prog.value += (!filename)? (5*(1/backgrounds.length)) : 1
+            }
+            console.log(`Total backgrounds ${compendium.length}`)
+            if (filename) {
+                if (compendium.length === 0) {
+                    dialog.showMessageBox({message:"No backgrounds are available from this source.",type:"info"})
+                        .then(prog.setCompleted())
+                    return
+                }
+                await zip.addFile("backgrounds.json",Buffer.from(JSON.stringify(compendium),'utf8'),null)
+                prog.detail = `Writing compendium file`
+                zip.writeZip(filename)
+                prog.detail = `Saved compendium`
+                setTimeout(()=>prog.setCompleted(),1000)
+                console.log("Wrote compendium")
+                if (Notification.isSupported()) {
+                    const notification = new Notification({title: "Export Complete", body: `Compendium exported to ${filename}`})
+                    notification.show()
+                }
+            }
+            return compendium
+        }
+    }
+
+    async getFeats(source=null,filename,zip=null,imageMap=null,prog=null,homebrew=false) {
+        const apiurl = "https://character-service.dndbeyond.com/character/v5/game-data/feats"
+        const params = (this.gameId)? qs.stringify({ 'sharingSetting': 2, 'campaignId': this.gameId }) : qs.stringify({ 'sharingSetting': 2 })
+        await this.getCobaltAuth()
+        if (!this.ruledata) await this.getRuleData().catch(e=>{throw new Error(e)})
+        let response
+        const cachename = 'feat'
+        if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`))) {
+             response = JSON.parse(fs.readFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`)))
+        }
+        if (!response || this.manifestTimestamp>response.lastUpdate) {
+            response = await this.getRequest(`${apiurl}?${params}`,true).catch((e)=>{ console.log(`Error getting feats: ${e}`); throw `Error getting feats: ${e}`; })
+            response.lastUpdate = (new Date()).getTime()
+            fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`),JSON.stringify(response))
+        }
+        if (response?.data) {
+            const tdSvc = new turndown()
+            tdSvc.use(turndownGfm.gfm)
+            const feats = response.data.filter(s=>(source)?(s.sources.some(b=>b.sourceId===source)||(source<=2&&s.sources.length==0)):true)
+            if (!prog) prog = new ProgressBar({title: "Please wait...",text: "Converting Feats...", detail: "Please wait...", indeterminate: false, maxValue: feats.length})
+            if (filename) zip = new AdmZip() 
+            var compendium = []
+            for (const feat of feats) {
+                if (feat.isHomebrew !== homebrew) {
+                    prog.value += (!filename)? (5*(1/feats.length)) : 1
+                    continue
+                }
+                prog.detail = `Converting feat: ${feat.name}`
+                let entry = {}
+                let sources = []
+                for (let source of feat.sources) {
+                    let sourceName = this.ruledata.sources.find(s=>s.id===source.sourceId)?.description
+                    sources.push((source.pageNumber)?`${sourceName} p. ${source.pageNumber}`:sourceName)
+                    if (!entry.source) entry.source = sourceName
+                    if (!entry.page && source.pageNumber) entry.page = source.pageNumber
+                }
+                entry.prerequisite = feat.prerequisites.filter(p=>!p.hidePrerequisite).map(p=>p.description).join(", ")
+                let fullEntry = {
+                    id: uuid5(`ddb://feats/${feat.id}`,uuid5.URL),
+                    name: feat.name,
+                    descr: tdSvc.turndown(feat.description),
+                    source: entry.source,
+                    url: `https://dndbeyond.com${feat.moreDetailsUrl}`,
+                    page: entry.page,
+                    data: entry
+                }
+                try{
+                    if ((feat.largeAvatarUrl||feat.avatarUrl)&&this.art?.includes('artwork')) {
+                        var imageFile = `${uuid5(feat.largeAvatarUrl||feat.avatarUrl,uuid5.URL)}${path.extname(feat.largeAvatarUrl||feat.avatarUrl)}`
+                        if (!zip.getEntry(`resources/feats/${imageFile}`)) {
+                            if ((feat.largeAvatarUrl||feat.avatarUrl).startsWith("listing_images/")) {
+                                await zip.addFile(`resources/feats/${imageFile}`,zip.readFile(feat.largeAvatarUrl||feat.avatarUrl))
+                                zip.deleteFile(feat.largeAvatarUrl||feat.avatarUrl)
+                            } else if (!zip.getEntry(`resources/feats/${path.basename(imageFile,path.extname(imageFile))}.webp`)) {
+                                let imagesrc = await this.getImage(feat.largeAvatarUrl||feat.avatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                                if (!imagesrc || imagesrc.toString().substring(0,5).match(/^<\?xml/)) {
+                                    let imgurl = new URL(feat.largeAvatarUrl||feat.avatarUrl)
+                                    imgurl.pathname = imgurl.pathname.replace(/[/][0-9]+\/[0-9]+[/]([^/]+)$/,'/1000/1000/$1')
+                                    imagesrc = await this.getImage(imgurl.toString()).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                                }
+                                imageFile = `${path.basename(imageFile,path.extname(imageFile))}.webp`
+                                let image = await sharp(imagesrc).webp().toBuffer()
+                                await zip.addFile(`resources/feats/${imageFile}`,image)
+                            }
+                        }
+                        fullEntry.image = imageFile
+                    }
+                } catch (e) {
+                    console.log(`Error adding artwork: ${e}\n${feat.name}: ${feat.largeAvatarUrl||feat.avatarUrl}`)
+                }
+                try {
+                    if (feat.portraitAvatarUrl&&this.art?.includes('tokens')) {
+                        if (!zip.getEntry(`resources/feats/${uuid5(feat.portraitAvatarUrl,uuid5.URL)}_token.webp`)) {
+                            let imagesrc = (feat.portraitAvatarUrl.startsWith('listing_images/'))? zip.readFile(feat.portraitAvatarUrl) : await this.getImage(feat.portraitAvatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                            let image = sharp(imagesrc)
+                            let metadata = await image.metadata().catch(e=>console.log(`Could not read image: ${e}`))
+                            let r = (metadata.width>metadata.height)?metadata.height:metadata.width
+                            image = await image
+                                .composite([{
+                                    input:Buffer.from(`<svg><circle cx="${r/2}" cy="${r/2}" r="${r/2}"/></svg>`),
+                                    blend: 'dest-in'
+                                }])
+                                .webp().toBuffer().catch(e=>console.log(`Could not create token: ${e}`))
+                            await zip.addFile(`resources/feats/${uuid5(feat.portraitAvatarUrl,uuid5.URL)}_token.webp`,image)
+                        }
+                        fullEntry.token = `${uuid5(feat.portraitAvatarUrl,uuid5.URL)}_token.webp`
+                    }
+                } catch (e) {
+                    console.log(`Error creating token: ${e}\n${feat.portraitAvatarUrl}`)
+                }
+                compendium.push(fullEntry)
+                prog.value += (!filename)? (5*(1/feats.length)) : 1
+            }
+            console.log(`Total feats ${compendium.length}`)
+            if (filename) {
+                if (compendium.length === 0) {
+                    dialog.showMessageBox({message:"No feats are available from this source.",type:"info"})
+                        .then(prog.setCompleted())
+                    return
+                }
+                await zip.addFile("feats.json",Buffer.from(JSON.stringify(compendium),'utf8'),null)
+                prog.detail = `Writing compendium file`
+                zip.writeZip(filename)
+                prog.detail = `Saved compendium`
+                setTimeout(()=>prog.setCompleted(),1000)
+                console.log("Wrote compendium")
+                if (Notification.isSupported()) {
+                    const notification = new Notification({title: "Export Complete", body: `Compendium exported to ${filename}`})
+                    notification.show()
+                }
+            }
+            return compendium
+        }
+    }
+
+    async getVehicles(source=null,filename,zip=null,imageMap=null,prog=null,homebrew=false) {
+        const apiurl = "https://gamedata-service.dndbeyond.com/vehicle/v4/collection"
+        const params = (this.gameId)? qs.stringify({ 'sharingSetting': 2, 'campaignId': this.gameId }) : qs.stringify({ 'sharingSetting': 2 })
+        await this.getCobaltAuth()
+        if (!this.ruledata) await this.getRuleData().catch(e=>{throw new Error(e)})
+        let response
+        const cachename = 'vehicle'
+        if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`))) {
+             response = JSON.parse(fs.readFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`)))
+        }
+        if (!response || this.manifestTimestamp>response.lastUpdate) {
+            response = await this.getRequest(`${apiurl}?${params}`,true).catch((e)=>{ console.log(`Error getting vehicles: ${e}`); throw `Error getting vehicles: ${e}`; })
+            response.lastUpdate = (new Date()).getTime()
+            fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`),JSON.stringify(response))
+        }
+        if (response?.data) {
+            const tdSvc = new turndown()
+            tdSvc.use(turndownGfm.gfm)
+            const vehicles = response.data.definitionData.filter(s=>(source)?(s.sources.some(b=>b.sourceId===source)||(source<=2&&s.sources.length==0)):true)
+            if (!prog) prog = new ProgressBar({title: "Please wait...",text: "Converting Vehicles...", detail: "Please wait...", indeterminate: false, maxValue: feats.length})
+            if (filename) zip = new AdmZip() 
+            var compendium = []
+            for (const vehicle of vehicles) {
+                if (vehicle.isHomebrew !== homebrew) {
+                    prog.value += (!filename)? (5*(1/vehicles.length)) : 1
+                    continue
+                }
+                prog.detail = `Converting vehicle: ${vehicle.name}`
+                let entry = {}
+                entry.abilities = {}
+                for(const stat of vehicle.stats) {
+                    entry.abilities[stat.name.toLowerCase()] = stat.value
+                }
+                entry.size = this.ruledata.creatureSizes.find(s=>s.id===vehicle.sizeId).name.charAt(0).toUpperCase()
+                if (vehicle.length && vehicle.width)
+                    entry.dimensions = `${vehicle.length} ft. by ${vehicle.width} ft.`
+                if (vehicle.creatureCapacity?.find(c=>c.type == "crew")) entry.crew = vehicle.creatureCapacity?.find(c=>c.type == "crew").capacity
+                if (vehicle.creatureCapacity?.find(c=>c.type == "passengers")) entry.passengers = vehicle.creatureCapacity?.find(c=>c.type == "passengers").capacity
+
+                entry.damageImmunities = vehicle.damageImmunities.map(i=>this.ruledata.damageTypes.find(d=>d.id===i)?.name.toLowerCase())
+                entry.conditionImmunities = vehicle.conditionImmunities.map(i=>this.ruledata.conditions.find(c=>c.definition.id===i)?.definition?.name)
+
+
+                for(const config of vehicle.configurations) {
+                    if (config.key == "DT") {
+                        if (config.value=="spelljammer") {
+                            entry.type = "spelljammerShip"
+                        } else if (config.value == "infernal-war-machine") {
+                            entry.type = "infernalWarMachine"
+                        } else {
+                            entry.type = config.value
+                        }
+                    }
+                }
+                entry.features = []
+                for(const feature of vehicle.features) {
+                    entry.features.push({ name: feature.name||'', text: feature.description })
+                }
+                entry.actions = []
+                if (vehicle.actionsText) {
+                    entry.actions.push({text: vehicle.actionsText})
+                }
+                for(const action of vehicle.componentActionSummaries) {
+                    entry.actions.push({ name: action.name||'', text: action.description })
+                }
+                if (entry.type == "infernalWarMachine" || entry.type == "spelljammerShip") {
+                    entry.crew = vehicle.creatureCapacity.map(c=>
+                        `${c.capacity} ${this.ruledata.creatureSizes.find(s=>s.id===c.sizeId)?.name||''} ${c.type||''}`.trim()
+                    ).join(', ')
+                    const helm = vehicle.components.find(c=>c.definition.types.some(t=>t.type=="helm"))?.definition
+                    if (helm?.hitPoints) entry.hp = helm.hitPoints
+                    if (helm?.damageThreshold) entry.damageThreshold = helm.damageThreshold
+                    if (helm?.mishapThreshold) entry.mishapThreshold = helm.mishapThreshold
+                    if (helm?.armorClass) {
+                        entry.ac = (helm.armorClassDescription)?
+                            `${helm.armorClass} (${helm.armorClassDescription})` :
+                            helm.armorClass
+                    }
+                    if (helm?.speeds) {
+                        let speed = []
+                        for (const spd of helm.speeds) {
+                            let modes = spd.modes.map(m=>{
+                                let s = `${m.value} ft.`
+                                const type = this.ruledata.movements.find(mv=>mv.id===m.movementId)
+                                if (type) s = `${type.description.toLowerCase()} speed ${s}`
+                                if (m.description) s += ` ${m.description}`
+                                if (m.restrictionsText) s += ` (${m.restrictionsText})`
+                                return s
+                            })
+                            let s = (spd.type)?`**${spd.type}** ${modes.join('; ')}`:modes.join('; ')
+                            speed.push(s)
+                        }
+                        entry.speed = speed.join(', ')
+                    }
+                    if (helm?.costs) {
+                        let cost = 0
+                        for (const costs of helm.costs) {
+                            cost += costs.value
+                        }
+                        entry.cost = cost
+                    }
+                }
+                if (vehicle.weight) entry.weight = vehicle.weight
+                if (vehicle.cargoCapacity) entry.cargo = vehicle.cargoCapacity
+                if (vehicle.travelPace) entry.pace = vehicle.travelPace
+                for(const component of vehicle.components.sort((a,b)=>a.displayOrder-b.displayOrder)) {
+                    const def = component.definition
+                    let part
+                    let item = {}
+                    item.features = []
+                    if (def.types.some(t=>t.type=="hull")) {
+                        if (!entry.hull) entry.hull = []
+                        part = entry.hull
+                    } else if (def.types.some(t=>t.type=="control"||t.type=="helm")) {
+                        if (entry.type == "spelljammerShip" && def.types.some(t=>t.type=="helm")) continue
+                        if (!entry.controls) entry.controls = []
+                        part = entry.controls
+                    } else if (def.types.some(t=>t.type=="weapon")) {
+                        if (!entry.weapons) entry.weapons = []
+                        part = entry.weapons
+                    } else if (def.types.some(t=>t.type=="movement")) {
+                        if (!entry.movements) entry.movements = []
+                        const type = def.types.find(t=>t.type=="movement")
+                        for (const adj of type.adjustments) {
+                            let unit = ''
+                            if (adj.type == "speed") unit = ' ft.'
+                            item.features.push({text: `_hp ${adj.values.map(v=>`${v.perDamageValue}${unit} ${adj.type} per ${v.perDamageTaken}`).join(', ')}_`})
+                        }
+                        part = entry.movements
+                    } else {
+                        continue
+                    }
+                    if (def.name) item.name = def.name
+                    if (component.description) item.descr = tdSvc.turndown(component.description)
+                    if (def.requiredCrew) item.crew = def.requiredCrew
+                    if (def.coverType) {
+                        const cover = `_Requires ${item.crew} Crew and Grants ${def.coverType.replace(/\w\S*/,t=>t.charAt(0).toUpperCase()+t.substring(1).toLowerCase())} Cover_`
+                        item.features.push({text: cover})
+                        
+                    }
+                    if (!(entry.type == "infernalWarMachine" && def.types.some(t=>t.type=="helm"))) {
+                        if (def.armorClass) item.ac = (def.armorClassDescription)?
+                                `${def.armorClass} (${def.armorClassDescription})` :
+                                def.armorClass
+                        if (def.hitPoints) {
+                            let threshold = []
+                            if (def.damageThreshold) threshold.push(`damage threshold ${def.damageThreshold}`)
+                            if (def.mishapThreshold) threshold.push(`mishap threshold ${def.mishapThreshold}`)
+                            item.hp = (threshold.length>0)?
+                                `${def.hitPoints} (${threshold.join(', ')})` :
+                                def.hitPoints
+                        }
+                        if (def.speeds) {
+                            let speed = []
+                            for (const spd of def.speeds) {
+                                let modes = spd.modes.map(m=>{
+                                    let s = `${m.value} ft.`
+                                    const type = this.ruledata.movements.find(mv=>mv.id===m.movementId)
+                                    if (type) s = `${type.description.toLowerCase()} speed ${s}`
+                                    if (m.description) s += ` ${m.description}`
+                                    if (m.restrictionsText) s += ` (${m.restrictionsText})`
+                                    return s
+                                })
+                                let s = (spd.type)?`**${spd.type}** ${modes.join('; ')}`:modes.join('; ')
+                                speed.push(s)
+                            }
+                            item.speed = speed.join(', ')
+                        }
+                    }
+                    if (def.actionsDescription) item.features.push( {text: tdSvc.turndown(def.actionsDescription) } )
+                    if (def.actions) {
+                        for (const act of def.actions) {
+                            let action = {}
+                            if (act.name) action.name = act.name
+                            action.text = tdSvc.turndown(act.description)
+                            item.features.push(action)
+                        }
+                    }
+                    let prev = part.find(p=>p.name==item.name&&p.descr==item.descr)
+                    if (prev) {
+                        if (!prev.count) prev.count = 1
+                        prev.count ++
+                    } else {
+                        part.push(item)
+                    }
+                }
+
+                let sources = []
+                for (let source of vehicle.sources) {
+                    let sourceName = this.ruledata.sources.find(s=>s.id===source.sourceId)?.description
+                    sources.push((source.pageNumber)?`${sourceName} p. ${source.pageNumber}`:sourceName)
+                    if (!entry.source) entry.source = sourceName
+                    if (!entry.page && source.pageNumber) entry.page = source.pageNumber
+                }
+                let fullEntry = {
+                    id: uuid5(`ddb://vehicles/${vehicle.id}`,uuid5.URL),
+                    name: vehicle.name,
+                    descr: tdSvc.turndown(vehicle.description),
+                    source: entry.source,
+                    url: `https://dndbeyond.com${vehicle.moreDetailsUrl}`,
+                    page: entry.page,
+                    data: entry
+                }
+                try{
+                    if ((vehicle.largeAvatarUrl||vehicle.avatarUrl)&&this.art?.includes('artwork')) {
+                        var imageFile = `${uuid5(vehicle.largeAvatarUrl||vehicle.avatarUrl,uuid5.URL)}${path.extname(vehicle.largeAvatarUrl||vehicle.avatarUrl)}`
+                        if (!zip.getEntry(`resources/vehicles/${imageFile}`)) {
+                            if ((vehicle.largeAvatarUrl||vehicle.avatarUrl).startsWith("listing_images/")) {
+                                await zip.addFile(`resources/vehicles/${imageFile}`,zip.readFile(vehicle.largeAvatarUrl||vehicle.avatarUrl))
+                                zip.deleteFile(vehicle.largeAvatarUrl||vehicle.avatarUrl)
+                            } else if (!zip.getEntry(`resources/vehicles/${path.basename(imageFile,path.extname(imageFile))}.webp`)) {
+                                let imagesrc = await this.getImage(vehicle.largeAvatarUrl||vehicle.avatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                                if (!imagesrc || imagesrc.toString().substring(0,5).match(/^<\?xml/)) {
+                                    let imgurl = new URL(vehicle.largeAvatarUrl||vehicle.avatarUrl)
+                                    imgurl.pathname = imgurl.pathname.replace(/[/][0-9]+\/[0-9]+[/]([^/]+)$/,'/1000/1000/$1')
+                                    imagesrc = await this.getImage(imgurl.toString()).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                                }
+                                imageFile = `${path.basename(imageFile,path.extname(imageFile))}.webp`
+                                let image = await sharp(imagesrc).webp().toBuffer()
+                                await zip.addFile(`resources/vehicles/${imageFile}`,image)
+                            }
+                        }
+                        fullEntry.image = imageFile
+                    }
+                } catch (e) {
+                    console.log(`Error adding artwork: ${e}\n${vehicle.name}: ${vehicle.largeAvatarUrl||vehicle.avatarUrl}`)
+                }
+                try {
+                    if (vehicle.portraitAvatarUrl&&this.art?.includes('tokens')) {
+                        if (!zip.getEntry(`resources/vehicles/${uuid5(vehicle.portraitAvatarUrl,uuid5.URL)}_token.webp`)) {
+                            let imagesrc = (vehicle.portraitAvatarUrl.startsWith('listing_images/'))? zip.readFile(vehicle.portraitAvatarUrl) : await this.getImage(vehicle.portraitAvatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                            let image = sharp(imagesrc)
+                            let metadata = await image.metadata().catch(e=>console.log(`Could not read image: ${e}`))
+                            let r = (metadata.width>metadata.height)?metadata.height:metadata.width
+                            image = await image
+                                .composite([{
+                                    input:Buffer.from(`<svg><circle cx="${r/2}" cy="${r/2}" r="${r/2}"/></svg>`),
+                                    blend: 'dest-in'
+                                }])
+                                .webp().toBuffer().catch(e=>console.log(`Could not create token: ${e}`))
+                            await zip.addFile(`resources/vehicles/${uuid5(vehicle.portraitAvatarUrl,uuid5.URL)}_token.webp`,image)
+                        }
+                        fullEntry.token = `${uuid5(vehicle.portraitAvatarUrl,uuid5.URL)}_token.webp`
+                    }
+                } catch (e) {
+                    console.log(`Error creating token: ${e}\n${vehicle.portraitAvatarUrl}`)
+                }
+                compendium.push(fullEntry)
+                prog.value += (!filename)? (5*(1/vehicles.length)) : 1
+            }
+            console.log(`Total vehicles ${compendium.length}`)
+            if (filename) {
+                if (compendium.length === 0) {
+                    dialog.showMessageBox({message:"No vehicles are available from this source.",type:"info"})
+                        .then(prog.setCompleted())
+                    return
+                }
+                await zip.addFile("vehicles.json",Buffer.from(JSON.stringify(compendium),'utf8'),null)
+                prog.detail = `Writing compendium file`
+                zip.writeZip(filename)
+                prog.detail = `Saved compendium`
+                setTimeout(()=>prog.setCompleted(),1000)
+                console.log("Wrote compendium")
+                if (Notification.isSupported()) {
+                    const notification = new Notification({title: "Export Complete", body: `Compendium exported to ${filename}`})
+                    notification.show()
+                }
+            }
+            return compendium
+        }
+    }
+
+    async getV5Compendium(source=null,filename,zip=null,imageMap=null,prog=null,homebrew=false) {
+        zip = new AdmZip() 
+        const tdSvc = new turndown()
+        tdSvc.use(turndownGfm.gfm)
+        const convertXmlObj = (o)=>{
+            let obj = {
+                id: o._attrs.id,
+                data: {}
+            }
+            for (const attrib of o._content) {
+                const links = /(\[(?:[^\]]*)?\]\()((?:https?:\/\/)?[A-Za-z0-9\:\/\. -]+)(\))/gm
+                const linkAdj = (m,p1,p2,p3)=>{
+                    return `${p1}${fixDDBLinks(p2,this.ruledata)}${p3}`
+                }
+
+                const keys = Object.keys(attrib)
+                if (keys.length > 1) { console.log("More than one key!", attrib) }
+                const k = keys[0]
+                const keyMap = { 
+                    "action": "actions",
+                    "bonus": "bonusActions",
+                    "trait": "traits",
+                    "legendary": "legendaryActions",
+                    "mythic": "mythicActions",
+                    "reaction": "reactions",
+                    "description": "descr",
+                    "text": "descr",
+                    "passive": "passivePerception",
+                    "proficiency": "proficiencyBonus",
+                }
+                let key = keyMap[k] || k
+                if (["name","slug","token","image","descr","source","tags","page"].includes(key)) {
+                    if (key == "descr") {
+                        attrib[k]=attrib[k].replaceAll(links,linkAdj)
+                    }
+                    obj[key] = attrib[k]
+                } else if (typeof attrib[k] === 'object') {
+                    if (!(key in obj.data)) {
+                        obj.data[key] = []
+                    }
+                    if (Array.isArray(attrib[k])
+                        || ["skills","savingThrows","speed","senses"].includes(key)) {
+                        obj.data[key] = attrib[k]
+                    } else {
+                        if (attrib[k])
+                            for (const ok of Object.keys(attrib[k])) {
+                                attrib[k][ok] = attrib[k][ok].replaceAll(links,linkAdj)
+                            }
+                        obj.data[key].push(attrib[k])
+                    }
+                } else {
+                    if (["str","dex","con","int","wis","cha"].includes(k)) {
+                        if (!('abilities' in obj.data)) {
+                            obj.data.abilities = {}
+                        }
+                        obj.data.abilities[key] = attrib[k]
+                    } else {
+                        obj.data[key] = (typeof attrib[k] === 'string')?attrib[k].replaceAll(links,linkAdj):attrib[k]
+                    }
+                }
+            }
+            return obj
+        }
+        if (!prog) prog = new ProgressBar({title: "Please wait...",text: "Converting Compendium...", detail: "Please wait...", indeterminate: false, maxValue: 100})
+        process.once('unhandledRejection', (reason, _) => {
+            if (prog) prog.close()
+            dialog.showErrorBox('Unexpected error', `An unexpected error occurred while trying to convert the module: ${reason.stack||reason}`)
+              // Application specific logging, throwing an error, or other logic here
+        });
+        if (!this.ruledata) await this.getRuleData().catch(e=>{throw new Error(e)})
+        const [
+            monstersxml,
+            itemsxml,
+            spellsxml,
+            backgrounds,
+            { classes, subclasses },
+            feats,
+            races,
+            vehicles
+        ] = await Promise.all([
+            this.getMonsters(source,null,zip,imageMap,prog,homebrew,tdSvc),
+            this.getItems(source,null,zip,imageMap,prog,homebrew,tdSvc),
+            this.getSpells(source,null,zip,prog,homebrew,tdSvc),
+            this.getBackgrounds(source,null,zip,imageMap,prog,homebrew),
+            this.getClasses(source,null,zip,imageMap,prog,homebrew),
+            this.getFeats(source,null,zip,imageMap,prog,homebrew),
+            this.getRaces(source,null,zip,imageMap,prog,homebrew),
+            this.getVehicles(source,null,zip,imageMap,prog,homebrew)
+            ]).catch(e=>console.log(e))
+        const spells = spellsxml._content.map(convertXmlObj)
+        zip.getEntries().forEach(e=>{
+            if (e.entryName.startsWith('spells/')) {
+                e.entryName = 'resources/'+e.entryName
+            }
+        })
+        const items = itemsxml._content.map(convertXmlObj)
+        zip.getEntries().forEach(e=>{
+            if (e.entryName.startsWith('items/')) {
+                e.entryName = 'resources/'+e.entryName
+            }
+        })
+        const fullmonsters = monstersxml._content.map(convertXmlObj)
+        const monsters = fullmonsters.filter(f=>!f.data.npc)
+        zip.getEntries().forEach(e=>{
+            if (e.entryName.startsWith('monsters/')) {
+                e.entryName = 'resources/'+e.entryName
+            }
+        })
+        const npcs = fullmonsters.filter(f=>f.data.npc)
+        for (const npc of npcs) {
+            if (npc.image) {
+                if (!zip.getEntry(`resources/npcs/${npc.image}`)) {
+                    let image = zip.getEntry(`monsters/${npc.image}`)
+                    if (image) {
+                        if (monsters.find(m=>m.image==npc.image)) {
+                            await zip.addFile(`resources/npcs/${npc.image}`,zip.readFile(`monsters/${npc.image}`))
+                        } else {
+                            image.entryName = `resources/npcs/${npc.image}`
+                        }
+                    }
+                } else {
+                    console.log("Entry exists")
+                }
+            }
+            if (npc.token) {
+                if (!zip.getEntry(`resources/npcs/${npc.token}`)) {
+                    let image = zip.getEntry(`monsters/${npc.token}`)
+                    if (image) {
+                        if (monsters.find(m=>m.image==npc.token)) {
+                            await zip.addFile(`resources/npcs/${npc.token}`,zip.readFile(`monsters/${npc.token}`))
+                        } else {
+                            image.entryName = `resources/npcs/${npc.token}`
+                        }
+                    }
+                }
+            }
+        }
+
+        prog.detail = `Exporting condtions`
+        const conditions = this.ruledata.conditions.map(c=>({
+            id: uuid5(`ddb://conditions/${c.definition.id}`,uuid5.URL),
+            name: c.definition.name,
+            descr: tdSvc.turndown(c.definition.description),
+            type: "condition"
+        }))
+
+        prog.text = "Assembling Compendium..."
+        prog.value = 86
+        await zip.addFile("vehicles.json",Buffer.from(JSON.stringify(vehicles),'utf8'),null)
+        prog.value = 87
+        await zip.addFile("spells.json",Buffer.from(JSON.stringify(spells),'utf8'),null)
+        prog.value = 88
+        await zip.addFile("items.json",Buffer.from(JSON.stringify(items),'utf8'),null)
+        prog.value = 89
+        await zip.addFile("monsters.json",Buffer.from(JSON.stringify(monsters),'utf8'),null)
+        prog.value = 90
+        await zip.addFile("npcs.json",Buffer.from(JSON.stringify(npcs),'utf8'),null)
+        prog.value = 91
+        await zip.addFile("backgrounds.json",Buffer.from(JSON.stringify(backgrounds),'utf8'),null)
+        prog.value = 92
+        await zip.addFile("classes.json",Buffer.from(JSON.stringify(classes),'utf8'),null)
+        prog.value = 93
+        await zip.addFile("subclasses.json",Buffer.from(JSON.stringify(subclasses),'utf8'),null)
+        prog.value = 94
+        await zip.addFile("feats.json",Buffer.from(JSON.stringify(feats),'utf8'),null)
+        prog.value = 95
+        await zip.addFile("races.json",Buffer.from(JSON.stringify(races),'utf8'),null)
+        prog.value = 96
+        await zip.addFile("conditions.json",Buffer.from(JSON.stringify(conditions),'utf8'),null)
+        prog.value = 97
+        prog.detail = `Writing compendium file`
+        zip.writeZip(filename)
+        prog.value = 98
+        prog.detail = `Saved compendium`
+        setTimeout(()=>prog.setCompleted(),1000)
+        console.log("Wrote compendium")
+        if (Notification.isSupported()) {
+            const notification = new Notification({title: "Export Complete", body: `Compendium exported to ${filename}`})
+            notification.show()
+        }
+    }
+
     async getMonsterCount(source = 0,homebrew = false) {
         if (!homebrew) {
             const count = await new Promise((resolve,reject)=>{
@@ -1173,7 +2498,7 @@ class DDB {
         const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting monster id ${id}: ${e}`))
         return response?.data
     }
-    async getMonsters(source = 0,filename,zip=null,imageMap=null,prog=null,homebrew=false) {
+    async getMonsters(source = 0,filename,zip=null,imageMap=null,prog=null,homebrew=false,tdSvc=null) {
         const url = "https://monster-service.dndbeyond.com/v1/Monster"
         var params
         const count = (source instanceof Array)?source.length:await this.getMonsterCount(source,homebrew).catch((e)=>console.log(e))
@@ -1189,7 +2514,7 @@ class DDB {
         let monsters = []
         while ( pos <= count && count > 0) {
             if (!homebrew) {
-                const ids = (source instanceof Array)?source:await new Promise((resolve,reject)=>{
+                let ids = (source instanceof Array)?source:await new Promise((resolve,reject)=>{
                     if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
                         let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
                         manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
@@ -1201,32 +2526,67 @@ class DDB {
                     )
                     resolve(ids)
                 })
+                let monstercache
+                let cachedmonsters = []
+                if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache","monstercache.json"))) {
+                    console.log("loading cache")
+                    monstercache = JSON.parse(fs.readFileSync(path.join(app.getPath("cache"),app.getName(),"datacache","monstercache.json")))
+                    console.log(`filtering ${ids.length}`)
+                    console.log(`Cache has ${monstercache.length} entries`)
+                    ids = ids.filter(i=>{
+                        let cached = monstercache.find(c=>c.id==i)
+                        if (!cached || this.manifestTimestamp>cached.lastUpdate) {
+                            return true
+                        } else {
+                            cachedmonsters.push(cached)
+                            return false
+                        }
+                    })
+                    console.log(`ids is now ${ids.length}`)
+                }
                 let id_chunks = []
-                for (let i=0;i<ids.length;i+=15) {
-                    id_chunks.push(ids.slice(i,i+15))
+                for (let i=0;i<ids.length;i+=25) {
+                    id_chunks.push(ids.slice(i,i+25))
                 }
                 const getChunk = id => new Promise(resolve=>{
                         this.getMonsterById(id).then(m=>{
                             if (m) {
+                                for(let mu of m) {
+                                    mu.lastUpdate = new Date().getTime()
+                                }
                                 monsters = monsters.concat(m)
-                                prog.detail = `Retrieved ${monsters.length}/${count}...`
+                                prog.detail = `Retrieved ${monsters.length}/${count} monsters...`
                                 console.log(`${monsters.length}`)
-                                resolve(monsters.length)
+                                fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache","monstercache.json"),JSON.stringify(monsters.concat(cachedmonsters)))
+                                setTimeout(()=>resolve(monsters.length),Math.floor(Math.random()*500))
                             } else {
                                 console.log(`Retrying ${id.length} monsters`)
                                 this.getMonsterById(id).then(m=>{
                                     if (m) {
                                         monsters = monsters.concat(m)
-                                        prog.detail = `Retrieved ${monsters.length}/${count}...`
+                                        prog.detail = `Retrieved ${monsters.length}/${count} monsters...`
+                                        fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache","monstercache.json"),JSON.stringify(monsters.concat(cachedmonsters)))
+                                    } else {
+                                        console.log(`Retrying ${id.length} monsters again`)
+                                        this.getMonsterById(id).then(m=>{
+                                            if (m) {
+                                                monsters = monsters.concat(m)
+                                                prog.detail = `Retrieved ${monsters.length}/${count} monsters...`
+                                                fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache","monstercache.json"),JSON.stringify(monsters.concat(cachedmonsters)))
+                                            }
+                                            setTimeout(()=>resolve(monsters.length),Math.floor(Math.random()*500))
+                                        })
                                     }
-                                    resolve(monsters.length)
+                                    setTimeout(()=>resolve(monsters.length),Math.floor(Math.random()*500))
                                 })
                             }
                         })
                     })
                 console.log(`Retreiving ${id_chunks.length} sets of 25/${count}`)
-                await asyncPool(10,id_chunks,getChunk)
-                console.log(`${monsters.length}`)
+                for await (const _ of asyncPool(10,id_chunks,getChunk)) { }
+                monsters = monsters.concat(cachedmonsters)
+                console.log(`Retrieved ${monsters.length} (${cachedmonsters.length} cached)`)
+                fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache","monstercache.json"),JSON.stringify(monsters))
                 break
             } else {
                 console.log("Requesting up to 100...")
@@ -1240,7 +2600,7 @@ class DDB {
                 monsters = monsters.concat(await this.getMonsterById(response.data.map(m=>m.id)))
                 pos += 100
             }
-            prog.detail = `Retrieved ${monsters.length}/${count}...`
+            prog.detail = `Retrieved ${monsters.length}/${count} monsters...`
         }
         monsters = monsters.sort((a,b)=>a.name.normalize().localeCompare(b.name.normalize()))
         console.log(monsters.length,this.legacy)
@@ -1253,34 +2613,34 @@ class DDB {
         const getMonsterCompendium = monster => new Promise(resolve=>{
         //for (const monster of monsters) {
             if (!monster.isReleased&&!monster.isHomebrew) {
-                prog.value += (!filename)? (15*(1/count)) : 1
-                console.log(`Skipping ${monster.name} ${monster.isReleased} ${monster.isHomebrew}`)
+                //prog.value += (!filename)? (15*(1/count)) : 1
+                //console.log(`Skipping ${monster.name} ${monster.isReleased} ${monster.isHomebrew}`)
                 //continue
-                resolve()
+                return resolve()
             }
             if (monster.isHomebrew !== homebrew) {
-                prog.value += (!filename)? (15*(1/count)) : 1
+                //prog.value += (!filename)? (15*(1/count)) : 1
                 //continue
-                resolve()
+                return resolve()
             }
             if (source !== 29 && monster.sourceId === 29) {
-                prog.value += (!filename)? (15*(1/count)) : 1
+                //prog.value += (!filename)? (15*(1/count)) : 1
                 //continue
-                resolve()
+                return resolve()
             }
             monster.avatarUrl = imageMap?.find(s=>s.id===monster.id&&s.type===monster.entityTypeId)?.avatar || monster.avatarUrl
             monster.basicAvatarUrl = imageMap?.find(s=>s.id===monster.id&&s.type===monster.entityTypeId)?.basicAvatar || monster.basicAvatarUrl
             monster.avatarUrl = monster.avatarUrl?.replace("www.dndbeyond.com.com","www.dndbeyond.com")
             monster.basicAvatarUrl = monster.basicAvatarUrl?.replace("www.dndbeyond.com.com","www.dndbeyond.com")
             //compendium._content.push(await this.getMonsterEntry(monster,zip))
-            this.getMonsterEntry(monster,zip).then(entry=>{
+            this.getMonsterEntry(monster,zip,tdSvc).then(entry=>{
                 compendium._content.push(entry)
-                prog.detail = `Converted ${monster.name}`
-                prog.value += (!filename)? (15*(1/count)) : 1
+                if (!prog.isCompleted()) prog.detail = `Converting monster: ${monster.name}`
+                if (!prog.isCompleted()) prog.value += (!filename)? (15*(1/count)) : 1
                 resolve()
             })
         })
-        await asyncPool(10,monsters,getMonsterCompendium)
+        for await (const _ of asyncPool(10,monsters,getMonsterCompendium)) { }
         if (filename) {
             if (compendium._content.length === 0) {
                 dialog.showMessageBox({message:"No monsters are available from this source.",type:"info"})
@@ -1303,7 +2663,7 @@ class DDB {
         return compendium
     }
 
-    async getMonsterEntry(monster,zip) {
+    async getMonsterEntry(monster,zip,tdSvc) {
             var monsterEntry = {
                 _name: "monster",
                 _attrs: { id: uuid5(`ddb://monsters/${monster.id}`,uuid5.URL) },
@@ -1317,6 +2677,7 @@ class DDB {
                     {role: 'enemy'},
                     {passive: monster.passivePerception},
                 ] }
+            if (monster.tags.includes("NPC")) monsterEntry._content.push({npc: true})
             var cr = this.ruledata.challengeRatings.find(s=>s.id===monster.challengeRatingId).value
             if (cr==0.125) {
                 monsterEntry._content.push({cr: "1/8"})
@@ -1327,16 +2688,20 @@ class DDB {
             } else {
                 monsterEntry._content.push({cr: cr.toString()})
             }
+            monsterEntry._content.push({type: this.ruledata.monsterTypes.find(s=>s.id===monster.typeId)?.name||monster.typeId})
             if (monster.subTypes?.length>0) {
                 var subtypes = []
                 for (let subtype of monster.subTypes) {
                     subtypes.push(this.ruledata.monsterSubTypes.find(s=>s.id===subtype)?.name||subtype)
                 }
-                monsterEntry._content.push({type: `${this.ruledata.monsterTypes.find(s=>s.id===monster.typeId)?.name||monster.typeId} (${subtypes.join(", ")})`})
-            } else {
-                monsterEntry._content.push({type: this.ruledata.monsterTypes.find(s=>s.id===monster.typeId)?.name||monster.typeId})
+                if (tdSvc) {
+                    monsterEntry._content.push({typeDetail: subtypes.join(", ")})
+                } else {
+                    let type = monsterEntry._content.find(s=>s.type)
+                    type.type = `${this.ruledata.monsterTypes.find(s=>s.id===monster.typeId)?.name||monster.typeId} (${subtypes.join(", ")})`
+                }
             }
-            if (monster.swarm) {
+            if (monster.swarm && monster.swarm.name != '') {
                 let type = monsterEntry._content.find(s=>s.type)
                 type.type = `swarm of ${this.ruledata.creatureSizes.find(s=>s.id===monster.swarm.sizeId).name} ${this.ruledata.monsterTypes.find(s=>s.id===monster.swarm.typeId)?.pluralizedName}`
             }
@@ -1355,12 +2720,34 @@ class DDB {
                 resolve(skillList)
             })
             if (skillList?.length>0) monster.skills = skillList
-            if (monster.skills)
+            if (monster.skills?.length > 0 && tdSvc) {
+                monsterEntry._content.push({skills: Object.assign(...monster.skills.map(s=>{
+                            let skill = this.ruledata.abilitySkills.find(r=>r.id===s.skillId).name.trim()
+                                .replace(/^\w|\b\w/g,(w,i)=>(i===0)?w.toLowerCase():w.toUpperCase()).replace(/\s+/g,'')
+                            return { [skill]: s.value+(s.additionalBonus||0) }
+                        })
+                    )
+                })
+            } else if (monster.skills && !tdSvc) {
                 monsterEntry._content.push({skill: monster.skills.map(s=>`${this.ruledata.abilitySkills.find(r=>r.id===s.skillId).name} ${s.value>0?'+':''}${s.value+(s.additionalBonus||0)}`).join(', ')})
+            } 
             if (monster.senses)
-                monsterEntry._content.push({senses: monster.senses.map(s=>`${this.ruledata.senses.find(r=>r.id===s.senseId).name} ${s.notes}`).join(', ')})
-            if (monster.conditionImmunities)
+                if (tdSvc) {
+                    let senses = {}
+                    for (const s of monster.senses) {
+                        senses[this.ruledata.senses.find(r=>r.id===s.senseId).name.toLowerCase()] = Number(s.notes.replace(/\D/g, ""))
+                    }
+                    monsterEntry._content.push({senses: senses})
+                } else {
+                    monsterEntry._content.push({senses: monster.senses.map(s=>`${this.ruledata.senses.find(r=>r.id===s.senseId).name} ${s.notes}`).join(', ')})
+                }
+            if (monster.conditionImmunities) {
+                if (tdSvc) {
+                    monsterEntry._content.push({conditionImmune: monster.conditionImmunities.map(c=>this.ruledata.conditions.find(s=>s.definition.id===c).definition.name)})
+                } else {
                     monsterEntry._content.push({conditionImmune: monster.conditionImmunities.map(c=>this.ruledata.conditions.find(s=>s.definition.id===c).definition.name).join(", ")})
+                }
+            }
             if (monster.damageAdjustments?.length>0) {
                 let resist = monster.damageAdjustments
                     .filter(s=>this.ruledata.damageAdjustments.find(d=>d.id===s&&d.type===1))
@@ -1371,9 +2758,15 @@ class DDB {
                 let vuln = monster.damageAdjustments
                     .filter(s=>this.ruledata.damageAdjustments.find(d=>d.id===s&&d.type===3))
                     .map(s=>this.ruledata.damageAdjustments.find(d=>d.id===s)?.name)
-                if (resist.length>0) monsterEntry._content.push({resist: resist.join(", ")})
-                if (immune.length>0) monsterEntry._content.push({immune: immune.join(", ")})
-                if (vuln.length>0) monsterEntry._content.push({vulnerable: vuln.join(", ")})
+                if (tdSvc) {
+                    if (resist.length>0) monsterEntry._content.push({damageResistances: resist.map(e=>e.toLowerCase())})
+                    if (immune.length>0) monsterEntry._content.push({damageImmunities: immune.map(e=>e.toLowerCase())})
+                    if (vuln.length>0) monsterEntry._content.push({damageVulnerabilities: vuln.map(e=>e.toLowerCase())})
+                } else {
+                    if (resist.length>0) monsterEntry._content.push({resist: resist.join(", ")})
+                    if (immune.length>0) monsterEntry._content.push({immune: immune.join(", ")})
+                    if (vuln.length>0) monsterEntry._content.push({vulnerable: vuln.join(", ")})
+                }
             }
             var proficiency = this.ruledata.challengeRatings.find(s=>s.id===monster.challengeRatingId).proficiencyBonus
             monsterEntry._content.push({proficiency: proficiency})
@@ -1383,15 +2776,22 @@ class DDB {
                 environments.push(this.ruledata.environments.find(s=>s.id===environ)?.name||environ.toString())
             }
             monsterEntry._content.push({environments: environments.join(", ")})
-            var movement = []
+            let movement = (tdSvc)? {} : []
             for (let move of monster.movements) {
+                if (tdSvc) {
+                    movement[(this.ruledata.movements.find(s=>s.id===move.movementId)?.name||move.movementId.toString()).toLowerCase()] = move.speed
+                    continue
+                }
                 if (move.movementId === 1) {
                     movement.unshift(`${move.speed} ft.${(move.notes)? ` (${move.notes})` : ''}`)
                 } else {
                     movement.push((this.ruledata.movements.find(s=>s.id===move.movementId)?.name||move.movementId.toString()).toLowerCase() + ` ${move.speed} ft.${(move.notes)? ` (${move.notes})` : ''}`)
                 }
             }
-            monsterEntry._content.push({speed: movement.join(", ")})
+            if (tdSvc)
+                monsterEntry._content.push({speed: movement})
+            else
+                monsterEntry._content.push({speed: movement.join(", ")})
             for (let stat of monster.stats) {
                 switch(stat.statId) {
                     case 1: monsterEntry._content.push({str: stat.value}); break;
@@ -1403,32 +2803,77 @@ class DDB {
                     default: console.log(stat)
                 }
             }
-            var saves = []
+            let saves = []
             for (let save of monster.savingThrows) {
                 let bonus = Math.floor((monster.stats.find(s=>s.statId===save.statId).value-10)/2)+proficiency
                 if (save.bonusModifier) bonus += save.bonusModifier
-                bonus = (bonus<0)? bonus.toString() : "+"+bonus.toString()
-                switch(save.statId) {
-                    case 1: saves.push(`STR ${bonus}`); break;
-                    case 2: saves.push(`DEX ${bonus}`); break;
-                    case 3: saves.push(`CON ${bonus}`); break;
-                    case 4: saves.push(`INT ${bonus}`); break;
-                    case 5: saves.push(`WIS ${bonus}`); break;
-                    case 6: saves.push(`CHA ${bonus}`); break;
-                    default: console.log(stat)
+                if (tdSvc) {
+                    saves = {}
+                    switch(save.statId) {
+                        case 1: saves.str = bonus; break;
+                        case 2: saves.dex = bonus; break;
+                        case 3: saves.con = bonus; break;
+                        case 4: saves.int = bonus; break;
+                        case 5: saves.wis = bonus; break;
+                        case 6: saves.cha = bonus; break;
+                        default: console.log(stat)
+                    }
+                } else {
+                    bonus = (bonus<0)? bonus.toString() : "+"+bonus.toString()
+                    switch(save.statId) {
+                        case 1: saves.push(`STR ${bonus}`); break;
+                        case 2: saves.push(`DEX ${bonus}`); break;
+                        case 3: saves.push(`CON ${bonus}`); break;
+                        case 4: saves.push(`INT ${bonus}`); break;
+                        case 5: saves.push(`WIS ${bonus}`); break;
+                        case 6: saves.push(`CHA ${bonus}`); break;
+                        default: console.log(stat)
+                    }
                 }
             }
-            monsterEntry._content.push({save: saves.join(", ")})
+            if (tdSvc) 
+                monsterEntry._content.push({savingThrows: saves})
+            else
+                monsterEntry._content.push({save: saves.join(", ")})
             const handleTraits = (field,type,prefix="")=>{
                 const traitRegex = /^(?:<i>)?(<b>(.*?)<\/b>)?.*$/g
-                for (let t of sanitize(field,this.ruledata).split(/\r\n|\n/)) {
-                    let m = traitRegex.exec(t); if (!m||!m[0]) continue
-                    let txt = m[0].replace(m[1],'')
-                    if (monsterEntry._content[monsterEntry._content.length-1]?.[type] && !m[1]) {
-                        monsterEntry._content[monsterEntry._content.length-1][type].text += "\n"+txt
-                        continue
+                /*
+                 * "<p><em><strong>Warhammer. </strong>Melee Weapon Attack</em>: +4 to hit, reach 5 ft., one target. <em>Hit:</em> 6 (1d8 + 2) bludgeoning damage, or 7 (1d10 + 2) bludgeoning damage if used with two hands.</p>\r\n<p><em><strong>Heavy Crossbow. </strong>Ranged Weapon Attack:</em> +2 to hit, range 100/400 ft., one target. <em>Hit:</em> 5 (1d10) piercing damage. Augrek carries ten crossbow bolts.&nbsp;</p>\r\n<h3>Roleplaying Information</h3>\r\n<p>Sheriff&rsquo;s deputy Augrek guards the southwest gate of Bryn Shander and welcomes visitors to town. She has a good heart.</p>\r\n<p><em><strong>Ideal:</strong></em> &ldquo;You&rsquo;ll get farther in life with a kind word than an axe.&rdquo;</p>\r\n<p><em><strong>Bond:</strong></em> &ldquo;Bryn Shander is my home. It&rsquo;s my job to protect her.&rdquo;</p>\r\n<p><em><strong>Flaw:</strong></em> &ldquo;I&rsquo;m head over heels in love with Sheriff Southwell. One day I hope to marry him.&rdquo;</p>",
+                 */
+                if (tdSvc) {
+                    let combined = false
+                    if (!field) return
+                    for (let t of field?.split(/\r\n|\n/)) {
+                        if (t.match(/^<h\d>/)) {
+                            combined = true
+                            monsterEntry._content.push( {[type]: { name: '', text: tdSvc.turndown(t) }} )
+                            continue
+                        }
+                        if (combined) {
+                            let txt = tdSvc.turndown(t)
+                            monsterEntry._content[monsterEntry._content.length-1][type].text += "\n"+txt
+                            continue
+                        }
+                        let m = /^<p>(?:<em>)?(<strong>(.*?)(?:\.\s*)?<\/strong>)?.*<\/p>$/g.exec(t); if (!m||!m[0]) continue
+                        let name = `${prefix}${m[2]||''}`
+                        let txt = tdSvc.turndown(m[0].replace(m[1],''))
+                        if (monsterEntry._content[monsterEntry._content.length-1]?.[type] && !m[1]) {
+                            monsterEntry._content[monsterEntry._content.length-1][type].text += "\n"+txt
+                            continue
+                        }
+                        monsterEntry._content.push( {[type]: { name: name, text: txt }} )
                     }
-                    monsterEntry._content.push( {[type]: { name: `${prefix}${m[2]||''}`, text: txt }} )
+                } else {
+                    for (let t of sanitize(field,this.ruledata).split(/\r\n|\n/)) {
+                        let m = traitRegex.exec(t); if (!m||!m[0]) continue
+                        let name = `${prefix}${m[2]||''}`
+                        let txt = m[0].replace(m[1],'')
+                        if (monsterEntry._content[monsterEntry._content.length-1]?.[type] && !m[1]) {
+                            monsterEntry._content[monsterEntry._content.length-1][type].text += "\n"+txt
+                            continue
+                        }
+                        monsterEntry._content.push( {[type]: { name: name, text: txt }} )
+                    }
                 }
             }
             handleTraits(monster.specialTraitsDescription,"trait")
@@ -1437,10 +2882,21 @@ class DDB {
             handleTraits(monster.reactionsDescription,"reaction")
             handleTraits(monster.legendaryActionsDescription,"legendary")
             handleTraits(monster.mythicActionsDescription,"mythic")
+            let description = (tdSvc)? tdSvc.turndown(monster.characteristicsDescription) : sanitize(monster.characteristicsDescription,this.ruledata)
+            if (monster.lairDescription) {
+                description = (tdSvc)?
+                    tdSvc.turndown(monster.lairDescription)+"\n---\n"+description :
+                    sanitize(monster.lairDescription+'<hr/>',this.ruledata)+'\n'+description
+            }
+            if (!tdSvc) {
+                description += (monster.sourceId)?`\n<i>Source: ${this.ruledata.sources.find((s)=> monster.sourceId === s.id)?.description}${(monster.sourcePageNumber)?  ` p. ${monster.sourcePageNumber}` : '' }</i>`:''
+            } else {
+                monsterEntry._content.push({source: this.ruledata.sources.find(s=>s.id===monster.sources[0]?.sourceId)?.description||'' })
+                if (monster.sources[0]?.pageNumber) 
+                    monsterEntry._content.push({page: monster.sources[0]?.pageNumber})
+            }
             monsterEntry._content.push({
-                description: `${(monster.lairDescription)?sanitize(monster.lairDescription+'<hr/>',this.ruledata)+'\n':''}${sanitize(monster.characteristicsDescription,this.ruledata)}
-
-${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sourceId === s.id)?.description}${(monster.sourcePageNumber)?  ` p. ${monster.sourcePageNumber}` : '' }</i>`:''}`
+                description: description
             })
             try{
                 if ((monster.basicAvatarUrl||monster.largeAvatarUrl)&&this.art?.includes('artwork')) {
@@ -1450,11 +2906,11 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                             await zip.addFile(`monsters/${imageFile}`,zip.readFile(monster.basicAvatarUrl||monster.largeAvatarUrl))
                             zip.deleteFile(monster.basicAvatarUrl||monster.largeAvatarUrl)
                         } else if (!zip.getEntry(`monsters/${path.basename(imageFile,path.extname(imageFile))}.webp`)) {
-                            let imagesrc = await this.getImage(monster.basicAvatarUrl||monster.largeAvatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                            let imagesrc = await this.getImage(monster.basicAvatarUrl||monster.largeAvatarUrl).catch(()=>{})
                             if (!imagesrc || imagesrc.toString().substring(0,5).match(/^<\?xml/)) {
                                 let imgurl = new URL(monster.basicAvatarUrl||monster.largeAvatarUrl)
                                 imgurl.pathname = imgurl.pathname.replace(/[/][0-9]+\/[0-9]+[/]([^/]+)$/,'/1000/1000/$1')
-                                imagesrc = await this.getImage(imgurl.toString()).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                                imagesrc = await this.getImage(imgurl.toString()).catch(e=>console.log(`Could not retrieve image: ${e} ${imgurl}`))
                             }
                             imageFile = `${path.basename(imageFile,path.extname(imageFile))}.webp`
                             let image = await sharp(imagesrc).webp().toBuffer()
@@ -1498,7 +2954,7 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
         const keyurl = "https://www.dndbeyond.com/mobile/api/v6/book-codes"
         const book = this.ruledata.sources.find(s=>s.id===moduleId)
         var prog
-        if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"imagecache",`${book.name.toLowerCase()}.zip`))) {
+        if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"modcache",`${book.name.toLowerCase()}.zip`))) {
             let manifestVersion = 0
             if (fs.existsSync(path.join(app.getPath("userData"),"manifest.zip"))) {
                 let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
@@ -1506,7 +2962,7 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
             }
             let modVersion = 0
             let bookkey = null
-            let modCache = new AdmZip(path.join(app.getPath("cache"),app.getName(),"imagecache",`${book.name.toLowerCase()}.zip`))
+            let modCache = new AdmZip(path.join(app.getPath("cache"),app.getName(),"modcache",`${book.name.toLowerCase()}.zip`))
             try {
                 bookkey = modCache.getZipEntryComment(`${book.name.toLowerCase()}.db3`)
                 modVersion = parseInt(modCache.readAsText("version.txt").trim())
@@ -1527,7 +2983,7 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                     value: 0
                 })
 
-                fs.copyFile(path.join(app.getPath("cache"),app.getName(),"imagecache",`${book.name.toLowerCase()}.zip`),filename,()=>{
+                fs.copyFile(path.join(app.getPath("cache"),app.getName(),"modcache",`${book.name.toLowerCase()}.zip`),filename,()=>{
                     prog.value = 15
                     this.convertModule(moduleId,bookkey,filename,prog)
                 })
@@ -1560,7 +3016,7 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                 //prog.setCompleted()
                 let modCache = new AdmZip(filename)
                 modCache.addZipEntryComment(`${book.name.toLowerCase()}.db3`,bookkey.data[0].data)
-                modCache.writeZip(path.join(app.getPath("cache"),app.getName(),"imagecache",`${book.name.toLowerCase()}.zip`))
+                modCache.writeZip(path.join(app.getPath("cache"),app.getName(),"modcache",`${book.name.toLowerCase()}.zip`))
                 this.convertModule(moduleId,bookkey.data[0].data,filename,prog)
             }
         })
@@ -1574,6 +3030,11 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
             detail: "Extracting database...",
             indeterminate: true,
         })
+        process.once('unhandledRejection', (reason, promise) => {
+            if (prog) prog.close()
+            dialog.showErrorBox('Unexpected error', `An unexpected error occurred while trying to convert the module: ${reason.stack||reason}`)
+              // Application specific logging, throwing an error, or other logic here
+        });
         prog.text = "Converting book..."
         prog.detail = "Extracting database..."
         var mod = {
@@ -1600,7 +3061,7 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
         modVer = modVer.map(Number)
         mod._attrs.version = (modVer[0] * (1000**3)) + (modVer[1] * (1000**2)) + (modVer[2] * 1000) + (modVer[3])
         zip.extractEntryTo(`${book.name.toLowerCase()}.db3`,temp.name,false,true)
-        var db = sqlite3(path.join(temp.name,`${book.name.toLowerCase()}.db3`),{ verbose: console.log })
+        var db = sqlite3(path.join(temp.name,`${book.name.toLowerCase()}.db3`))
         var imageMap = []
         var slugIdMap = {}
         prog.detail = `Loading images..`
@@ -1624,7 +3085,7 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                             prog.detail = `Retrieving images: ${local.replace(/^[\/]/,'')}`
                         }
                         prog.value += ((1/files.length)*10)
-                        resolve(prog.value)
+                        return resolve(prog.value)
                     }).catch(e=>{
                         console.log(`Could not download better file: ${e}`)
                         this.getImage(file.RemoteUrl).then(img=>{
@@ -1647,7 +3108,7 @@ ${(monster.sourceId)?`<i>Source: ${this.ruledata.sources.find((s)=> monster.sour
                     .finally(()=>resolve(prog.value))
                 }
             })
-            await asyncPool(10,files,getFile)
+            for await (const _ of asyncPool(10,files,getFile)) { }
         }
         db.pragma(`cipher='sqlcipher'`)
         db.pragma(`legacy=3`)
@@ -1953,6 +3414,7 @@ h1 + p:not(.no-fancy)::first-letter {
 
 .top-next-nav {
     display: flex;
+    flex-flow: wrap;
     background: #fff;
     border: 1px solid #CBC6C3;
     padding: 7px;
@@ -3290,6 +4752,23 @@ function doSearch(el,resId) {
         this.expiration = new Date().getTime()
         this.campaigns = []
         this.css = []
+        this.sources = null
+        this.manifestTimestamp = 0
+        this.ratelimit = 0
+        this.timer=setInterval(()=>{
+            this.ratelimit = (this.ratelimit > 0)? this.ratelimit -= 1 : 0
+        },1000)
+        if (fs.existsSync(path.join(app.getPath("userData"),"manifest.zip"))) {
+            if (fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                const stat = fs.statSync(path.join(app.getPath("userData"),"skeleton.db3"))
+                const mstat = fs.statSync(path.join(app.getPath("userData"),"manifest.zip"))
+                if (mstat.mtime > stat.mtime) {
+                    let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                    manifest.extractEntryTo("skeleton.db3",app.getPath("userData"),false,true)
+                }
+                this.manifestTimestamp = mstat.mtimeMs
+            }
+        }
     }
 }
 
