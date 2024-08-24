@@ -39,6 +39,10 @@ const numbers = {
 function slugify(str) {
     return Slugify(str,{ lower: true, strict: true })
 }
+function camelCase(str) {
+    return str.trim().replace(/^\w|\b\w/g,(w,i)=>(i===0)?w.toLowerCase():w.toUpperCase()).replace(/\s+/g,' |-')
+}
+                        
 function fixDDBLinks(text,rulesdata) {
         text = text.replace(/^https:\/\/dndbeyond.com\/linkout\?remoteUrl=/,'')
         if (rulesdata) {
@@ -2048,6 +2052,9 @@ class DDB {
                 entry.size = this.ruledata.creatureSizes.find(s=>s.id===vehicle.sizeId).name.charAt(0).toUpperCase()
                 if (vehicle.length && vehicle.width)
                     entry.dimensions = `${vehicle.length} ft. by ${vehicle.width} ft.`
+                else if (vehicle.weight) {
+                    entry.dimensions =`${(vehicle.weight).toLocaleString()} lb.`
+                }
                 if (vehicle.creatureCapacity?.find(c=>c.type == "crew")) entry.crew = vehicle.creatureCapacity?.find(c=>c.type == "crew").capacity
                 if (vehicle.creatureCapacity?.find(c=>c.type == "passengers")) entry.passengers = vehicle.creatureCapacity?.find(c=>c.type == "passengers").capacity
 
@@ -2066,9 +2073,9 @@ class DDB {
                         }
                     }
                 }
-                entry.features = []
+                entry.traits = []
                 for(const feature of vehicle.features) {
-                    entry.features.push({ name: feature.name||'', text: feature.description })
+                    entry.traits.push({ name: feature.name||'', text: feature.description })
                 }
                 entry.actions = []
                 if (vehicle.actionsText) {
@@ -2148,9 +2155,7 @@ class DDB {
                     if (component.description) item.descr = tdSvc.turndown(component.description)
                     if (def.requiredCrew) item.crew = def.requiredCrew
                     if (def.coverType) {
-                        const cover = `_Requires ${item.crew} Crew and Grants ${def.coverType.replace(/\w\S*/,t=>t.charAt(0).toUpperCase()+t.substring(1).toLowerCase())} Cover_`
-                        item.features.push({text: cover})
-                        
+                        item.cover = camelCase(def.coverType)
                     }
                     if (!(entry.type == "infernalWarMachine" && def.types.some(t=>t.type=="helm"))) {
                         if (def.armorClass) item.ac = (def.armorClassDescription)?
