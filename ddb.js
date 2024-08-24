@@ -2129,6 +2129,7 @@ class DDB {
                     let part
                     let item = {}
                     item.features = []
+                    let adjustment
                     if (def.types.some(t=>t.type=="hull")) {
                         if (!entry.hull) entry.hull = []
                         part = entry.hull
@@ -2145,7 +2146,7 @@ class DDB {
                         for (const adj of type.adjustments) {
                             let unit = ''
                             if (adj.type == "speed") unit = ' ft.'
-                            item.features.push({text: `_hp ${adj.values.map(v=>`${v.perDamageValue}${unit} ${adj.type} per ${v.perDamageTaken}`).join(', ')}_`})
+                            adjustment = `${adj.values.map(v=>`${v.perDamageValue}${unit} ${adj.type} per ${v.perDamageTaken} damage taken`).join(', ')}`
                         }
                         part = entry.movements
                     } else {
@@ -2184,6 +2185,7 @@ class DDB {
                                 speed.push(s)
                             }
                             item.speed = speed.join(', ')
+                            if (adjustment) item.speed += `; ${adjustment}`;
                         }
                     }
                     if (def.actionsDescription) item.features.push( {text: tdSvc.turndown(def.actionsDescription) } )
