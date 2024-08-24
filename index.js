@@ -1,4 +1,4 @@
-const {app, session, BrowserWindow, ipcMain, net, Menu, MenuItem, dialog, shell, Notification, webContents} = require('electron')
+const {app, session, BrowserWindow, ipcMain, net, Menu, MenuItem, dialog, shell, Notification, webContents, screen} = require('electron')
 const ElectronPreferences = require('electron-preferences')
 const WebSocket = require('ws')
 const path = require('path')
@@ -265,6 +265,25 @@ app.on('ready', () => {
                 preload: path.join(__dirname,'preload.js')
             }
         })
+        const splash = new BrowserWindow({
+            show: false,
+            width: 512,
+            height: 512,
+            transparent: true,
+            frame: false,
+            alwaysOnTop: true
+        })
+        const winSize = preferences.value('window.size')
+        if (winSize) {
+            win.setSize(winSize[0],winSize[1],false)
+        }
+        const winPos = preferences.value('window.position');
+        if (winPos && winPos[0] < screen.getPrimaryDisplay().size.width && winPos[1] < screen.getPrimaryDisplay().size.height) {
+            win.setPosition(winPos[0],winPos[1],false)
+        }
+        splash.center()
+        splash.loadFile("splash.html")
+        splash.show()
         //win.webContents.openDevTools()
 	_win = win
         ddb = new DDB()
@@ -369,6 +388,18 @@ app.on('ready', () => {
             }
         )
         win.once('ready-to-show', () => {
+            let splashInt = setInterval(()=>{
+                if (!splash?.isVisible()) 
+                    clearInterval(splashInt)
+                const op = splash.getOpacity()
+                if (op > 0) {
+                    splash.setOpacity(op - .02)
+                } else {
+                    clearInterval(splashInt)
+                    splash.close()
+                }
+                },5)
+
             win.show()
         })
         
@@ -465,7 +496,11 @@ app.on('ready', () => {
                 })
             }
         })
-        win.on('closed',()=>app.quit())
+        win.on('resized',()=>{ preferences.value('window.size', win.getSize()); preferences.save() })
+        win.on('moved',()=>{ preferences.value('window.position', win.getPosition()); preferences.save() })
+        win.on('closed',()=>{
+            app.quit()
+        })
 	ipcMain.on("changefilter", (event,data) => {
 		let name = data[0];
 		let filter = data[1];
@@ -1367,14 +1402,14 @@ async function connectGameLog(gameId,userId,campaignName) {
                         if (!eplusws) {
                             eplusws = document.createElement('div')
                             eplusws.id = 'eWsStatus'
-                            eplusws.style.position = 'fixed'
-                            eplusws.style.top = '53px'
+                            eplusws.style.position = 'absolute'
+                            eplusws.style.top = '122px'
                             eplusws.style.right = '0'
                             eplusws.style.width = 'auto'
                             eplusws.style.zIndex = '99999999999'
                             document.body.appendChild(eplusws)
                         }
-                        eplusws.innerHTML = "&#x1F7E2; Connected to EncounterPlus at ${encounterhost}"
+                        eplusws.innerHTML = "Connected to EncounterPlus at ${encounterhost} &#x1F7E2;"
                         }`,true).catch(e=>console.log(e))
                 } else if (!encounterhost) {
                     _win.webContents.executeJavaScript(`{
@@ -1382,14 +1417,14 @@ async function connectGameLog(gameId,userId,campaignName) {
                         if (!eplusws) {
                             eplusws = document.createElement('div')
                             eplusws.id = 'eWsStatus'
-                            eplusws.style.position = 'fixed'
-                            eplusws.style.top = '53px'
+                            eplusws.style.position = 'absolute'
+                            eplusws.style.top = '122px'
                             eplusws.style.right = '0'
                             eplusws.style.width = 'auto'
                             eplusws.style.zIndex = '99999999999'
                             document.body.appendChild(eplusws)
                         }
-                        eplusws.innerHTML = "&#x1F534; EncounterPlus remote host not configured"
+                        eplusws.innerHTML = "EncounterPlus remote host not configured &#x1F6AB;"
                         }`,true).catch(e=>console.log(e))
                 } else {
                     _win.webContents.executeJavaScript(`{
@@ -1397,14 +1432,14 @@ async function connectGameLog(gameId,userId,campaignName) {
                         if (!eplusws) {
                             eplusws = document.createElement('div')
                             eplusws.id = 'eWsStatus'
-                            eplusws.style.position = 'fixed'
-                            eplusws.style.top = '53px'
+                            eplusws.style.position = 'absolute'
+                            eplusws.style.top = '122px'
                             eplusws.style.right = '0'
                             eplusws.style.width = 'auto'
                             eplusws.style.zIndex = '99999999999'
                             document.body.appendChild(eplusws)
                         }
-                        eplusws.innerHTML = "&#x1F534; Disconnected from EncounterPlus at ${encounterhost}"
+                        eplusws.innerHTML = "Disconnected from EncounterPlus at ${encounterhost} &#x1F534;"
                         }`,true).catch(e=>console.log(e))
                     connectEWS(JSON.stringify({name: "createMessage", data: msgJson}))
                 }
@@ -1590,14 +1625,14 @@ function connectEWS(msg=null,initial=false) {
                 if (!eplusws) {
                     eplusws = document.createElement('div')
                     eplusws.id = 'eWsStatus'
-                    eplusws.style.position = 'fixed'
-                    eplusws.style.top = '53px'
+                    eplusws.style.position = 'absolute'
+                    eplusws.style.top = '122px'
                     eplusws.style.right = '0'
                     eplusws.style.width = 'auto'
                     eplusws.style.zIndex = '99999999999'
                     document.body.appendChild(eplusws)
                 }
-                eplusws.innerHTML = "&#x1F7E2; Connected to EncounterPlus at ${encounterhost}"
+                eplusws.innerHTML = "Connected to EncounterPlus at ${encounterhost} &#x1F7E2;"
                 }`,true).catch(e=>console.log(e))
             _eWs.on('message',(data)=>{
                 const msg = JSON.parse(data)
@@ -1652,14 +1687,14 @@ function connectEWS(msg=null,initial=false) {
                 if (!eplusws) {
                     eplusws = document.createElement('div')
                     eplusws.id = 'eWsStatus'
-                    eplusws.style.position = 'fixed'
-                    eplusws.style.top = '53px'
+                    eplusws.style.position = 'absolute'
+                    eplusws.style.top = '122px'
                     eplusws.style.right = '0'
                     eplusws.style.width = 'auto'
                     eplusws.style.zIndex = '99999999999'
                     document.body.appendChild(eplusws)
                 }
-                eplusws.innerHTML = "&#x1F534; Disconnected from EncounterPlus at ${encounterhost}"
+                eplusws.innerHTML = "Disconnected from EncounterPlus at ${encounterhost} &#x1F534;"
                 }`,true).catch(e=>console.log(e))
             if (!_ws?.isDisconnecting) {
                     setTimeout(connectEWS,_eWsDelay)
