@@ -1520,7 +1520,6 @@ class DDB {
             tdSvc.use(turndownGfm.gfm)
             let entry = {}
             entry.name = cls.name
-            entry.ddbraw = cls
             let sources = []
             for (let source of cls.sources) {
                 let sourceName = this.ruledata.sources.find(s=>s.id===source.sourceId)?.description
@@ -2990,10 +2989,9 @@ class DDB {
                     value: 0
                 })
 
-                fs.copyFile(path.join(app.getPath("cache"),app.getName(),"modcache",`${book.name.toLowerCase()}.zip`),filename,()=>{
-                    prog.value = 15
-                    this.convertModule(moduleId,bookkey,filename,prog)
-                })
+                fs.copyFileSync(path.join(app.getPath("cache"),app.getName(),"modcache",`${book.name.toLowerCase()}.zip`),filename)
+                prog.value = 15
+                await this.convertModule(moduleId,bookkey,filename,prog)
                 return
             }
         }
@@ -3001,7 +2999,7 @@ class DDB {
             .catch(e=>{throw new Error(`Could not get book key: ${e}`)})
         const bookurl = await this.postRequest(url,params)
             .catch(e=>{throw new Error(`Could not get book url: ${e}`)})
-        download(win,bookurl.data,{
+        await download(win,bookurl.data,{
             saveAs: false,
             filename: path.basename(filename),
             directory: path.dirname(filename),

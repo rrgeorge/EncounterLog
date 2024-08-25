@@ -162,6 +162,7 @@
     "electron-preferences": "^2.8.2",
     "electron-progressbar": "^2.0.1",
     "electron-updater": "6.3.3",
+    "express": "^4.19.2",
     "fuse.js": "^6.5.3",
     "he": "^1.2.0",
     "html-to-text": "^8.0.0",

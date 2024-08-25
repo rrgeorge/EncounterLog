@@ -12,6 +12,9 @@ const DDB = require('./ddb')
 const fs = require('fs')
 const { autoUpdater } = require('electron-updater')
 const { convert } = require('html-to-text')
+const { networkInterfaces } = require('os')
+const { isObject } = require('util')
+const http = require('./http')
 
 var _ws = null
 var _eWs = null
@@ -162,6 +165,14 @@ const preferences = new ElectronPreferences({
                                             { 'label': 'In "Maps" group', 'value': 'group' },
                                         ],
                                     },
+                                    {
+					'label': "After conversion is complete, EncounterLog can launch a web server for E+ to download the manifest and data from",
+					'key': 'launchserver',
+					'type': 'checkbox',
+                                        'options': [
+                                            { 'label': 'Launch Server After Conversion', 'value': true },
+                                        ]
+                                    },
                                 ],
                             },
                             {
@@ -267,8 +278,8 @@ app.on('ready', () => {
         })
         const splash = new BrowserWindow({
             show: false,
-            width: 512,
-            height: 512,
+            width: 256,
+            height: 256,
             transparent: true,
             frame: false,
             alwaysOnTop: true
@@ -389,17 +400,16 @@ app.on('ready', () => {
         )
         win.once('ready-to-show', () => {
             let splashInt = setInterval(()=>{
-                if (!splash?.isVisible()) 
-                    clearInterval(splashInt)
-                const op = splash.getOpacity()
-                if (op > 0) {
-                    splash.setOpacity(op - .02)
-                } else {
-                    clearInterval(splashInt)
-                    splash.close()
-                }
+                    if (!splash?.isVisible()) 
+                        clearInterval(splashInt)
+                    const op = splash.getOpacity()
+                    if (op > 0) {
+                        splash.setOpacity(op - .02)
+                    } else {
+                        clearInterval(splashInt)
+                        splash.close()
+                    }
                 },5)
-
             win.show()
         })
         
@@ -715,7 +725,21 @@ function populateCompendiumMenu(force=false) {
                                 defaultPath: `${book.bookCode.toLowerCase()}-v5.compendium`,
                             }).then((save) => {
                                 if (save.filePath)
-                                    ddb.getV5Compendium(book.id,save.filePath)
+                                    ddb.getV5Compendium(book.id,save.filePath).then(()=>{
+                                        if (preferences.value('export.launchserver').includes(true)) {
+                                            let httpServer = new http(save.filePath,'all','Complete Compendium')
+                                            httpServer.server.then((s)=>{
+                                                dialog.showMessageBox(_win,{
+                                                    title: 'Server Running',
+                                                    message: `The web server is running. Set the manifest to http://${httpServer.ipaddr}:${httpServer.port}. It will shutdown after you close this dialog.`,
+                                                    type: "info"
+                                                }).then((r)=>{
+                                                    s.close()
+                                                })
+                                            })
+                                        }
+                                    })
+
                                 }
                             )
                           }
@@ -887,7 +911,20 @@ function populateCompendiumMenu(force=false) {
                         defaultPath: `v5.compendium`,
                     }).then((save) => {
                         if (save.filePath)
-                            ddb.getV5Compendium(null,save.filePath)
+                            ddb.getV5Compendium(null,save.filePath).then(()=>{
+                                if (preferences.value('export.launchserver').includes(true)) {
+                                    let httpServer = new http(save.filePath,'all','Complete Compendium')
+                                    httpServer.server.then((s)=>{
+                                        dialog.showMessageBox(_win,{
+                                            title: 'Server Running',
+                                            message: `The web server is running. Set the manifest to http://${httpServer.ipaddr}:${httpServer.port}. It will shutdown after you close this dialog.`,
+                                            type: "info"
+                                        }).then((r)=>{
+                                            s.close()
+                                        })
+                                    })
+                                }
+                            })
                         }
                     )
                   }
