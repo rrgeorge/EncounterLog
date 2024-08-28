@@ -575,7 +575,7 @@ class DDB {
     }
 
     postRequest(url,postbody='',auth=false) {
-        console.log("POST request",url)
+        //console.log("POST request",url)
             return new Promise((resolve,reject) => {
                     const request = net.request({url: url,useSessionCookies: false,method: "POST"})
                     request.setHeader('Content-Type', "application/x-www-form-urlencoded")
@@ -619,7 +619,7 @@ class DDB {
     }
 
     getRequest(url,auth=false) {
-        console.log("GET request",url)
+        //console.log("GET request",url)
             return new Promise((resolve,reject) => {
                     const request = net.request({url: url,useSessionCookies: false})
                     if (auth) {
@@ -669,7 +669,7 @@ class DDB {
                         && alt.toString()!=url
                         && fs.existsSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(alt.toString(),uuid5.URL)))
                     ) {
-                        console.log(`USING Fixed URL`)
+                        //console.log(`USING Fixed URL`)
                         url = alt.toString()
                     }
                     if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)))) {
@@ -689,7 +689,7 @@ class DDB {
                             }
                           })
                         } else {
-                            console.log(`IMG HEAD REQ ${url}`,cacheStat.mtime,cacheStat.atime,yesterday)
+                            //console.log(`IMG HEAD REQ ${url}`,cacheStat.mtime,cacheStat.atime,yesterday)
                             const request = net.request({url: url,useSessionCookies: false,method:"HEAD"})
                             if (auth) {
                                 request.setHeader('Authorization',`Bearer ${this.cobaltauth}`)
@@ -753,7 +753,7 @@ class DDB {
                             ratelimit()
                         }
                     } else {
-                        console.log("IMG GET request - no cache",url)
+                        //console.log("IMG GET request - no cache",url)
                         const request = net.request({url: url,useSessionCookies: false})
                         if (auth) {
                             request.setHeader('Authorization',`Bearer ${this.cobaltauth}`)
