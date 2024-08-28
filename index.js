@@ -669,7 +669,21 @@ function populateCompendiumMenu(force=false) {
                                 defaultPath: `${book.bookCode.toLowerCase()}.module`,
                             }).then((save) => {
                                 if (save.filePath)
-                                    ddb.getModule(book.id,save.filePath,_win).catch(e=>displayError(e))
+                                    ddb.getModule(book.id,save.filePath,_win).then(()=>{
+                                            if (preferences.value('export.launchserver').includes(true)) {
+                                                let httpServer = new http(save.filePath,book.bookCode.toLowerCase(),book.book)
+                                                httpServer.server.then((s)=>{
+                                                    dialog.showMessageBox(_win,{
+                                                        title: 'Server Running',
+                                                        message: `The web server is running. Set the manifest to:\nhttp://${httpServer.ipaddr}:${httpServer.port}\nIt will shutdown after you close this dialog.`,
+                                                        type: "info"
+                                                    }).then((r)=>{
+                                                        s.close()
+                                                    })
+                                                })
+                                            }
+                                        }
+                                        ).catch(e=>displayError(e))
                                 }
                             )
                           }
@@ -731,7 +745,7 @@ function populateCompendiumMenu(force=false) {
                                             httpServer.server.then((s)=>{
                                                 dialog.showMessageBox(_win,{
                                                     title: 'Server Running',
-                                                    message: `The web server is running. Set the manifest to http://${httpServer.ipaddr}:${httpServer.port}. It will shutdown after you close this dialog.`,
+                                                    message: `The web server is running. Set the manifest to:\nhttp://${httpServer.ipaddr}:${httpServer.port}\nIt will shutdown after you close this dialog.`,
                                                     type: "info"
                                                 }).then((r)=>{
                                                     s.close()
@@ -804,7 +818,21 @@ function populateCompendiumMenu(force=false) {
                                     defaultPath: `${book.bookCode.toLowerCase()}.module`,
                                 }).then((save) => {
                                     if (save.filePath)
-                                        ddb.getModule(book.id,save.filePath,_win).catch(e=>displayError(e))
+                                        ddb.getModule(book.id,save.filePath,_win).then(()=>{
+                                            if (preferences.value('export.launchserver').includes(true)) {
+                                                let httpServer = new http(save.filePath,book.bookCode.toLowerCase(),book.book)
+                                                httpServer.server.then((s)=>{
+                                                    dialog.showMessageBox(_win,{
+                                                        title: 'Server Running',
+                                                        message: `The web server is running. Set the manifest to:\nhttp://${httpServer.ipaddr}:${httpServer.port}\nIt will shutdown after you close this dialog.`,
+                                                        type: "info"
+                                                    }).then((r)=>{
+                                                        s.close()
+                                                    })
+                                                })
+                                            }
+                                        }
+                                        ).catch(e=>displayError(e))
                                     }
                                 )
                               }
@@ -917,7 +945,7 @@ function populateCompendiumMenu(force=false) {
                                     httpServer.server.then((s)=>{
                                         dialog.showMessageBox(_win,{
                                             title: 'Server Running',
-                                            message: `The web server is running. Set the manifest to http://${httpServer.ipaddr}:${httpServer.port}. It will shutdown after you close this dialog.`,
+                                            message: `The web server is running. Set the manifest to:\nhttp://${httpServer.ipaddr}:${httpServer.port}\nIt will shutdown after you close this dialog.`,
                                             type: "info"
                                         }).then((r)=>{
                                             s.close()
@@ -943,9 +971,9 @@ function populateCompendiumMenu(force=false) {
 function requestCampaignChars(gameId,cobalt) {
 	return new Promise((resolve,reject) => {
 		const url = `https://www.dndbeyond.com/api/campaign/characters/${gameId}`
-		const request = net.request({url: url})
+		const request = net.request({url: url,useSessionCookies:true})
 		request.setHeader('Authorization',`Bearer ${cobalt}`)
-                request.setHeader('Cookie',`CobaltSession=${ddb.cobaltsession}`)
+                //request.setHeader('Cookie',`CobaltSession=${ddb.cobaltsession}`)
                 request.setHeader('Accept','application/json')
 		let body = ''
 		request.on('response', (response) => {

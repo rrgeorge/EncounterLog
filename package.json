@@ -155,6 +155,7 @@
   "dependencies": {
     "@electron/notarize": "^2.2.0",
     "@google-cloud/vision": "^2.3.8",
+    "@joplin/turndown-plugin-gfm": "^1.0.56",
     "adm-zip": "^0.5.9",
     "better-sqlite3-multiple-ciphers": "^11.1.2",
     "build": "^0.1.4",

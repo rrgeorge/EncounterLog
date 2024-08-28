@@ -19,7 +19,7 @@ const asyncPool = require('tiny-async-pool');
 const fs = require('fs');
 const semver = require('semver');
 const turndown = require('turndown');
-const turndownGfm = require('turndown-plugin-gfm');
+const turndownGfm = require('@joplin/turndown-plugin-gfm');
 
 const RATE = 10000
 
@@ -36,46 +36,159 @@ const numbers = {
     ten: 10
 }
 
+const isNPC = [
+    "Spiderbait",
+    "Yuk Yuk"
+]
+const notNPC = [
+    "Bandit",
+    "Commoner",
+    "Cultist",
+    "Scout",
+    "Spy",
+    "Thug"
+]
+
 function slugify(str) {
-    return Slugify(str,{ lower: true, strict: true })
+   return Slugify(str,{ lower: true, strict: true })
 }
 function camelCase(str) {
     return str.trim().replace(/^\w|\b\w/g,(w,i)=>(i===0)?w.toLowerCase():w.toUpperCase()).replace(/\s+/g,' |-')
 }
                         
-function fixDDBLinks(text,rulesdata) {
-        text = text.replace(/^https:\/\/dndbeyond.com\/linkout\?remoteUrl=/,'')
+function fixDDBLinks(text,rulesdata,v5=false) {
+        let orig = text
+        text = text.replace(/^https?:\/\/dndbeyond.com\/linkout\?remoteUrl=/,'')
         if (rulesdata) {
-            if (text.match(/^\/compendium\/rules\/basic-rules\/.*/)) {
-                text = text.replace(/^\/compendium\/rules\//,"https://www.dndbeyond.com/sources/")
+            if (text.match(/^(https?:\/\/(?:www\.|draft\.)?dndbeyond\.com)?\/+compendium\/(rules|adventures)\/.*/)) {
+                text = text.replace(/^(https?:\/\/(?:www\.|draft\.)?dndbeyond\.com)?\/+compendium\/(rules|adventures)\//,"https://www.dndbeyond.com/sources/")
             }
-            let ddburl = text.match(/^https:\/\/(?:www\.)?dndbeyond\.com\/(sources\/[^\/]*)/)
+            if (v5) {
+                let m
+                if (m = text.match(/appendix-a-conditions#(\w+)/))
+                    if (rulesdata.conditions.find(r=>slugify(r.definition.name)==slugify(m[1])))
+                        return `/rule/condition-${slugify(m[1])}`
+                if (m = text.match(/using-ability-scores#(\w+)/)) {
+                    let match = rulesdata.abilitySkills.find(r=>
+                        slugify(r.name)==slugify(m[1])
+                        || slugify(r.name.replace(/\s+/g,'')) == slugify(m[1])
+                    )
+                    if (match) {
+                        return `/rule/skill-${slugify(match.name)}`
+                    } else if (rulesdata.stats.find(r=>slugify(r.name)==slugify(m[1]))) {
+                        return `/rule/stat-${slugify(m[1])}`
+                    }
+                }
+                if (m = text.match(/combat#(\w+)/)) {
+                    let match = rulesdata.basicActions.find(r=>
+                        slugify(r.name)==slugify(m[1])
+                        || slugify(r.name.replace(/\s+/g,'')) == slugify(m[1])
+                        || ( r.name.toLowerCase() == "grapple" && 
+                            m[1].toLowerCase() == "grappling")
+                        || ( r.name.toLowerCase() == "opportunity attack" &&
+                            m[1].toLowerCase() == "opportunityattacks")
+                    )
+                    if (match)
+                        return `/rule/action-${slugify(match.name)}`
+                }
+                if (m = text.match(/monsters#(\w+)/))
+                    if (rulesdata.senses.find(r=>slugify(r.name)==slugify(m[1])))
+                        return `/rule/sense-${slugify(m[1])}`
+            }
+            if (
+                text.match(/appendix-a-conditions#(\w+)/) ||
+                text.match(/using-ability-scores#(\w+)/) ||
+                text.match(/monsters#(\w+)/)
+                ) {
+                console.warn('BR Didnt match!',text)
+            }
+            let ddburl = text.match(/^https:\/\/(?:www\.|draft\.)?dndbeyond\.com\/(sources\/[^\/ ]*)/)
             if (ddburl) {
                 let source = rulesdata.sources?.find(s=>{
                     if (s.sourceURL.toLowerCase()==ddburl[1].toLowerCase()) {
                         return true
-                    } else if (s.sourceURL.toLowerCase().replace('/dnd')==ddburl[1].toLowerCase()) {
+                    } else if (s.sourceURL.toLowerCase().replace('/dnd','')==ddburl[1].toLowerCase()) {
+                        return true
+                    } else if (s.sourceURL.toLowerCase().replace(/-2014$/,'')==ddburl[1].toLowerCase()) {
+                        return true
+                    } else if (s.sourceURL.toLowerCase().replace('/dnd','').replace(/-2014$/,'')==ddburl[1].toLowerCase()) {
                         return true
                     }
                     return false
                 })
                 if (source) {
-                    text=text.replaceAll(new RegExp(`https:\/\/(?:www\.)?dndbeyond\.com\/${source.sourceURL}`,'ig'),`/module/${source.name.toLowerCase()}/page`).replaceAll(/\/page$/g,`/page/${source.name.toLowerCase()}`)
+                    text=text.replaceAll(new RegExp(`https:\/\/(?:www\.|draft\.)?dndbeyond\.com\/${ddburl[1]}`,'ig'),`/module/${source.name.toLowerCase()}/page`).replaceAll(/\/page$/g,`/page/${source.name.toLowerCase()}`)
+                    if (source.name.toLowerCase()=='sais') {
+                        text=text.replace(/(\/sais\/page\/(?:bam|aag|lox))\/(.*)/,'$1-$2')
+                    }
                 }
             }
+            if (text.match(/^https:/)) {
+                text=text.replace(/^(?:https:\/\/(?:www\.|draft\.)?dndbeyond\.com)?\/(?:(background|class|feat|vehicle)e?s)\/([^ ]*)/,(_,p1,p2)=>{
+                    if (p1 == "class") {
+                        if (rulesdata.classConfigurations.find(c=>slugify(c.name)==p2)) {
+                            return `/${p1}/${p2}`;
+                        } else {
+                            return `/sub${p1}/${p2}`;
+                        }
+                    } else {
+                        return `/${p1}/${p2}`;
+                    }
+                })
+            }
         }
-        text=text.replace(/^\/(monsters|spells|armor|weapons|adventuring-gear|magic-items)\/(?:([0-9]+)(?:-.*)?)?/,(_,p1,p2)=>{
+        text=text.replace(/^(?:https:\/\/(?:www\.|draft\.)?dndbeyond\.com)?\/(monsters|spells|armor|weapons|adventuring-gear|magic-items|equipment)\/(?:([0-9]+)-?)?(.*)?/,(m,p1,p2,p3)=>{
+            if (!p3) {
+                console.log(orig,m)
+            }
             switch(p1) {
                 case "monsters":
-                    return `/monster/${(p2)?uuid5(`ddb://${p1}/${p2}`,uuid5.URL):''}`;
+                    return `/monster/${(p3)?p3:uuid5(`ddb://${p1}/${p2}`,uuid5.URL)}`;
                 case "spells":
-                    return `/spell/${(p2)?uuid5(`ddb://${p1}/${p2}`,uuid5.URL):''}`;
+                    return `/spell/${(p3)?p3:uuid5(`ddb://${p1}/${p2}`,uuid5.URL)}`;
                 default:
-                    return `/item/${(p2)?uuid5(`ddb://${p1}/${p2}`,uuid5.URL):''}`;
+                    return `/item/${(p3)?p3:uuid5(`ddb://${p1}/${p2}`,uuid5.URL)}`;
             }
         })
+        if (orig==text && !text.startsWith('/')) console.warn('NO MATCH:',orig)
         return text
 }
+
+function fixDDBTag(text,markdown = false) {
+    const tags = /(\\|)\[([^\]]*)\1\]([^[;]*)(?:;([^[]*))?\1\[\/\2\1\]/gs
+    const convert = (m,_,p1,p2,p3) => {
+        let slug = slugify(sanitize(p2))
+        let path = p1
+        let label = p3||p2
+        if (p1 == "magicitem") path = "item"
+        if (p1 == "rollable") {
+            label = p2
+            let roll = {}
+            try{
+                diceNotation = JSON.parse(p3)
+            } catch(e) {
+                console.log(`Error ${e}`,p3)
+            }
+            if (!roll.diceNotation) roll.diceNotation = '1d20'
+            if (!roll.rollType) roll.rollType = 'roll'
+            if (!roll.rollAction) roll.rollAction = label
+            path = 'roll'
+            slug = `${roll.diceNotation}/${roll.rollAction}/${roll.rollType}`
+
+        }
+        if (p1 == "skill" || p1 == "sense" || p1 == "stat") path = "custom"
+        if (markdown) {
+            return `(${label})[/${path}/${slug}]`
+        } else {
+            return `<a href="/${path}/${slug}">${label}</a>`
+        }
+    }
+    return text.replaceAll(tags,convert)
+}
+
+
+const markDownLinks = /(\[(?:[^\]]*)?\]\()((?:https?:\/\/)?[A-Za-z0-9\:\/\.\?#=-]+)((?: "[^"]*?")?\))/gm
+
 function sanitize(text,rulesdata=null) {
     return convert(text,{
         wordwrap: null,
@@ -223,6 +336,8 @@ function applyMeta (playerMap,meta,info,page,headings,siblingHeadings) {
             y: Math.round(((t.y - offset.y)*scale) + (t.height*grid.size/2)),
             hidden: (t.hidden)? "YES" : "NO",
             size: (t.width!=t.height)?`${t.width}x${t.height}`:(t.width>4)?"C":(t.width>3)?"G":(t.width>2)?"H":(t.width>1)?"L":(t.width<.5||t.scale<=.5)?"T":(t.width<1||t.scale<1)?"S":"M",
+            height: t.height,
+            width: t.width,
             rotation: t.rotation||0,
             elevation: t.elevation||0,
             scale:(t.width<.5||t.scale<=.5)?0.7:(t.width<1||t.scale<1)?0.8:1,
@@ -258,7 +373,9 @@ function applyMeta (playerMap,meta,info,page,headings,siblingHeadings) {
                     locked: "YES",
                     x: Math.round(((d.x+(d.width/2))-offset.x)*scale),
                     y: Math.round(((d.y+(d.height/2))-offset.y)*scale),
-                    content: {_attrs: { ref: `/page/${pageslug}#${marker.id}` }}
+                    content: {_attrs: { ref: `/page/${pageslug}#${marker.id}`,
+                        id: uuid5(`marker-${playerMap._content.filter(f=>f.marker).length}`,playerMap._attrs.id) },
+                    }
                 }
             })
         } else {
@@ -273,6 +390,7 @@ function applyMeta (playerMap,meta,info,page,headings,siblingHeadings) {
                     locked: "YES",
                     x: Math.round(((d.x+(d.width/2))-offset.x)*scale),
                     y: Math.round(((d.y+(d.height/2))-offset.y)*scale),
+                    content: {_attrs: { id: uuid5(`marker-${playerMap._content.filter(f=>f.marker).length}`,playerMap._attrs.id) } }
                 }
             })
         }
@@ -303,7 +421,9 @@ function applyMeta (playerMap,meta,info,page,headings,siblingHeadings) {
                         locked: "YES",
                         x: Math.round((pos.x-offset.x)*scale),
                         y: Math.round((pos.y-offset.y)*scale),
-                        content: {_attrs: { ref: `/page/${pageslug}#${marker.id}` }}
+                        content: {_attrs: { ref: `/page/${pageslug}#${marker.id}`,
+                            id: uuid5(`marker-${playerMap._content.filter(f=>f.marker).length}`,playerMap._attrs.id)
+                        }}
                     }
                 })
             }
@@ -357,6 +477,7 @@ function applyMeta (playerMap,meta,info,page,headings,siblingHeadings) {
 }
 
 class DDB {
+
     searchCookies() {
 	return new Promise((resolve,reject) => {
 	    session.defaultSession.cookies.get({})
@@ -433,6 +554,10 @@ class DDB {
             fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`rulecache.json`),JSON.stringify(res))
         }
         this.ruledata = res
+
+        this.v5LinkAdj = (m,p1,p2,p3) => {
+            return `${p1}${fixDDBLinks(p2,this.ruledata,true)}${p3}`
+        }
     }
     async getCobaltAuth() {
         try {
@@ -450,7 +575,7 @@ class DDB {
     }
 
     postRequest(url,postbody='',auth=false) {
-        //console.log("POST request",url)
+        console.log("POST request",url)
             return new Promise((resolve,reject) => {
                     const request = net.request({url: url,useSessionCookies: false,method: "POST"})
                     request.setHeader('Content-Type', "application/x-www-form-urlencoded")
@@ -494,7 +619,7 @@ class DDB {
     }
 
     getRequest(url,auth=false) {
-        //console.log("GET request",url)
+        console.log("GET request",url)
             return new Promise((resolve,reject) => {
                     const request = net.request({url: url,useSessionCookies: false})
                     if (auth) {
@@ -544,11 +669,16 @@ class DDB {
                         && alt.toString()!=url
                         && fs.existsSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(alt.toString(),uuid5.URL)))
                     ) {
+                        console.log(`USING Fixed URL`)
                         url = alt.toString()
                     }
                     if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)))) {
                         const cacheStat = fs.statSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)))
-                        if (cacheStat.mtime > (new Date())) {
+                        const yesterday = new Date(new Date().setHours(new Date().getHours() - 24))
+                        if (cacheStat.mtime > (new Date())||cacheStat.atime>yesterday) {
+                            //if (cacheStat.ctime<yesterday && cacheStat.mtime <(new Date())) {
+                            //    console.log("Cache should be invalidated",url)
+                            //}
                           fs.readFile(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),(e,f)=>{
                             if (e) {
                                 console.log(`Cache error: ${e}`)
@@ -559,13 +689,13 @@ class DDB {
                             }
                           })
                         } else {
-                            //console.log("IMG HEAD request",url)
+                            console.log(`IMG HEAD REQ ${url}`,cacheStat.mtime,cacheStat.atime,yesterday)
                             const request = net.request({url: url,useSessionCookies: false,method:"HEAD"})
                             if (auth) {
                                 request.setHeader('Authorization',`Bearer ${this.cobaltauth}`)
                             }
                             request.on('response', (response) => {
-                              if (response.statusCode != 200 || cacheStat.mtime < Date(response.headers["last-modified"])) {
+                              if ((response.statusCode != 403 && response.statusCode != 200) || cacheStat.mtime < Date(response.headers["last-modified"])) {
                                   fs.rmSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),{force: true})
                                   this.getImage(url,auth).then(img=>resolve(img)).catch(e=>reject(e))
                               } else {
@@ -575,26 +705,28 @@ class DDB {
                                         fs.rmSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),{force: true})
                                         this.getImage(url,auth).then(img=>resolve(img)).catch(e=>reject(e))
                                     } else {
-                                        const cachecontrol = response.headers["cache-control"]
-                                        try {
-                                        if (!cachecontrol || !cachecontrol.match(/no-store/)) {
-                                            const maxAge = /max-age=([0-9]+)/.exec(cachecontrol||'')
-                                            if (maxAge) {
-                                                let exp = new Date()
-                                                exp.setSeconds(parseInt(maxAge[1]))
-                                                if (response.headers["age"]) {
-                                                    exp.setSeconds(exp.getSeconds() - parseInt(response.headers["age"]))
+                                        if (response.statusCode == 200) {
+                                            const cachecontrol = response.headers["cache-control"]
+                                            try {
+                                                if (!cachecontrol || !cachecontrol.match(/no-store/)) {
+                                                    const maxAge = /max-age=([0-9]+)/.exec(cachecontrol||'')
+                                                    if (maxAge) {
+                                                        let exp = new Date()
+                                                        exp.setSeconds(parseInt(maxAge[1]))
+                                                        if (response.headers["age"]) {
+                                                            exp.setSeconds(exp.getSeconds() - parseInt(response.headers["age"]))
+                                                        }
+                                                        fs.utimes(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),new Date(),exp,()=>{})
+                                                    } else if (response.headers["expires"]) {
+                                                        const exp = Date(response.headers["expires"])
+                                                        fs.utimes(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),new Date(),exp,()=>{})
+                                                    }
                                                 }
-                                                fs.utimes(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),exp,exp,()=>{})
-                                            } else if (response.headers["expires"]) {
-                                                const exp = Date(response.headers["expires"])
-                                                fs.utimes(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),exp,exp,()=>{})
+                                            } catch (e) {
+                                                console.log(e)
                                             }
                                         }
-                                        } catch (e) {
-                                            console.log(e)
-                                        }
-                                      resolve(f)
+                                        resolve(f)
                                     }
                                   })
                               }
@@ -621,7 +753,7 @@ class DDB {
                             ratelimit()
                         }
                     } else {
-                        //console.log("IMG GET request - no cache",url)
+                        console.log("IMG GET request - no cache",url)
                         const request = net.request({url: url,useSessionCookies: false})
                         if (auth) {
                             request.setHeader('Authorization',`Bearer ${this.cobaltauth}`)
@@ -629,7 +761,8 @@ class DDB {
                         request.on('response', (response) => {
                           let body = new Buffer.alloc(0)
                           if (response.statusCode != 200) {
-                                  reject(response.statusCode)
+                              console.log(response.statusCode)
+                                  return reject(response.statusCode)
                           }
                           response.on('data', (chunk) => {
                             body = Buffer.concat([body,chunk])
@@ -1276,6 +1409,7 @@ class DDB {
                         description += `<a href="/item/${linkedId}">${linked.name}</a>\n`
                     }
                 }
+                description = fixDDBTag(description)
                 let sources = []
                 for (let source of item.sources) {
                     let sourceName = this.ruledata.sources.find(s=>s.id===source.sourceId)?.description
@@ -1616,10 +1750,24 @@ class DDB {
                     if (tools) entry.tools = tools[1].trim().split(/, ?/)
                 }
                 if (["Hit Points","Proficiencies","Equipment"].includes(feat.name)) continue
+                let description = tdSvc.turndown(feat.description)
+                if ((cls.id == 46 && feat.id == 354) ||
+                    (cls.id == 37 && feat.id == 220)
+                ) {
+                    // Fix Arcane Trickster Table
+                    // Fix Eldridch Knight Table
+                    description = description
+                        .replace(/^((?:\| +\*\*\d..\*\* +){4}\|)$/m,'|||$1')
+                        .replaceAll(/(\|\s+){3}/gm,'').replaceAll(/(<br>){2}/g,' ')
+                        .replace('— Spell Slots per Spell Level —','— Slots** | **per** | **Spell** | **Level —')
+                } else if ((cls.id == 608164 && feat.id == 2780278)) {
+                    // Fix Oath of the Open Sea Table
+                    description = tdSvc.turndown(feat.description.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1'))
+                }
                 entry.features.push({
                     level: feat.requiredLevel,
                     name: feat.name,
-                    text: tdSvc.turndown(feat.description),
+                    text: description.replaceAll(markDownLinks,this.v5LinkAdj),
                     prerequisite: feat.prerequisite&&tdSvc.turndown(feat.prerequisite),
                 })
             }
@@ -1632,7 +1780,7 @@ class DDB {
             let fullEntry = {
                 id: uuid5(`ddb://classes/${(parentClass)?`${cls.parentClassId}/${cls.id}`:cls.id}`,uuid5.URL),
                 name: cls.name,
-                descr: tdSvc.turndown(cls.description),
+                descr: tdSvc.turndown(cls.description).replaceAll(markDownLinks,this.v5LinkAdj),
                 source: entry.source,
                 page: entry.page,
                 data: entry
@@ -1680,7 +1828,7 @@ class DDB {
                 for (const trait of race.racialTraits) {
                     entry.traits.push({
                         name: trait.definition.name,
-                        text: tdSvc.turndown(trait.definition.description)
+                        text: tdSvc.turndown(trait.definition.description).replaceAll(markDownLinks,this.v5LinkAdj)
                     })
                 }
                 entry.speed = {}
@@ -1693,7 +1841,7 @@ class DDB {
                 let fullEntry = {
                     id: uuid5(`ddb://races/${race.entityRaceId}`,uuid5.URL),
                     name: race.fullName,
-                    descr: tdSvc.turndown(race.description),
+                    descr: tdSvc.turndown(race.description).replaceAll(markDownLinks,this.v5LinkAdj),
                     source: entry.source,
                     url: `https://dndbeyond.com${race.moreDetailsUrl}`,
                     page: entry.page,
@@ -1820,14 +1968,13 @@ class DDB {
                 entry.value = background.equipmentDescription
                 entry.entries = [{
                     name: background.featureName,
-                    text: tdSvc.turndown(background.featureDescription)
+                    text: tdSvc.turndown(background.featureDescription).replaceAll(markDownLinks,this.v5LinkAdj)
                 }]
                 let fullEntry = {
                     id: uuid5(`ddb://backgrounds/${background.id}`,uuid5.URL),
                     name: background.name,
-                    descr: tdSvc.turndown(background.description),
+                    descr: tdSvc.turndown(background.description).replaceAll(markDownLinks,this.v5LinkAdj),
                     source: entry.source,
-                    url: `https://dndbeyond.com${background.moreDetailsUrl}`,
                     page: entry.page,
                     data: entry
                 }
@@ -1940,9 +2087,8 @@ class DDB {
                 let fullEntry = {
                     id: uuid5(`ddb://feats/${feat.id}`,uuid5.URL),
                     name: feat.name,
-                    descr: tdSvc.turndown(feat.description),
+                    descr: tdSvc.turndown(feat.description).replaceAll(markDownLinks,this.v5LinkAdj),
                     source: entry.source,
-                    url: `https://dndbeyond.com${feat.moreDetailsUrl}`,
                     page: entry.page,
                     data: entry
                 }
@@ -2152,7 +2298,7 @@ class DDB {
                         continue
                     }
                     if (def.name) item.name = def.name
-                    if (component.description) item.descr = tdSvc.turndown(component.description)
+                    if (component.description) item.descr = tdSvc.turndown(component.description).replaceAll(markDownLinks,this.v5LinkAdj)
                     if (def.requiredCrew) item.crew = def.requiredCrew
                     if (def.coverType) {
                         item.cover = camelCase(def.coverType)
@@ -2187,12 +2333,12 @@ class DDB {
                             if (adjustment) item.speed += `; ${adjustment}`;
                         }
                     }
-                    if (def.actionsDescription) item.features.push( {text: tdSvc.turndown(def.actionsDescription) } )
+                    if (def.actionsDescription) item.features.push( {text: tdSvc.turndown(def.actionsDescription).replaceAll(markDownLinks,this.v5LinkAdj) } )
                     if (def.actions) {
                         for (const act of def.actions) {
                             let action = {}
                             if (act.name) action.name = act.name
-                            action.text = tdSvc.turndown(act.description)
+                            action.text = tdSvc.turndown(act.description).replaceAll(markDownLinks,this.v5LinkAdj)
                             item.features.push(action)
                         }
                     }
@@ -2215,9 +2361,9 @@ class DDB {
                 let fullEntry = {
                     id: uuid5(`ddb://vehicles/${vehicle.id}`,uuid5.URL),
                     name: vehicle.name,
-                    descr: tdSvc.turndown(vehicle.description),
+                    descr: tdSvc.turndown(fixDDBTag(vehicle.description)).replaceAll(markDownLinks,this.v5LinkAdj),
                     source: entry.source,
-                    url: `https://dndbeyond.com${vehicle.moreDetailsUrl}`,
+                    url: (vehicle.moreDetailsUrl||vehicle.url)?`https://dndbeyond.com${vehicle.moreDetailsUrl||vehicle.url}`:null,
                     page: entry.page,
                     data: entry
                 }
@@ -2300,10 +2446,6 @@ class DDB {
                 data: {}
             }
             for (const attrib of o._content) {
-                const links = /(\[(?:[^\]]*)?\]\()((?:https?:\/\/)?[A-Za-z0-9\:\/\. -]+)(\))/gm
-                const linkAdj = (m,p1,p2,p3)=>{
-                    return `${p1}${fixDDBLinks(p2,this.ruledata)}${p3}`
-                }
 
                 const keys = Object.keys(attrib)
                 if (keys.length > 1) { console.log("More than one key!", attrib) }
@@ -2323,10 +2465,14 @@ class DDB {
                 let key = keyMap[k] || k
                 if (["name","slug","token","image","descr","source","tags","page"].includes(key)) {
                     if (key == "descr") {
-                        attrib[k]=attrib[k].replaceAll(links,linkAdj)
+                        attrib[k]=attrib[k].replaceAll(markDownLinks,this.v5LinkAdj)
                     }
                     obj[key] = attrib[k]
                 } else if (typeof attrib[k] === 'object') {
+                    if (attrib[k] === null) {
+                        obj.data[key] = null
+                        continue
+                    }
                     if (!(key in obj.data)) {
                         obj.data[key] = []
                     }
@@ -2336,7 +2482,7 @@ class DDB {
                     } else {
                         if (attrib[k])
                             for (const ok of Object.keys(attrib[k])) {
-                                attrib[k][ok] = attrib[k][ok].replaceAll(links,linkAdj)
+                                attrib[k][ok] = attrib[k][ok].replaceAll(markDownLinks,this.v5LinkAdj)
                             }
                         obj.data[key].push(attrib[k])
                     }
@@ -2347,7 +2493,7 @@ class DDB {
                         }
                         obj.data.abilities[key] = attrib[k]
                     } else {
-                        obj.data[key] = (typeof attrib[k] === 'string')?attrib[k].replaceAll(links,linkAdj):attrib[k]
+                        obj.data[key] = (typeof attrib[k] === 'string')?attrib[k].replaceAll(markDownLinks,this.v5LinkAdj):attrib[k]
                     }
                 }
             }
@@ -2359,6 +2505,11 @@ class DDB {
             dialog.showErrorBox('Unexpected error', `An unexpected error occurred while trying to convert the module: ${reason.stack||reason}`)
               // Application specific logging, throwing an error, or other logic here
         });
+        await new Promise(resolve=>{
+            prog.on('ready',()=>resolve())
+        })
+        prog.value = 0
+        await this.getCobaltAuth()
         if (!this.ruledata) await this.getRuleData().catch(e=>{throw new Error(e)})
         const [
             monstersxml,
@@ -2378,7 +2529,7 @@ class DDB {
             this.getFeats(source,null,zip,imageMap,prog,homebrew),
             this.getRaces(source,null,zip,imageMap,prog,homebrew),
             this.getVehicles(source,null,zip,imageMap,prog,homebrew)
-            ]).catch(e=>console.log(e))
+            ])
         const spells = spellsxml._content.map(convertXmlObj)
         zip.getEntries().forEach(e=>{
             if (e.entryName.startsWith('spells/')) {
@@ -2392,12 +2543,13 @@ class DDB {
             }
         })
         const fullmonsters = monstersxml._content.map(convertXmlObj)
-        const monsters = fullmonsters.filter(f=>!f.data.npc)
+        const monsters = fullmonsters//.filter(f=>!f.data.npc)
         zip.getEntries().forEach(e=>{
             if (e.entryName.startsWith('monsters/')) {
                 e.entryName = 'resources/'+e.entryName
             }
         })
+        /*
         const npcs = fullmonsters.filter(f=>f.data.npc)
         for (const npc of npcs) {
             if (npc.image) {
@@ -2427,14 +2579,68 @@ class DDB {
                 }
             }
         }
-
+        */
+        prog.detail = `Exporting actions`
+        const actions = this.ruledata.basicActions.map(c=>({
+            id: uuid5(`ddb://basic-actions/${c.id}`,uuid5.URL),
+            name: c.name,
+            slug: slugify(`action ${c.name}`),
+            descr: tdSvc.turndown(c.description),
+            type: "action",
+            tags: [ "Action" ]
+        }))
         prog.detail = `Exporting condtions`
         const conditions = this.ruledata.conditions.map(c=>({
             id: uuid5(`ddb://conditions/${c.definition.id}`,uuid5.URL),
             name: c.definition.name,
+            slug: slugify(`condition ${c.definition.name}`),
             descr: tdSvc.turndown(c.definition.description),
-            type: "condition"
+            type: "condition",
+            tags: [ "Condition" ]
         }))
+        prog.detail = `Exporting skills`
+        const skills = this.ruledata.abilitySkills.map(c=>({
+            id: uuid5(`ddb://skills/${c.id}`,uuid5.URL),
+            name: c.name,
+            slug: slugify(`skill ${c.name}`),
+            descr: tdSvc.turndown(c.description),
+            type: "abilitySkill",
+            tags: [
+                "Ability Skill",
+                this.ruledata.stats.find(s=>s.id==c.stat).name
+            ],
+        }))
+        prog.detail = `Exporting stats`
+        const stats = this.ruledata.stats.map(c=>({
+            id: uuid5(`ddb://stats/${c.id}`,uuid5.URL),
+            name: c.name,
+            slug: slugify(`stat ${c.name}`),
+            descr: tdSvc.turndown(c.compendiumText),
+            type: "abilityScore",
+            tags: [
+                "Ability Score"
+            ],
+        }))
+        prog.detail = `Exporting senses`
+        const senses = await new Promise((resolve,reject)=>{
+            if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
+            }
+            const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
+            const senses = db.prepare(`SELECT RPGSense.ID AS ID,Name,GROUP_CONCAT(Value,'<br>') AS Value FROM RPGSense LEFT JOIN ContentDetail ON RPGSense.DescriptionContentID=ContentDetail.ContentID GROUP BY RPGSense.ID ORDER BY RPGSense.ID,ContentDetail.DisplayOrder`).all().map(s=>({
+                id: uuid5(`ddb://senses/${s.ID}`,uuid5.URL),
+                name: s.Name,
+                slug: slugify(`sense ${s.Name}`),
+                descr: tdSvc.turndown(s.Value||''),
+                type: "sense",
+                tags: [
+                    "Sense"
+                ],
+            })
+            )
+            resolve(senses)
+        })
 
         prog.text = "Assembling Compendium..."
         prog.value = 86
@@ -2446,7 +2652,7 @@ class DDB {
         prog.value = 89
         await zip.addFile("monsters.json",Buffer.from(JSON.stringify(monsters),'utf8'),null)
         prog.value = 90
-        await zip.addFile("npcs.json",Buffer.from(JSON.stringify(npcs),'utf8'),null)
+        //await zip.addFile("npcs.json",Buffer.from(JSON.stringify(npcs),'utf8'),null)
         prog.value = 91
         await zip.addFile("backgrounds.json",Buffer.from(JSON.stringify(backgrounds),'utf8'),null)
         prog.value = 92
@@ -2458,8 +2664,16 @@ class DDB {
         prog.value = 95
         await zip.addFile("races.json",Buffer.from(JSON.stringify(races),'utf8'),null)
         prog.value = 96
-        await zip.addFile("conditions.json",Buffer.from(JSON.stringify(conditions),'utf8'),null)
+        //await zip.addFile("conditions.json",Buffer.from(JSON.stringify(conditions),'utf8'),null)
         prog.value = 97
+        await zip.addFile("rules.json",Buffer.from(JSON.stringify([
+            ...actions,
+            ...conditions,
+            ...stats,
+            ...skills,
+            ...senses
+        ]),'utf8'),null)
+        prog.value = 98
         prog.detail = `Writing compendium file`
         zip.writeZip(filename)
         prog.value = 98
@@ -2563,7 +2777,9 @@ class DDB {
                                 monsters = monsters.concat(m)
                                 prog.detail = `Retrieved ${monsters.length}/${count} monsters...`
                                 console.log(`${monsters.length}`)
-                                fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache","monstercache.json"),JSON.stringify(monsters.concat(cachedmonsters)))
+                                fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache","monstercache.json"),JSON.stringify(
+                                    monstercache.filter(c=>!monsters.find(m=>m.id==c.id)).concat(monsters)
+                                ))
                                 setTimeout(()=>resolve(monsters.length),Math.floor(Math.random()*500))
                             } else {
                                 console.log(`Retrying ${id.length} monsters`)
@@ -2571,14 +2787,18 @@ class DDB {
                                     if (m) {
                                         monsters = monsters.concat(m)
                                         prog.detail = `Retrieved ${monsters.length}/${count} monsters...`
-                                        fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache","monstercache.json"),JSON.stringify(monsters.concat(cachedmonsters)))
+                                        fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache","monstercache.json"),JSON.stringify(
+                                            monstercache.filter(c=>!monsters.find(m=>m.id==c.id)).concat(monsters)
+                                        ))
                                     } else {
                                         console.log(`Retrying ${id.length} monsters again`)
                                         this.getMonsterById(id).then(m=>{
                                             if (m) {
                                                 monsters = monsters.concat(m)
                                                 prog.detail = `Retrieved ${monsters.length}/${count} monsters...`
-                                                fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache","monstercache.json"),JSON.stringify(monsters.concat(cachedmonsters)))
+                                                fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache","monstercache.json"),JSON.stringify(
+                                                    monstercache.filter(c=>!monsters.find(m=>m.id==c.id)).concat(monsters)
+                                                ))
                                             }
                                             setTimeout(()=>resolve(monsters.length),Math.floor(Math.random()*500))
                                         })
@@ -2592,7 +2812,9 @@ class DDB {
                 for await (const _ of asyncPool(10,id_chunks,getChunk)) { }
                 monsters = monsters.concat(cachedmonsters)
                 console.log(`Retrieved ${monsters.length} (${cachedmonsters.length} cached)`)
-                fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache","monstercache.json"),JSON.stringify(monsters))
+                fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache","monstercache.json"),JSON.stringify(
+                    monstercache.filter(c=>!monsters.find(m=>m.id==c.id)).concat(monsters)
+                ))
                 break
             } else {
                 console.log("Requesting up to 100...")
@@ -2682,8 +2904,20 @@ class DDB {
                     {hp: `${monster.averageHitPoints} (${monster.hitPointDice.diceString})`},
                     {role: 'enemy'},
                     {passive: monster.passivePerception},
+                    {tags: monster.tags || []}
                 ] }
-            if (monster.tags.includes("NPC")) monsterEntry._content.push({npc: true})
+        /*
+            if (monster.tags.includes("NPC")){
+                if (!notNPC.includes(monster.name)) {
+                    monsterEntry._content.push({npc: true})
+                } else {
+                    monsterEntry._content.find(c=>c.tags).tags = monster.tags.filter(t=>t!="NPC")
+                }
+            } else if (isNPC.includes(monster.name)) {
+                monsterEntry._content.push({npc: true})
+                monsterEntry._content.find(c=>c.tags).tags.push("NPC")
+            }
+        */
             var cr = this.ruledata.challengeRatings.find(s=>s.id===monster.challengeRatingId).value
             if (cr==0.125) {
                 monsterEntry._content.push({cr: "1/8"})
@@ -2781,7 +3015,11 @@ class DDB {
             for (let environ of monster.environments) {
                 environments.push(this.ruledata.environments.find(s=>s.id===environ)?.name||environ.toString())
             }
-            monsterEntry._content.push({environments: environments.join(", ")})
+            if (tdSvc) {
+                monsterEntry._content.push({environments: environments.map(e=>e.toLowerCase())})
+            } else {
+                monsterEntry._content.push({environments: environments.join(", ")})
+            }
             let movement = (tdSvc)? {} : []
             for (let move of monster.movements) {
                 if (tdSvc) {
@@ -2850,6 +3088,7 @@ class DDB {
                     let combined = false
                     if (!field) return
                     for (let t of field?.split(/\r\n|\n/)) {
+                        t = fixDDBTag(t)
                         if (t.match(/^<h\d>/)) {
                             combined = true
                             monsterEntry._content.push( {[type]: { name: '', text: tdSvc.turndown(t) }} )
@@ -2861,7 +3100,7 @@ class DDB {
                             continue
                         }
                         let m = /^<p>(?:<em>)?(<strong>(.*?)(?:\.\s*)?<\/strong>)?.*<\/p>$/g.exec(t); if (!m||!m[0]) continue
-                        let name = `${prefix}${m[2]||''}`
+                        let name = tdSvc.turndown(`${prefix}${m[2]||''}`)
                         let txt = tdSvc.turndown(m[0].replace(m[1],''))
                         if (monsterEntry._content[monsterEntry._content.length-1]?.[type] && !m[1]) {
                             monsterEntry._content[monsterEntry._content.length-1][type].text += "\n"+txt
@@ -2888,11 +3127,11 @@ class DDB {
             handleTraits(monster.reactionsDescription,"reaction")
             handleTraits(monster.legendaryActionsDescription,"legendary")
             handleTraits(monster.mythicActionsDescription,"mythic")
-            let description = (tdSvc)? tdSvc.turndown(monster.characteristicsDescription) : sanitize(monster.characteristicsDescription,this.ruledata)
+            let description = (tdSvc)? tdSvc.turndown(monster.characteristicsDescription.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')) : sanitize(monster.characteristicsDescription,this.ruledata)
             if (monster.lairDescription) {
                 description = (tdSvc)?
-                    tdSvc.turndown(monster.lairDescription)+"\n---\n"+description :
-                    sanitize(monster.lairDescription+'<hr/>',this.ruledata)+'\n'+description
+                    description+"\n***\n"+tdSvc.turndown(monster.lairDescription) :
+                    description+"\n----------------------------------------\n"+sanitize(monster.lairDescription,this.ruledata)
             }
             if (!tdSvc) {
                 description += (monster.sourceId)?`\n<i>Source: ${this.ruledata.sources.find((s)=> monster.sourceId === s.id)?.description}${(monster.sourcePageNumber)?  ` p. ${monster.sourcePageNumber}` : '' }</i>`:''
@@ -2988,6 +3227,10 @@ class DDB {
                     maxValue: 100,
                     value: 0
                 })
+                await new Promise(resolve=>{
+                    prog.on('ready',()=>resolve())
+                })
+                prog.value = 0
 
                 fs.copyFileSync(path.join(app.getPath("cache"),app.getName(),"modcache",`${book.name.toLowerCase()}.zip`),filename)
                 prog.value = 15
@@ -3062,9 +3305,12 @@ class DDB {
         var zip = AdmZip(filename)
         let ddbVer = zip.readAsText("version.txt").trim()
         let modVer = app.getVersion().split(".")
+        console.log(modVer)
         modVer.push(ddbVer)
-        modVer = modVer.map(Number)
+        modVer = modVer.map(v=>Number(v)||parseInt(v))
+        console.log(modVer)
         mod._attrs.version = (modVer[0] * (1000**3)) + (modVer[1] * (1000**2)) + (modVer[2] * 1000) + (modVer[3])
+        console.log(mod._attrs.version)
         zip.extractEntryTo(`${book.name.toLowerCase()}.db3`,temp.name,false,true)
         var db = sqlite3(path.join(temp.name,`${book.name.toLowerCase()}.db3`))
         var imageMap = []
@@ -4668,7 +4914,9 @@ function doSearch(el,resId) {
                                                         locked: "YES",
                                                         x: Math.round((x+(w/2)+markerOffset.x)*markerOffset.s),
                                                         y: Math.round((y+(h/2)+markerOffset.y)*markerOffset.s),
-                                                        content: {_attrs: { ref: `/page/${pageslug}#${marker.id}` }}
+                                                        content: {_attrs: { ref: `/page/${pageslug}#${marker.id}`,
+                                                            id: uuid5(`marker-${playerMap._content.filter(f=>f.marker).length}`,playerMap._attrs.id)
+                                                        }}
                                                     }
                                                 })
                                             } else {
@@ -4707,6 +4955,170 @@ function doSearch(el,resId) {
                 }
                 console.log("Storing module.xml")
                 prog.detail = "Writing Module XML"
+                zip.addFile('module.json',JSON.stringify({
+                    id: mod._attrs.id,
+                    slug: mod._content.find(c=>c.slug).slug,
+                    name: mod._content.find(c=>c.name).name,
+                    acronym: mod._content.find(c=>c.code).code,
+                    author: mod._content.find(c=>c.author).author,
+                    category: mod._content.find(c=>c.category).category,
+                    slug: mod._content.find(c=>c.slug).slug,
+                    descr: mod._content.find(c=>c.description)?.description||'',
+                    image: mod._content.find(c=>c.image).image,
+                    version: mod._attrs.version.toString() || app.getVersion(),
+                    tags: [ 'D&D Beyond', mod._content.find(c=>c.category).category ],
+                    system: 'dnd5e'
+                }))
+                zip.addFile('pages.json',JSON.stringify(mod._content.filter(c=>c.page).map(p=>({
+                    id: p.page._attrs.id,
+                    name: p.page.name,
+                    slug: p.page.slug,
+                    rank: p.page._attrs.sort,
+                    parentId: p.page._attrs.parent||"",
+                    content: p.page.content,
+                    bookmark: false,
+                    ddb: p.page.ddb
+                }))
+                ))
+                zip.addFile('maps.json',JSON.stringify(mod._content.filter(c=>c._name=="map").map(p=>{
+                    let mapEntry = {
+                        id: p._attrs.id,
+                        rank: p._attrs.sort,
+                        parentId: p._attrs.parent || "",
+                        areaEffects: [],
+                        bookmark: false,
+                        canvas: "",
+                        descr: "",
+                        dmDarkness: 0.6,
+                        drawings: [],
+                        floor: "",
+                        fog: "",
+                        fogExploration : false,
+                        fogOfWar : false,
+                        gridColor : "#cccccc",
+                        gridOffsetX: 0,
+                        gridOffsetY: 0,
+                        gridOpacity : 1,
+                        gridScale: 5,
+                        gridSize: 50,
+                        gridStyle : "solid",
+                        gridType : "square",
+                        gridUnits : "ft",
+                        gridVisible : true,
+                        height : 0,
+                        lights: [],
+                        lineOfSight : false,
+                        losDaylight : 0,
+                        losVisionLimit : -1,
+                        markers: [],
+                        measurements: [],
+                        scale: 1,
+                        tiles: [],
+                        tokens: [],
+                        version: 1,
+                        walls: [],
+                        weatherIntensity : 1,
+                        width : 0,
+                        x : 0,
+                        y : 0,
+                        zoom: 1
+                    }
+                    for(const content of p._content) {
+                        for (const key of Object.keys(content)) {
+                            if (key == "wall") {
+                                mapEntry.walls.push(content[key])
+                                continue
+                            } else if (key == "light") {
+                                mapEntry.lights.push(content[key])
+                                continue
+                            } else if (key == "token") {
+                                mapEntry.tokens.push(content[key])
+                                continue
+                            } else if (key == "tile") {
+                                mapEntry.tiles.push(content[key])
+                                continue
+                            } else if (key == "marker") {
+                                mapEntry.markers.push(content[key])
+                                continue
+                            }
+                            if (content[key] == "YES") {
+                                mapEntry[key] = true
+                            } else if (content[key] == "NO") {
+                                mapEntry[key] = false
+                            } else {
+                                if (key == "gridOffsetX" || key == "gridOffsetY")
+                                    mapEntry[key] = Math.round(content[key])
+                                else
+                                    mapEntry[key] = content[key]
+                            }
+                        }
+                    }
+                    
+                    mapEntry.walls = mapEntry.walls.map(w=>({
+                        id: w._attrs.id,
+                        data: w.data.split(',').map(d=>parseInt(d)),
+                        generated: (w.generated=="YES"),
+                        type: w.type,
+                        color: w.color,
+                        door: w.door
+                    }))
+
+                    mapEntry.lights = mapEntry.lights.map(l=>{
+                        l.id = l._attrs.id
+                        l._attrs = undefined
+                        if(l.enabled===undefined) l.enabled = true
+                        l.radiusMax = Math.round(l.radiusMax)
+                        l.radiusMin = Math.round(l.radiusMin)
+                        l.alwaysVisible = (l.alwaysVisible == "YES")
+                        return l
+                    })
+
+                    mapEntry.tokens = mapEntry.tokens.map(t=>{
+                        t.id = t._attrs.id
+                        t._attrs = undefined
+                        if(t.style===undefined) t.style = ""
+                        t.hidden = (t.hidden == "YES")
+                        return t
+                    })
+
+                    mapEntry.tiles = mapEntry.tiles.map(t=>{
+                        t.id = t._attrs.id
+                        t._attrs = undefined
+                        return t
+                    })
+                    
+                    mapEntry.markers = mapEntry.markers.map(m=>{
+                        m.id = m.content._attrs.id
+                        if(m.descr===undefined) m.descr = ""
+                        m.hidden = (m.hidden == "YES")
+                        m.locked = (m.locked == "YES")
+                        m.reference = m.content?._attrs?.ref
+                        m.content = undefined
+                        return m
+                    })
+
+                    return mapEntry
+                })
+                ))
+                zip.addFile('groups.json',JSON.stringify(mod._content.filter(c=>c._name=="group").map(p=>({
+                    id: p._attrs.id,
+                    name: p._content.find(c=>c.name).name,
+                    slug: p._content.find(c=>c.slug).slug,
+                    rank: p._attrs.sort,
+                    parentId: p._attrs.parent || "",
+                    bookmark: false
+                }))
+                ))
+                zip.addFile('references.json',JSON.stringify(mod._content.filter(c=>c.reference).map(p=>({
+                    id: p.reference._attrs.id,
+                    name: p.reference.name,
+                    slug: p.reference.slug,
+                    rank: p.reference._attrs.sort,
+                    parentId: p.reference._attrs.parent || "",
+                    reference: p.reference.reference,
+                    bookmark: false
+                }))
+                ))
                 zip.addFile('module.xml',toXML(mod,{indent: '\t'}))
                 console.log("Retrieving Monsters...")
                 prog.text = "Converting Monsters..."
@@ -4774,7 +5186,7 @@ function doSearch(el,resId) {
                 this.manifestTimestamp = mstat.mtimeMs
             }
         }
-    }
+    }   
 }
 
 module.exports = DDB

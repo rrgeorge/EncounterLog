@@ -397,6 +397,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@joplin/turndown-plugin-gfm@npm:^1.0.56":
+  version: 1.0.56
+  resolution: "@joplin/turndown-plugin-gfm@npm:1.0.56"
+  checksum: 10/8ed332004824da1291ef18d3cec6df5ad572741b25b46c4734fc11d51a613fac42cfb2bcdab0a451a5c442ef72345662a22e0a05906d3316df6798e573cb1ada
+  languageName: node
+  linkType: hard
+
 "@malept/cross-spawn-promise@npm:^1.1.0":
   version: 1.1.1
   resolution: "@malept/cross-spawn-promise@npm:1.1.1"
@@ -2103,6 +2110,7 @@ __metadata:
     "@electron/notarize": "npm:^2.2.0"
     "@electron/universal": "npm:^1.2.1"
     "@google-cloud/vision": "npm:^2.3.8"
+    "@joplin/turndown-plugin-gfm": "npm:^1.0.56"
     adm-zip: "npm:^0.5.9"
     better-sqlite3-multiple-ciphers: "npm:^11.1.2"
     build: "npm:^0.1.4"
