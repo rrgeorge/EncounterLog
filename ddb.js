@@ -53,7 +53,7 @@ function slugify(str) {
    return Slugify(str,{ lower: true, strict: true })
 }
 function camelCase(str) {
-    return str.trim().replace(/^\w|\b\w/g,(w,i)=>(i===0)?w.toLowerCase():w.toUpperCase()).replace(/\s+/g,' |-')
+    return str.trim().replace(/^\w|\b\w/g,(w,i)=>(i===0)?w.toLowerCase():w.toUpperCase()).replace(/(\s|-)+/g,'')
 }
                         
 function fixDDBLinks(text,rulesdata,v5=false) {
@@ -165,7 +165,8 @@ function fixDDBTag(text,markdown = false) {
             label = p2
             let roll = {}
             try{
-                diceNotation = JSON.parse(p3)
+                let json = p3.replaceAll(/<(\w+).*>(.*)<\/\1>/gm,'$2')
+                diceNotation = JSON.parse(json)
             } catch(e) {
                 console.log(`Error ${e}`,p3)
             }
@@ -2446,7 +2447,6 @@ class DDB {
                 data: {}
             }
             for (const attrib of o._content) {
-
                 const keys = Object.keys(attrib)
                 if (keys.length > 1) { console.log("More than one key!", attrib) }
                 const k = keys[0]
@@ -2493,6 +2493,7 @@ class DDB {
                         }
                         obj.data.abilities[key] = attrib[k]
                     } else {
+                        if (k=='rarity') attrib[k] = attrib[k].toLowerCase().replace(/(\s|-)+/g,'')
                         obj.data[key] = (typeof attrib[k] === 'string')?attrib[k].replaceAll(markDownLinks,this.v5LinkAdj):attrib[k]
                     }
                 }
