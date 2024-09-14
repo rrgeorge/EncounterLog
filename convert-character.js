@@ -281,7 +281,7 @@ function convertCharacter(ddb,rules) {
         console.log(ddb.background)
         data.background = {
             name: ddb.background.definition.name,
-            descr: tdSvc.turndown(ddb.background.shortDescription.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')).replaceAll(markDownLinks,this.v5LinkAdj),
+            descr: tdSvc.turndown(ddb.background.definition.shortDescription.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')).replaceAll(markDownLinks,this.v5LinkAdj),
             reference: `/background/${slugify(ddb.background.definition.name)}`,
         }
         if (ddb.background.definition.featureDescription) {
