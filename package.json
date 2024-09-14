@@ -1,7 +1,7 @@
 {
   "name": "encounterlog",
   "productName": "EncounterLog",
-  "version": "2.7.0-a3",
+  "version": "2.7.0-a4",
   "repository": {
     "type": "git",
     "url": "https://github.com/rrgeorge/encounterlog"
@@ -170,7 +170,7 @@
     "jsdom": "^17.0.0",
     "jstoxml": "^2.0.6",
     "mac": "^0.4.0",
-    "sharp": "^0.33.2",
+    "sharp": "^0.33.5",
     "slugify": "^1.5.3",
     "tiny-async-pool": "^2.1.0",
     "tmp": "^0.2.1",
