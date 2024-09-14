@@ -1127,6 +1127,35 @@ function requestCampaignChars(gameId,cobalt) {
                                     })
                                 }
                             }))
+                            campaignMenu.submenu.append(new MenuItem({
+                                label: "Export this Campaign's v5 Characters",
+                                click: () => {
+                                    dialog.showSaveDialog(_win,{
+                                        title: "Save exported characters",
+                                        filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
+                                        defaultPath: `${thisCampaign.label.replaceAll("&&","&")}-characters.compendium`,
+                                    }).then((save) => {
+                                        if (save.filePath) {
+                                            ddb.getCampaignCharacters(thisCampaign.id,campaignChars,save.filePath).then(()=>{
+                                            if (preferences.value('export.launchserver').includes(true)) {
+                                                let httpServer = new http(save.filePath,`characters.${thisCampaign.id}`,`${thisCampaign.label.replaceAll("&&","&")} characters}`)
+                                                httpServer.server.then((s)=>{
+                                                    dialog.showMessageBox(_win,{
+                                                        title: 'Server Running',
+                                                        message: `The web server is running. Set the manifest to:\nhttp://${httpServer.ipaddr}:${httpServer.port}\nIt will shutdown after you close this dialog.`,
+                                                        detail: `This will load ${path.basename(save.filePath)}`,
+                                                        type: "info"
+                                                    }).then((r)=>{
+                                                        s.close()
+                                                    })
+                                                })
+                                            }
+                                        }
+                                        ).catch(e=>displayError(e))
+                                        }
+                                    })
+                                }
+                            }))
                             Menu.setApplicationMenu(menu)
 			} catch (e) {
                           return reject(e.message)
