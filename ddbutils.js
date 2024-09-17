@@ -143,7 +143,7 @@ function fixDDBTag(text,markdown = false) {
 
 
 const markDownLinks = /(\[(?:[^\]]*)?\]\()((?:https?:\/\/)?[A-Za-z0-9\:\/\.\?#=-]+)((?: "[^"]*?")?\))/gm
-const markDownImages = /(\!\[(?:[^\]]*)?\]\()((?:https?:\/\/)?[A-Za-z0-9\:\/\.\?#=-]+)((?: "[^"]*?")?\))/gm
+const markDownImages = /(\!\[(?:[^\]]*)?\]\(|Image Removed: )((?:https?:\/\/)?[A-Za-z0-9\:\/\.\?#=-]+)((?: "[^"]*?")?\)|)/gm
 
 function sanitize(text,rulesdata=null) {
     return convert(text,{

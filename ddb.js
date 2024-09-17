@@ -150,8 +150,8 @@ function applyMeta (playerMap,meta,info,page,headings,siblingHeadings) {
             y: Math.round(((t.y - offset.y)*scale) + (t.height*grid.size/2)),
             hidden: (t.hidden)? "YES" : "NO",
             size: (t.width!=t.height)?`${t.width}x${t.height}`:(t.width>4)?"C":(t.width>3)?"G":(t.width>2)?"H":(t.width>1)?"L":(t.width<.5||t.scale<=.5)?"T":(t.width<1||t.scale<1)?"S":"M",
-            height: t.height,
-            width: t.width,
+            height: (t.height<1)?1:Math.round(t.height),
+            width: (t.width<1)?1:Math.round(t.width),
             rotation: t.rotation||0,
             elevation: t.elevation||0,
             scale:(t.width<.5||t.scale<=.5)?0.7:(t.width<1||t.scale<1)?0.8:1,
@@ -886,10 +886,12 @@ class DDB {
             let classes = []
             if (source == 10) source = 4
             const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
-            db.prepare(`SELECT C.ID AS ID, C.Name AS Name, SC.Name AS Parent FROM RPGSpell S LEFT JOIN RPGClassSpellMapping AS M ON S.ID = M.RPGSpellID LEFT JOIN RPGClass AS C ON M.RPGClassID = C.ID LEFT JOIN RPGClass AS SC ON SC.ID = C.ParentClassID ${(source)?` WHERE S.RPGSourceID=${source}`:''} GROUP BY C.ID`).all().forEach(r=>{
+            db.prepare(`SELECT C.ID AS ID, C.Name AS Name, SC.Name AS Parent, C.RPGSourceID AS CSource,SC.RPGSourceID AS SCSource FROM RPGSpell S LEFT JOIN RPGClassSpellMapping AS M ON S.ID = M.RPGSpellID LEFT JOIN RPGClass AS C ON M.RPGClassID = C.ID LEFT JOIN RPGClass AS SC ON SC.ID = C.ParentClassID ${(source)?` WHERE S.RPGSourceID=${source}`:''} GROUP BY C.ID`).all().forEach(r=>{
                     prog.detail = `Retrieving class list ${(r.Parent)?`${r.Parent}/${r.Name}`:r.Name}`
+                    let className = (r.CSource<=5)?`${r.Name} (2014)`:r.Name
+                    let parentClassName = (r.SCSource<=5)?`${r.Parent} (2014)`:r.Parent
                     classes.push({
-                        id: r.ID, name: (r.Parent)?`${r.Parent}/${r.Name}`:r.Name, baseClass:(r.Parent)?r.Parent:undefined
+                        id: r.ID, name: (r.Parent)?`${parentClassName}/${className}`:className, baseClass:(r.Parent)?parentClassName:undefined
                     })
             })
             resolve(classes)
@@ -996,12 +998,13 @@ class DDB {
             if (spell.isHomebrew !== homebrew) {
                 continue
             }
+            let spellName = (spell.sources.find(s=>s.sourceId<=5))?`${spell.name} (2014)`:spell.name
             var spellEntry = {
                 _name: "spell",
                 _attrs: { id: uuid5(`ddb://spells/${spell.id}`,uuid5.URL) },
                 _content: [
-                    {name: spell.name},
-                    {slug: slugify(spell.name)},
+                    {name: spellName},
+                    {slug: slugify(spellName)},
                     {level: spell.level},
                     {school: (tdSvc)?spell.school.toLowerCase():spellSchools.find(s=>s.name==spell.school.toLowerCase())?.code||spell.school},
                     {ritual: (tdSvc)?spell.ritual:(spell.ritual)?'YES':"NO"},
@@ -1150,12 +1153,13 @@ class DDB {
                 } else {
                     itemurl += "adventuring-gear"
                 }
+                let itemName = (item.sources.find(s=>s.sourceId<=5))?`${item.name} (2014)`:item.name
                 var itemEntry = {
                     _name: "item",
                     _attrs: { id: uuid5(`${itemurl}/${item.id}`,uuid5.URL) },
                     _content: [
-                        {name: (items.some(s=>s.groupedId===item.id))? `${item.name} (Group)` : item.name},
-			{slug: slugify(item.name)},
+                        {name: (items.some(s=>s.groupedId===item.id))? `${itemName} (Group)` : itemName},
+			{slug: slugify(itemName)},
 			{value: item.cost||''},
 			{weight: item.weight||''},
 			{rarity: item.rarity||''},
@@ -1640,14 +1644,14 @@ class DDB {
                 })
             }
             if (parentClass) {
-                entry.class = parentClass.name
+                entry.class = (parentClass.sources.find(s=>s.sourceId<=5))?`${parentClass.name} (2014)`:parentClass.name
             } else {
                 entry.hd = cls.hitDice
                 entry.equipment = tdSvc.turndown(cls.equipmentDescription)
             }
             let fullEntry = {
                 id: uuid5(`ddb://classes/${(parentClass)?`${cls.parentClassId}/${cls.id}`:cls.id}`,uuid5.URL),
-                name: cls.name,
+                name: (cls.sources.find(s=>s.sourceId<=5))?`${cls.name} (2014)`:cls.name,
                 descr: tdSvc.turndown(cls.description).replaceAll(markDownLinks,this.v5LinkAdj),
                 sources: cls.sources.map(s=>({
                         name: he.decode(this.ruledata.sources.find(r=>r.id===s.sourceId)?.description||''),
@@ -1704,12 +1708,11 @@ class DDB {
                 entry.size = this.ruledata.creatureSizes.find(s=>s.id==race.sizeId).name.charAt(0)
                 let fullEntry = {
                     id: uuid5(`ddb://races/${race.entityRaceId}`,uuid5.URL),
-                    name: race.fullName,
+                    name: (race.sources.find(s=>s.sourceId<=5))?`${race.fullName} (2014)`:race.fullName,
                     descr: tdSvc.turndown(race.description).replaceAll(markDownLinks,this.v5LinkAdj),
                     sources: race.sources.map(s=>({
                             name: he.decode(this.ruledata.sources.find(r=>r.id===s.sourceId)?.description||''),
                             page: s.pageNumber,
-                            url: `https://dndbeyond.com${race.moreDetailsUrl}`,
                         })),
                     data: entry
                 }
@@ -1922,10 +1925,9 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                         text: tdSvc.turndown(background.contractsDescription)
                     })
                 }
-                
                 let fullEntry = {
                     id: uuid5(`ddb://backgrounds/${background.id}`,uuid5.URL),
-                    name: background.name,
+                    name: (background.sources.find(s=>s.sourceId<=5))?`${background.name} (2014)`:background.name,
                     descr: tdSvc.turndown(background.shortDescription.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')).replaceAll(markDownLinks,this.v5LinkAdj),
                     sources: background.sources.map(s=>({
                             name: he.decode(this.ruledata.sources.find(r=>r.id===s.sourceId)?.description||''),
@@ -2035,7 +2037,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                 entry.prerequisite = feat.prerequisites.filter(p=>!p.hidePrerequisite).map(p=>p.description).join(", ")
                 let fullEntry = {
                     id: uuid5(`ddb://feats/${feat.id}`,uuid5.URL),
-                    name: feat.name,
+                    name: (feat.sources.find(s=>s.sourceId<=5))?`${feat.name} (2014)`:feat.name,
                     descr: tdSvc.turndown(feat.description.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')).replaceAll(markDownLinks,this.v5LinkAdj),
                     sources: feat.sources.map(s=>({
                             name: he.decode(this.ruledata.sources.find(r=>r.id===s.sourceId)?.description||''),
@@ -2305,12 +2307,11 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
 
                 let fullEntry = {
                     id: uuid5(`ddb://vehicles/${vehicle.id}`,uuid5.URL),
-                    name: vehicle.name,
+                    name: (vehicle.sources.find(s=>s.sourceId<=5))?`${vehicle.name} (2014)`:vehicle.name,
                     descr: tdSvc.turndown(fixDDBTag(vehicle.description)).replaceAll(markDownLinks,this.v5LinkAdj),
                     sources: vehicle.sources.map(s=>({
                             name: he.decode(this.ruledata.sources.find(r=>r.id===s.sourceId)?.description||''),
                             page: s.pageNumber,
-                            url: (vehicle.moreDetailsUrl||vehicle.url)?`https://dndbeyond.com${vehicle.moreDetailsUrl||vehicle.url}`:null,
                         })),
                     data: entry
                 }
@@ -2681,6 +2682,9 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
         let characters = []
         await this.getRuleData()
         for (const character of campaignChars) {
+            if (!character.sheet) continue
+            if (character.sheet.isAssignedToPlayer === false) continue
+            if (!character.sheet.campaign) continue
             let ch = convertCharacter(character.sheet,this.ruledata)
             try{
                 if (character.avatarUrl&&this.art?.includes('artwork')) {
@@ -2946,12 +2950,13 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
     }
 
     async getMonsterEntry(monster,zip,tdSvc) {
+            let monsterName = (monster.sources.find(s=>s.sourceId<=5))?`${monster.name} (2014)`:monster.name
             var monsterEntry = {
                 _name: "monster",
                 _attrs: { id: uuid5(`ddb://monsters/${monster.id}`,uuid5.URL) },
                 _content: [
-                    {name: (monster.isLegacy&&this.legacy=='mark')? `${monster.name} [Legacy]` : monster.name},
-                    {slug: slugify((monster.isLegacy&&this.legacy=='mark')? `${monster.name} [Legacy]` : monster.name)},
+                    {name: (monster.isLegacy&&this.legacy=='mark')? `${monsterName} [Legacy]` : monsterName},
+                    {slug: slugify((monster.isLegacy&&this.legacy=='mark')? `${monsterName} [Legacy]` : monsterName)},
                     {size: this.ruledata.creatureSizes.find(s=>s.id===monster.sizeId).name.charAt(0).toUpperCase()},
                     {alignment: this.ruledata.alignments.find(s=>s.id===monster.alignmentId)?.name||monster.alignmentId},
                     {ac: `${monster.armorClass} ${monster.armorClassDescription}`},
@@ -3190,6 +3195,9 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                             zip.addFile(`monsters/${imageFile}`,imagesrc)
                         ).catch(()=>{})
                     }
+                    if (p1 == 'Image Removed: ') {
+                        return `[![Image](~/monsters/${imageFile}#size=150)](~/monsters/${imageFile})`
+                    }
                     return `[${p1}~/monsters/${imageFile}#size=150${p3}](~/monsters/${imageFile})`
                 })
             }
@@ -3204,7 +3212,6 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                 monsterEntry._content.push({sources: monster.sources.map(s=>({
                     name: he.decode(this.ruledata.sources.find(r=>r.id===s.sourceId)?.description||''),
                     page: s.pageNumber,
-                    url: monster.url
                 }))})
             }
             monsterEntry._content.push({

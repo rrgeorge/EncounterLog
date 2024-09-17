@@ -166,9 +166,10 @@ function convertCharacter(ddb,rules) {
         })
     }
     const addSpell = (m,i) => {
+        spellName = (m.definition.sources.find(s=>s.sourceId<=5))?`${m.definition.name} (2014)`:m.definition.name
         data.spells.push({
-            name: m.definition.name,
-            reference: `/spell/${slugify(m.definition.name)}`,
+            name: spellName,
+            reference: `/spell/${slugify(spellName)}`,
             level: m.definition.level
         })
         const damage = m.definition.modifiers.find(mod=>mod.type=='damage')
@@ -184,8 +185,9 @@ function convertCharacter(ddb,rules) {
             const savedc = (8+attack)
             console.log(`This is an attack: ${m.definition.name}, ${attack}, DC ${savedc}`)
             let action = m.definition
+            action.name = spellName
             action.attackType = "spell"
-            action.reference = `/spell/${slugify(m.definition.name)}`
+            action.reference = `/spell/${slugify(spellName)}`
             if (m.definition.requiresAttackRoll) action.attack = attack
             if (m.definition.requiresSavingThrow) {
                 action.savingThrow = savedc
@@ -258,10 +260,11 @@ function convertCharacter(ddb,rules) {
     data.armorProficiencies = []
     data.toolProficiencies = []
     data.limitedUseActions = {}
+    let raceName = (ddb.race.sources.find(s=>s.sourceId<=5))?`${ddb.race.fullName} (2014)`:ddb.race.fullName
     data.race = {
-        name: ddb.race.fullName,
+        name: raceName,
         descr: tdSvc.turndown(ddb.race.description),
-        reference: `/race/${slugify(ddb.race.fullName)}`,
+        reference: `/race/${slugify(raceName)}`,
         size: rules.creatureSizes.find(s=>s.id==ddb.race.sizeId)?.name.charAt(0).toUpperCase(),
         speed: {
             walk: ddb.race.weightSpeeds?.normal?.walk,
@@ -278,11 +281,11 @@ function convertCharacter(ddb,rules) {
     ddb.modifiers.race.forEach(applyModifier)
     ddb.actions.race?.forEach(addAction)
     if (ddb.background?.definition) {
-        console.log(ddb.background)
+        let backgroundName = (ddb.background.definition.sources.find(s=>s.sourceId<=5))?`${ddb.background.definition.name} (2014)`:ddb.background.definition.name
         data.background = {
-            name: ddb.background.definition.name,
+            name: backgroundName,
             descr: tdSvc.turndown(ddb.background.definition.shortDescription.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')).replaceAll(markDownLinks,this.v5LinkAdj),
-            reference: `/background/${slugify(ddb.background.definition.name)}`,
+            reference: `/background/${slugify(backgroundName)}`,
         }
         if (ddb.background.definition.featureDescription) {
             data.background.entries = [
@@ -296,9 +299,9 @@ function convertCharacter(ddb,rules) {
         ddb.actions.background?.forEach(addAction)
     }
     data.classes = ddb.classes.sort((a,b)=>a.isStartingClass?-1:b.isStartingClass?1:0).map(c=>({
-        name: c.definition.name,
+        name: (c.definition.sources.find(s=>s.sourceId<=5))?`${c.definition.name} (2014)`:c.definition.name,
         level: c.level,
-        reference: `/class/${slugify(c.definition.name)}`,
+        reference: `/class/${slugify((c.definition.sources.find(s=>s.sourceId<=5))?`${c.definition.name} (2014)`:c.definition.name)}`,
         descr: tdSvc.turndown(c.definition.description),
         castSpells: c.definition.canCastSpells||c.subclassDefinition?.canCastSpells,
         spellcastingAbility: (c.definition.canCastSpells)?
@@ -324,9 +327,9 @@ function convertCharacter(ddb,rules) {
 
     data.feats = ddb.feats.map(f=>{
         return {
-            name: f.definition.name,
+            name: (f.definition.sources.find(s=>s.sourceId<=5))?`${f.definition.name} (2014)`:f.definition.name,
             descr: tdSvc.turndown(f.definition.description).replaceAll(markDownLinks,v5LinkAdj),
-            reference: `/feat/${slugify(f.definition.name)}`
+            reference: `/feat/${slugify((f.definition.sources.find(s=>s.sourceId<=5))?`${f.definition.name} (2014)`:f.definition.name)}`
         }
     })
     ddb.modifiers.feat.forEach(applyModifier)
@@ -355,15 +358,16 @@ function convertCharacter(ddb,rules) {
     ddb.spells.feat?.forEach(addSpell)
 
     data.items = ddb.inventory.map(i=>{
+        let name = (i.definition.sources.find(s=>s.sourceId<=5))?`${i.definition.name} (2014)`:i.definition.name
         return({
             id: i.id.toString(),
-            name: i.definition.name,
+            name: name,
             descr: i.definition.decription,
             container: i.definition.isContainer,
             equipped: i.equipped,
             quantity: i.quantity,
             parentId: (i.containerEntityId!=ddb.id)?i.containerEntityId.toString():null,
-            reference: `/item/${slugify(i.definition.name)}`
+            reference: `/item/${slugify(name)}`
         })
     }
     )

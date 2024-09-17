@@ -1114,7 +1114,7 @@ function requestCampaignChars(gameId,cobalt) {
                                                 tokenmap: true,
                                                 circles: true,
                                                 campaignoverride: thisCampaign.label.replaceAll("&&","&"),
-                                                characterSheets: campaignChars.map(c=>c.sheet)
+                                                characterSheets: campaignChars.filter(f=>f.sheet).map(c=>c.sheet)
                                             }),()=>prog.detail = "Processing (this could take a minute)...")
                                             let upload
                                             while(upload = request.getUploadProgress()) {
