@@ -888,8 +888,8 @@ class DDB {
             const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
             db.prepare(`SELECT C.ID AS ID, C.Name AS Name, SC.Name AS Parent, C.RPGSourceID AS CSource,SC.RPGSourceID AS SCSource FROM RPGSpell S LEFT JOIN RPGClassSpellMapping AS M ON S.ID = M.RPGSpellID LEFT JOIN RPGClass AS C ON M.RPGClassID = C.ID LEFT JOIN RPGClass AS SC ON SC.ID = C.ParentClassID ${(source)?` WHERE S.RPGSourceID=${source}`:''} GROUP BY C.ID`).all().forEach(r=>{
                     prog.detail = `Retrieving class list ${(r.Parent)?`${r.Parent}/${r.Name}`:r.Name}`
-                    let className = (r.CSource<=5)?`${r.Name} (2014)`:r.Name
-                    let parentClassName = (r.SCSource<=5)?`${r.Parent} (2014)`:r.Parent
+                    let className = (r.CSource<=5)?`${r.Name} [Legacy]`:r.Name
+                    let parentClassName = (r.SCSource<=5)?`${r.Parent} [Legacy]`:r.Parent
                     classes.push({
                         id: r.ID, name: (r.Parent)?`${parentClassName}/${className}`:className, baseClass:(r.Parent)?parentClassName:undefined
                     })
@@ -988,6 +988,11 @@ class DDB {
             _name: "compendium",
             _content: []
         }
+        if (this.legacy == "uselegacy") {
+            spells = spells.filter(m=>m.isLegacy||!spells.find(up=>up.isLegacy&&up.name==m.name))
+        } else if (this.legacy == "useupdated") {
+            spells = spells.filter(m=>!m.isLegacy||!spells.find(up=>!up.isLegacy&&up.name==m.name))
+        }
         for (let spell of spells) {
             prog.detail = `Converting spell: ${spell.name}`
             if (filename) {
@@ -998,7 +1003,8 @@ class DDB {
             if (spell.isHomebrew !== homebrew) {
                 continue
             }
-            let spellName = (spell.sources.find(s=>s.sourceId<=5))?`${spell.name} (2014)`:spell.name
+            let spellName = (spell.isLegacy&&this.legacy=='mark')?`${spell.name} [Legacy]`:spell.name
+            //(spell.sources.find(s=>s.sourceId<=5))?`${spell.name} (2014)`:spell.name
             var spellEntry = {
                 _name: "spell",
                 _attrs: { id: uuid5(`ddb://spells/${spell.id}`,uuid5.URL) },
@@ -1136,6 +1142,11 @@ class DDB {
                 _name: "compendium",
                 _content: []
             }
+            if (this.legacy == "uselegacy") {
+                items = items.filter(m=>m.isLegacy||!items.find(up=>up.isLegacy&&up.name==m.name))
+            } else if (this.legacy == "useupdated") {
+                items = items.filter(m=>!m.isLegacy||!items.find(up=>!up.isLegacy&&up.name==m.name))
+            }
             for (const item of items) {
                 if (item.isHomebrew !== homebrew) {
                     prog.value += (!filename)? (15*(1/items.length)) : 1
@@ -1153,7 +1164,8 @@ class DDB {
                 } else {
                     itemurl += "adventuring-gear"
                 }
-                let itemName = (item.sources.find(s=>s.sourceId<=5))?`${item.name} (2014)`:item.name
+                let itemName = (item.isLegacy&&this.legacy=='mark')?`${item.name} [Legacy]`:item.name
+                    //(item.sources.find(s=>s.sourceId<=5))?`${item.name} (2014)`:item.name
                 var itemEntry = {
                     _name: "item",
                     _attrs: { id: uuid5(`${itemurl}/${item.id}`,uuid5.URL) },
@@ -1644,14 +1656,14 @@ class DDB {
                 })
             }
             if (parentClass) {
-                entry.class = (parentClass.sources.find(s=>s.sourceId<=5))?`${parentClass.name} (2014)`:parentClass.name
+                entry.class = (parentClass.sources.find(s=>s.sourceId<=5))?`${parentClass.name} [Legacy]`:parentClass.name
             } else {
                 entry.hd = cls.hitDice
                 entry.equipment = tdSvc.turndown(cls.equipmentDescription)
             }
             let fullEntry = {
                 id: uuid5(`ddb://classes/${(parentClass)?`${cls.parentClassId}/${cls.id}`:cls.id}`,uuid5.URL),
-                name: (cls.sources.find(s=>s.sourceId<=5))?`${cls.name} (2014)`:cls.name,
+                name: (cls.sources.find(s=>s.sourceId<=5))?`${cls.name} [Legacy]`:cls.name,
                 descr: tdSvc.turndown(cls.description).replaceAll(markDownLinks,this.v5LinkAdj),
                 sources: cls.sources.map(s=>({
                         name: he.decode(this.ruledata.sources.find(r=>r.id===s.sourceId)?.description||''),
@@ -1708,7 +1720,8 @@ class DDB {
                 entry.size = this.ruledata.creatureSizes.find(s=>s.id==race.sizeId).name.charAt(0)
                 let fullEntry = {
                     id: uuid5(`ddb://races/${race.entityRaceId}`,uuid5.URL),
-                    name: (race.sources.find(s=>s.sourceId<=5))?`${race.fullName} (2014)`:race.fullName,
+                    name: (race.isLegacy&&this.legacy=='mark')?`${race.fullName} [Legacy]`:race.fullName,
+                    //(race.sources.find(s=>s.sourceId<=5))?`${race.fullName} (2014)`:race.fullName,
                     descr: tdSvc.turndown(race.description).replaceAll(markDownLinks,this.v5LinkAdj),
                     sources: race.sources.map(s=>({
                             name: he.decode(this.ruledata.sources.find(r=>r.id===s.sourceId)?.description||''),
@@ -1927,7 +1940,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                 }
                 let fullEntry = {
                     id: uuid5(`ddb://backgrounds/${background.id}`,uuid5.URL),
-                    name: (background.sources.find(s=>s.sourceId<=5))?`${background.name} (2014)`:background.name,
+                    name: (background.sources.find(s=>s.sourceId<=5))?`${background.name} [Legacy]`:background.name,
                     descr: tdSvc.turndown(background.shortDescription.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')).replaceAll(markDownLinks,this.v5LinkAdj),
                     sources: background.sources.map(s=>({
                             name: he.decode(this.ruledata.sources.find(r=>r.id===s.sourceId)?.description||''),
@@ -2037,7 +2050,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                 entry.prerequisite = feat.prerequisites.filter(p=>!p.hidePrerequisite).map(p=>p.description).join(", ")
                 let fullEntry = {
                     id: uuid5(`ddb://feats/${feat.id}`,uuid5.URL),
-                    name: (feat.sources.find(s=>s.sourceId<=5))?`${feat.name} (2014)`:feat.name,
+                    name: (feat.sources.find(s=>s.sourceId<=5))?`${feat.name} [Legacy]`:feat.name,
                     descr: tdSvc.turndown(feat.description.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')).replaceAll(markDownLinks,this.v5LinkAdj),
                     sources: feat.sources.map(s=>({
                             name: he.decode(this.ruledata.sources.find(r=>r.id===s.sourceId)?.description||''),
@@ -2307,7 +2320,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
 
                 let fullEntry = {
                     id: uuid5(`ddb://vehicles/${vehicle.id}`,uuid5.URL),
-                    name: (vehicle.sources.find(s=>s.sourceId<=5))?`${vehicle.name} (2014)`:vehicle.name,
+                    name: (vehicle.sources.find(s=>s.sourceId<=5))?`${vehicle.name} [Legacy]`:vehicle.name,
                     descr: tdSvc.turndown(fixDDBTag(vehicle.description)).replaceAll(markDownLinks,this.v5LinkAdj),
                     sources: vehicle.sources.map(s=>({
                             name: he.decode(this.ruledata.sources.find(r=>r.id===s.sourceId)?.description||''),
@@ -2950,7 +2963,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
     }
 
     async getMonsterEntry(monster,zip,tdSvc) {
-            let monsterName = (monster.sources.find(s=>s.sourceId<=5))?`${monster.name} (2014)`:monster.name
+            let monsterName = monster.name//(monster.sources.find(s=>s.sourceId<=5))?`${monster.name} (2014)`:monster.name
             var monsterEntry = {
                 _name: "monster",
                 _attrs: { id: uuid5(`ddb://monsters/${monster.id}`,uuid5.URL) },

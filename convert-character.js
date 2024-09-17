@@ -166,7 +166,8 @@ function convertCharacter(ddb,rules) {
         })
     }
     const addSpell = (m,i) => {
-        spellName = (m.definition.sources.find(s=>s.sourceId<=5))?`${m.definition.name} (2014)`:m.definition.name
+        spellName = (m.definition.isLegacy)?`${m.definition.name} [Legacy]`:m.definition.name
+            //(m.definition.sources.find(s=>s.sourceId<=5))?`${m.definition.name} (2014)`:m.definition.name
         data.spells.push({
             name: spellName,
             reference: `/spell/${slugify(spellName)}`,
@@ -260,7 +261,8 @@ function convertCharacter(ddb,rules) {
     data.armorProficiencies = []
     data.toolProficiencies = []
     data.limitedUseActions = {}
-    let raceName = (ddb.race.sources.find(s=>s.sourceId<=5))?`${ddb.race.fullName} (2014)`:ddb.race.fullName
+    let raceName = (ddb.race.isLegacy)?`${ddb.race.fullName} [Legacy]`:ddb.race.fullName
+        //(ddb.race.sources.find(s=>s.sourceId<=5))?`${ddb.race.fullName} (2014)`:ddb.race.fullName
     data.race = {
         name: raceName,
         descr: tdSvc.turndown(ddb.race.description),
@@ -281,7 +283,7 @@ function convertCharacter(ddb,rules) {
     ddb.modifiers.race.forEach(applyModifier)
     ddb.actions.race?.forEach(addAction)
     if (ddb.background?.definition) {
-        let backgroundName = (ddb.background.definition.sources.find(s=>s.sourceId<=5))?`${ddb.background.definition.name} (2014)`:ddb.background.definition.name
+        let backgroundName = (ddb.background.definition.sources.find(s=>s.sourceId<=5))?`${ddb.background.definition.name} [Legacy]`:ddb.background.definition.name
         data.background = {
             name: backgroundName,
             descr: tdSvc.turndown(ddb.background.definition.shortDescription.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')).replaceAll(markDownLinks,this.v5LinkAdj),
@@ -299,9 +301,9 @@ function convertCharacter(ddb,rules) {
         ddb.actions.background?.forEach(addAction)
     }
     data.classes = ddb.classes.sort((a,b)=>a.isStartingClass?-1:b.isStartingClass?1:0).map(c=>({
-        name: (c.definition.sources.find(s=>s.sourceId<=5))?`${c.definition.name} (2014)`:c.definition.name,
+        name: (c.definition.sources.find(s=>s.sourceId<=5))?`${c.definition.name} [Legacy]`:c.definition.name,
         level: c.level,
-        reference: `/class/${slugify((c.definition.sources.find(s=>s.sourceId<=5))?`${c.definition.name} (2014)`:c.definition.name)}`,
+        reference: `/class/${slugify((c.definition.sources.find(s=>s.sourceId<=5))?`${c.definition.name} [Legacy]`:c.definition.name)}`,
         descr: tdSvc.turndown(c.definition.description),
         castSpells: c.definition.canCastSpells||c.subclassDefinition?.canCastSpells,
         spellcastingAbility: (c.definition.canCastSpells)?
@@ -327,9 +329,9 @@ function convertCharacter(ddb,rules) {
 
     data.feats = ddb.feats.map(f=>{
         return {
-            name: (f.definition.sources.find(s=>s.sourceId<=5))?`${f.definition.name} (2014)`:f.definition.name,
+            name: (f.definition.sources.find(s=>s.sourceId<=5))?`${f.definition.name} [Legacy]`:f.definition.name,
             descr: tdSvc.turndown(f.definition.description).replaceAll(markDownLinks,v5LinkAdj),
-            reference: `/feat/${slugify((f.definition.sources.find(s=>s.sourceId<=5))?`${f.definition.name} (2014)`:f.definition.name)}`
+            reference: `/feat/${slugify((f.definition.sources.find(s=>s.sourceId<=5))?`${f.definition.name} [Legacy]`:f.definition.name)}`
         }
     })
     ddb.modifiers.feat.forEach(applyModifier)
@@ -358,7 +360,8 @@ function convertCharacter(ddb,rules) {
     ddb.spells.feat?.forEach(addSpell)
 
     data.items = ddb.inventory.map(i=>{
-        let name = (i.definition.sources.find(s=>s.sourceId<=5))?`${i.definition.name} (2014)`:i.definition.name
+        let name = (i.definition.isLegacy)?`${i.definition.name} [Legacy]`:i.definition.name
+            //(i.definition.sources.find(s=>s.sourceId<=5))?`${i.definition.name} (2014)`:i.definition.name
         return({
             id: i.id.toString(),
             name: name,
