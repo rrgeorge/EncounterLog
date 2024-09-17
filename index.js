@@ -1077,7 +1077,7 @@ function requestCampaignChars(gameId,cobalt) {
                                                   prog.detail = "Error converting characters."
                                                   prog.close()
                                                   let err = response.headers["x-ddb-error"]
-                                                  console.log(err)
+                                                  console.log("Error",err)
                                                   dialog.showErrorBox("Error",`Could not convert characters:\n${err}`)
                                               } else if (response.statusCode == 200) {
                                                   prog.detail = "Downloading..."
@@ -1114,7 +1114,7 @@ function requestCampaignChars(gameId,cobalt) {
                                                 tokenmap: true,
                                                 circles: true,
                                                 campaignoverride: thisCampaign.label.replaceAll("&&","&"),
-                                                characterSheets: campaignChars.filter(f=>f.sheet).map(c=>c.sheet)
+                                                characterSheets: campaignChars.filter(c=>c.sheet).map(c=>c.sheet)
                                             }),()=>prog.detail = "Processing (this could take a minute)...")
                                             let upload
                                             while(upload = request.getUploadProgress()) {
@@ -1138,7 +1138,7 @@ function requestCampaignChars(gameId,cobalt) {
                                         if (save.filePath) {
                                             ddb.getCampaignCharacters(thisCampaign.id,campaignChars,save.filePath).then(()=>{
                                             if (preferences.value('export.launchserver').includes(true)) {
-                                                let httpServer = new http(save.filePath,`characters.${thisCampaign.id}`,`${thisCampaign.label.replaceAll("&&","&")} characters}`)
+                                                let httpServer = new http(save.filePath,`characters.${thisCampaign.id}`,`${thisCampaign.label.replaceAll("&&","&")} characters`)
                                                 httpServer.server.then((s)=>{
                                                     dialog.showMessageBox(_win,{
                                                         title: 'Server Running',

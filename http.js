@@ -20,7 +20,7 @@ class http {
             if (req.params.filename != path.basename(req.app.locals.filename)) {
                 res.sendStatus(404)
             } else {
-                res.setHeader('Content-Disposition',`attachment; filename=${path.basename(req.app.locals.filename)}`)
+                res.setHeader('Content-Disposition',`attachment; filename=${encodeURIComponent(path.basename(req.app.locals.filename))}`)
                     .sendFile(filename,()=>{})
             }
         })

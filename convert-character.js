@@ -33,7 +33,7 @@ function convertCharacter(ddb,rules) {
                 if (!data.skills[skill].proficiency)
                     data.skills[skill].proficiency = "half"
             }
-            else { console.log(m) }
+            else { console.log(m.type,m.subType) }
         } else if (m.type == "proficiency") {
             if (m.subType.endsWith("-saving-throws")) {
                 if (ddb.classes.slice(1).find(c=>
@@ -83,12 +83,14 @@ function convertCharacter(ddb,rules) {
             data.race.size = rules.creatureSizes.find(s=>s.id==m.entityId).name.charAt(0).toUpperCase()
         } else {
             console.log(`Unknown modifier ${m.type}: ${m.subType} -> ${m.fixedValue}/${m.value}`)
-            console.log(m)
+            //console.log(m)
         }
     }
     const addAction = (m) => {
-        const tagRegex = /{{(?<level>characterlevel\+)?(?<tag>proficiency|scalevalue|(?:modifier|savedc):(?<stat>(?:,?\w{3})+)(?:@(?<mm>min|max):(?<mmv>\d))?)(#(?:un)?signed)?}}/g
-        const deTag = (match,level,tag,stat,mm,mmv,signed) => {
+        const tagRegex = /{{(?<level>characterlevel\+)?\(?(?<tag>classlevel|proficiency|scalevalue|(?:modifier|spellattack|savedc):(?<stat>(?:,?\w{3})+))(?:([-+*\/])(\d+))?\)?(?:@((?<mm>min|max):(?<mmv>\d)?|round(?:up|down)))?(#(?:un)?signed)?}}/g
+        const deTag = (match,level,tag,stat,fn,mult,round,mm,mmv,signed) => {
+            console.log(match,level,tag,stat,fn,mult,round,mm,mmv,signed)
+            console.log(m.name,m.componentTypeId)
             if (signed == '#unsigned') signed = false
             if (tag == 'scalevalue') {
                 if (m.componentTypeId == 12168134) {
@@ -108,9 +110,36 @@ function convertCharacter(ddb,rules) {
                 } else if (m.componentTypeId == 1088085227) {
                     //feats
                 }
+            } else if (tag == 'classlevel') {
+                if (m.componentTypeId == 12168134) {
+                    let cls = ddb.classes.find(c=>c.classFeatures.find(f=>f.definition.id==m.componentId))
+                    if (!cls) cls = ddb.classes[0]
+                    if (cls) {
+                        let value = cls.level
+                        if (fn && mult) {
+                            if (fn == '+') {
+                                value += parseInt(mult)
+                            } else if (fn == '-') {
+                                value -= parseInt(mult)
+                            } else if (fn == '*') {
+                                value *= parseInt(mult)
+                            } else if (fn == '/') {
+                                value /= parseInt(mult)
+                            }
+                            if (round == "roundup") {
+                                value = Math.ceil(value)
+                            } else if (round == "rounddown") {
+                                value = Math.floor(value)
+                            }
+                        }
+                        console.log(value)
+                        return `${(signed&&value>=0)?'+':''}${value}`
+                    }
+                }
             } else if (tag == 'proficiency') {
-                return data.proficiencyBonus
-            } else if (tag.startsWith('savedc') || tag.startsWith('modifier')) {
+                let value  = data.proficiencyBonus
+                return `${(signed&&value>=0)?'+':''}${value}`
+            } else if (tag.startsWith('savedc') || tag.startsWith('modifier') || tag.startsWith('spellattack')) {
                 let values = []
                 for (const st of stat.split(/,/)) {
                     let value
@@ -118,6 +147,8 @@ function convertCharacter(ddb,rules) {
                         + (data.abilities[st.toLowerCase()].otherBonus||0) - 10)*.5)
                     if (tag.startsWith('savedc')) {
                         value = (8+data.proficiencyBonus+modifier)
+                    } else if (tag.startsWith('spellattack')) {
+                        value = `+${data.proficiencyBonus+modifier}`
                     } else if (tag.startsWith('modifier')) {
                         value = modifier
                     }
@@ -134,7 +165,7 @@ function convertCharacter(ddb,rules) {
             return match
         }
         let unit = camelCase(rules.activationTypes.find(a=>a.id==m.activation.activationType).name)
-        let text = m.snippet.replace(tagRegex,deTag)
+        let text = tdSvc.turndown(m.snippet.replace(tagRegex,deTag).replace(/(\r)?\n/g,'<br>'))
         let limitedUse
         if (m.limitedUse) {
             let reset = rules.limitedUseResetTypes.find(r=>r.id==m.limitedUse.resetType)
@@ -174,8 +205,9 @@ function convertCharacter(ddb,rules) {
             level: m.definition.level
         })
         const damage = m.definition.modifiers.find(mod=>mod.type=='damage')
-        if (damage && (m.definition.requiresSavingThrow||m.definition.requiresAttackRoll)) {
-            const spellcastingAbility=(ddb.classes[i].definition.canCastSpells)?
+        if (damage && (m.definition.requiresSavingThrow||m.definition.requiresAttackRoll) && !m.definition.asPartOfWeaponAttack) {
+            const spellcastingAbility=(m.spellCastingAbilityId)?rules.stats.find(s=>s.id==m.spellCastingAbilityId).key.toLowerCase()
+                :(ddb.classes[i].definition.canCastSpells)?
                 rules.stats.find(s=>s.id==ddb.classes[i].definition.spellCastingAbilityId).key.toLowerCase()
                     :(ddb.classes[i].subclassDefinition?.canCastSpells)?
                         rules.stats.find(s=>s.id==ddb.classes[i].subclassDefinition.spellCastingAbilityId).key.toLowerCase()
@@ -281,7 +313,6 @@ function convertCharacter(ddb,rules) {
         }))
     }
     ddb.modifiers.race.forEach(applyModifier)
-    ddb.actions.race?.forEach(addAction)
     if (ddb.background?.definition) {
         let backgroundName = (ddb.background.definition.sources.find(s=>s.sourceId<=5))?`${ddb.background.definition.name} [Legacy]`:ddb.background.definition.name
         data.background = {
@@ -298,7 +329,6 @@ function convertCharacter(ddb,rules) {
             ]
         }
         ddb.modifiers.background.forEach(applyModifier)
-        ddb.actions.background?.forEach(addAction)
     }
     data.classes = ddb.classes.sort((a,b)=>a.isStartingClass?-1:b.isStartingClass?1:0).map(c=>({
         name: (c.definition.sources.find(s=>s.sourceId<=5))?`${c.definition.name} [Legacy]`:c.definition.name,
@@ -325,7 +355,6 @@ function convertCharacter(ddb,rules) {
         subclass: c.subclassDefinition?.name
     }))
     ddb.modifiers.class.forEach(applyModifier)
-    ddb.actions.class?.forEach(addAction)
 
     data.feats = ddb.feats.map(f=>{
         return {
@@ -335,6 +364,27 @@ function convertCharacter(ddb,rules) {
         }
     })
     ddb.modifiers.feat.forEach(applyModifier)
+
+    data.items = ddb.inventory.map(i=>{
+        let name = (i.definition.isLegacy)?`${i.definition.name} [Legacy]`:i.definition.name
+            //(i.definition.sources.find(s=>s.sourceId<=5))?`${i.definition.name} (2014)`:i.definition.name
+        return({
+            id: i.id.toString(),
+            name: name,
+            descr: i.definition.decription,
+            container: i.definition.isContainer,
+            equipped: i.equipped,
+            quantity: i.quantity,
+            parentId: (i.containerEntityId!=ddb.id)?i.containerEntityId.toString():null,
+            reference: `/item/${slugify(name)}`
+        })
+    }
+    )
+    ddb.modifiers.item.forEach(applyModifier)
+
+    ddb.actions.race?.forEach(addAction)
+    ddb.actions.background?.forEach(addAction)
+    ddb.actions.class?.forEach(addAction)
     ddb.actions.feat?.forEach(addAction)
 
     data.spells = []
@@ -359,22 +409,6 @@ function convertCharacter(ddb,rules) {
     ddb.classSpells?.forEach((c,i)=>c.spells.forEach(s=>addSpell(s,i)))
     ddb.spells.feat?.forEach(addSpell)
 
-    data.items = ddb.inventory.map(i=>{
-        let name = (i.definition.isLegacy)?`${i.definition.name} [Legacy]`:i.definition.name
-            //(i.definition.sources.find(s=>s.sourceId<=5))?`${i.definition.name} (2014)`:i.definition.name
-        return({
-            id: i.id.toString(),
-            name: name,
-            descr: i.definition.decription,
-            container: i.definition.isContainer,
-            equipped: i.equipped,
-            quantity: i.quantity,
-            parentId: (i.containerEntityId!=ddb.id)?i.containerEntityId.toString():null,
-            reference: `/item/${slugify(name)}`
-        })
-    }
-    )
-    ddb.modifiers.item.forEach(applyModifier)
     data.currency = ddb.currencies
     data.hp.maximum += Math.floor((data.abilities.con.base-10)*.5)*overallLevel
     data.hp.current = data.hp.maximum - ddb.removedHitPoints
