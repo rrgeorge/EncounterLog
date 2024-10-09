@@ -5,7 +5,8 @@ function slugify(str) {
    return Slugify(str,{ lower: true, strict: true })
 }
 function camelCase(str) {
-    return str.trim().replace(/^\w|\b\w/g,(w,i)=>(i===0)?w.toLowerCase():w.toUpperCase()).replace(/(\s|-)+/g,'')
+    if (str === null || str === undefined) return str
+    return str.trim().replace(/^\w|\b\w/g,(w,i)=>(i===0)?w.toLowerCase():w.toUpperCase()).replace(/(\s|\)|\(|-)+/g,'')
 }
                         
 function fixDDBLinks(text,rulesdata,v5=false) {

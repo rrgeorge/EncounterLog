@@ -132,13 +132,13 @@ const preferences = new ElectronPreferences({
                                         ]
                                     },
                                     {
-					'label': "Legacy Monsters",
+					'label': "Legacy Entities",
 					'key': 'legacy',
 					'type': 'radio',
                                         'options': [
-                                            { 'label': 'Prefer Legacy Monsters', 'value': 'uselegacy' },
-                                            { 'label': 'Prefer Updated Monsters', 'value': 'useupdated' },
-                                            { 'label': 'Keep Both and Mark Legacy Monsters', 'value': 'mark' },
+                                            { 'label': 'Prefer Legacy Entities', 'value': 'uselegacy' },
+                                            { 'label': 'Prefer Updated Entities', 'value': 'useupdated' },
+                                            { 'label': 'Keep Both and Mark Legacy Entities', 'value': 'mark' },
                                         ]
                                     },
                                     {

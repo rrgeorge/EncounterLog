@@ -1241,7 +1241,7 @@ class DDB {
                         if (item.properties.length > 0) {
                             itemEntry._content.push({
                                 properties: item.properties.map(m=>
-                                    m.name.trim().replace(/^\w|\b\w/g,(w,i)=>(i===0)?w.toLowerCase():w.toUpperCase()).replace(/\s+|-/g,'')
+                                    camelCase(m.name)
                                 )})
                         }
                     } else {
@@ -1278,23 +1278,47 @@ class DDB {
                     if (item.baseTypeId==this.ruledata.baseTypeWeaponId) {
                         type = `${(item.attackType == 2)? "rangedWeapon" : "meleeWeapon"}`
                     } else if (item.baseTypeId==this.ruledata.baseTypeArmorId) {
-                        type = this.ruledata.armorTypes.find(n=>n.id===item.armorTypeId)?.name?.trim().replace(/^\w|\b\w/g,(w,i)=>(i===0)?w.toLowerCase():w.toUpperCase()).replace(/\s+|-/g,'') || "armor"
+                        type = camelCase(this.ruledata.armorTypes.find(n=>n.id===item.armorTypeId)?.name) || "armor"
                     } else if (item.baseTypeId==this.ruledata.baseTypeGearId) {
                         type = (
                                 item.type=="Gear" && !item.subType &&
-                                this.ruledata.gearTypes.find(g=>g.id===item.gearTypeId)?.name?.trim()
-                                .replace(/^\w|\b\w/g,(w,i)=>(i===0)?w.toLowerCase():w.toUpperCase()).replace(/\s+|-/g,'')
-                            ) || item.subType?.replace(/^\w|\b\w/g,(w,i)=>(i===0)?w.toLowerCase():w.toUpperCase()).replace(/\s+|-/g,'')
-                            || item.type?.replace(/^\w|\b\w/g,(w,i)=>(i===0)?w.toLowerCase():w.toUpperCase()).replace(/\s+|-/g,'')
+                                camelCase(this.ruledata.gearTypes.find(g=>g.id===item.gearTypeId)?.name)
+                            ) || camelCase(item.subType)
+                            || camelCase(item.type)
                             || "adventuringGear"
                     }
 
                 }
                 itemEntry._content.push({type: type})
-                let description = (tdSvc)?item.description:sanitize(item.description,this.ruledata)
+                let description = (tdSvc)?item.description.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')
+                    :sanitize(item.description,this.ruledata)
                 if (items.some(s=>s.groupedId===item.id)) {
-                    let linkedItems = items.filter(s=>s.groupedId===item.id)
-                    description += `\n\nApplicable ${itemType}${(itemType!="Armor"&&linkedItems.length>1)?'s':''}\n`
+                    let linkedItems = items.filter(s=>s.groupedId===item.id).sort((a,b)=>{
+                        if (a.armorTypeId != b.armorTypeId) {
+                            return a.armorTypeId - b.armorTypeId
+                        } else if (a.armorClass != b.armorClass) {
+                            return a.armorClass - b.armorClass
+                        } else if (a.categoryId != b.categoryId) {
+                            return a.categoryId - b.categoryId
+                        } else if (a.attackType != b.attackType) {
+                            return a.attackType - b.attackType
+                        } else {
+                            return a.name.localeCompare(b.name)
+                        }
+                    })
+                    if (tdSvc) {
+                        description += "<table><thead><tr>\n"
+                        if (itemType == "Armor") {
+                            description += "<td>Name</td><td>Type</td><td>AC</td><td>Strength</td><td>Stealth</td>"
+                        } else if (itemType == "Weapon") {
+                            description += "<td>Name</td><td>Type</td><td>Damage</td><td>Properties</td>"
+                        } else {
+                            description += "<td>Name</td>"
+                        }
+                        description += "</tr></thead><tbody>\n"
+                    } else {
+                        description += `\n\nApplicable ${itemType}${(itemType!="Armor"&&linkedItems.length>1)?'s':''}\n`
+                    }
                     for (let linked of linkedItems) {
                         let linkedurl = "ddb://"
                         if (linked.magic) {
@@ -1307,8 +1331,45 @@ class DDB {
                             linkedurl += "adventuring-gear"
                         }
                         let linkedId = uuid5(`${linkedurl}/${linked.id}`,uuid5.URL)
-                        description += `<a href="/item/${linkedId}">${linked.name}</a>\n`
+                        if (tdSvc) {
+                            description += "<tr>"
+                            if (itemType == "Armor") {
+                                let linkedType = (linked.armorTypeId==1)?"Light":(linked.armorTypeId==2)?"Medium":(linked.armorTypeId==3)?"Heavy":"Armor"
+                                let acAdj = (linked.armorTypeId==1)?" + Dex modifier":(linked.armorTypeId==2)?" + Dex modifier (max 2)":""
+                                let bonus = ""
+                                for (const mod of linked.grantedModifiers) {
+                                    if (mod.type == "bonus" && mod.subType == "magic") {
+                                        if (mod.fixedValue > 0) {
+                                            bonus += ` + ${mod.fixedValue}`
+                                        } else {
+                                            console.log(linked.name,":",mod.fixedValue)
+                                            bonus += ` + ${mod.fixedValue}`
+                                        }
+                                    }       
+                                }
+                                description += `<td><a href="/item/${linkedId}">${linked.baseArmorName}</a></td><td>${linkedType}</td><td>${linked.armorClass}${acAdj}${bonus}</td><td>${(linked.strengthRequirement>0)?`Strength ${linked.strengthRequirement}`:'-'}</td><td>${(linked.stealthCheck==2)?"Disadvantage":"-"}</td>`
+                            } else if (itemType == "Weapon") {
+                                let bonus = ""
+                                for (const mod of linked.grantedModifiers) {
+                                    if (mod.type == "bonus" && mod.subType == "magic") {
+                                        if (mod.fixedValue > 0) {
+                                            bonus += ` + ${mod.fixedValue}`
+                                        } else {
+                                            console.log(linked.name,":",mod.fixedValue)
+                                            bonus += ` + ${mod.fixedValue}`
+                                        }
+                                    }       
+                                }
+                                description += `<td><a href="/item/${linkedId}">${linked.type}</a></td><td>${(linked.categoryId==2)?"Martial":"Simple"} ${(linked.attackType==2)?"Ranged":"Melee"}</td><td>${linked.damage?.diceString||linked.fixedDamage||'-'}${(linked.damage||linked.fixedDamage)&&bonus} ${(linked.damage||linked.fixedDamage)&&linked.damageType}</td><td>${linked.properties.map(p=>(p.notes)?`${p.name} (${p.notes})`:(p.name=="Range")?`(${p.name} ${linked.range}/${linked.longRange})`:(p.name=="Thrown")?`${p.name} (range ${linked.range}/${linked.longRange})`:p.name).join(", ")}</td>`
+                            } else {
+                                description += `<td><a href="/item/${linkedId}">${linked.name}</a></td>`
+                            }
+                            description += "</tr>"
+                        } else {
+                            description += `<a href="/item/${linkedId}">${linked.name}</a>\n`
+                        }
                     }
+                    if (tdSvc) description += "</tbody></table>\n"
                 }
                 description = fixDDBTag(description)
                 let sources = []
@@ -3071,7 +3132,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     {name: (monster.isLegacy&&this.legacy=='mark')? `${monsterName} [Legacy]` : monsterName},
                     {slug: slugify((monster.isLegacy&&this.legacy=='mark')? `${monsterName} [Legacy]` : monsterName)},
                     {size: this.ruledata.creatureSizes.find(s=>s.id===monster.sizeId).name.charAt(0).toUpperCase()},
-                    {alignment: this.ruledata.alignments.find(s=>s.id===monster.alignmentId)?.name||monster.alignmentId},
+                    {alignment: this.ruledata.alignments.find(s=>s.id===monster.alignmentId)?.name||undefined},
                     {ac: `${monster.armorClass} ${monster.armorClassDescription}`},
                     {hp: `${monster.averageHitPoints} (${monster.hitPointDice.diceString})`},
                     {role: 'enemy'},
@@ -3100,7 +3161,10 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
             } else {
                 monsterEntry._content.push({cr: cr.toString()})
             }
-            monsterEntry._content.push({type: this.ruledata.monsterTypes.find(s=>s.id===monster.typeId)?.name||monster.typeId})
+            if (tdSvc)
+                monsterEntry._content.push({type: camelCase(this.ruledata.monsterTypes.find(s=>s.id===monster.typeId)?.name||monster.typeId)})
+            else
+                monsterEntry._content.push({type: this.ruledata.monsterTypes.find(s=>s.id===monster.typeId)?.name||monster.typeId})
             if (monster.subTypes?.length>0) {
                 var subtypes = []
                 for (let subtype of monster.subTypes) {
