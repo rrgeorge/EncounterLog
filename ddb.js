@@ -2476,7 +2476,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
     }
 
     async getV5Compendium(source=null,filename,zip=null,imageMap=null,prog=null,homebrew=false) {
-        zip = new AdmZip() 
+        if (filename) zip = new AdmZip() 
         const tdSvc = new turndown()
         tdSvc.use(turndownGfm.gfm)
         const convertXmlObj = (o)=>{
@@ -2545,9 +2545,11 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
             dialog.showErrorBox('Unexpected error', `An unexpected error occurred while trying to convert the module: ${reason.stack||reason}`)
               // Application specific logging, throwing an error, or other logic here
         });
-        await new Promise(resolve=>{
-            prog.on('ready',()=>resolve())
-        })
+        if (!prog.isInProgress) {
+            await new Promise(resolve=>{
+                prog.on('ready',()=>resolve())
+            })
+        }
         prog.value = 0
         await this.getCobaltAuth()
         if (!this.ruledata) await this.getRuleData().catch(e=>{throw new Error(e)})
@@ -2624,28 +2626,16 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                             .toBuffer()
         }
 
-        prog.text = "Assembling Compendium..."
-        prog.value = 86
+        prog.text = "Assembling V5 Compendium..."
         await zip.addFile("vehicles.json",Buffer.from(JSON.stringify(vehicles),'utf8'),null)
-        prog.value = 87
         await zip.addFile("spells.json",Buffer.from(JSON.stringify(spells),'utf8'),null)
-        prog.value = 88
         await zip.addFile("items.json",Buffer.from(JSON.stringify(items),'utf8'),null)
-        prog.value = 89
         await zip.addFile("monsters.json",Buffer.from(JSON.stringify(monsters),'utf8'),null)
-        prog.value = 90
-        //await zip.addFile("npcs.json",Buffer.from(JSON.stringify(npcs),'utf8'),null)
-        prog.value = 91
         await zip.addFile("backgrounds.json",Buffer.from(JSON.stringify(backgrounds),'utf8'),null)
-        prog.value = 92
         await zip.addFile("classes.json",Buffer.from(JSON.stringify(classes),'utf8'),null)
-        prog.value = 93
         await zip.addFile("subclasses.json",Buffer.from(JSON.stringify(subclasses),'utf8'),null)
-        prog.value = 94
         await zip.addFile("feats.json",Buffer.from(JSON.stringify(feats),'utf8'),null)
-        prog.value = 95
         await zip.addFile("races.json",Buffer.from(JSON.stringify(races),'utf8'),null)
-        prog.value = 96
         //await zip.addFile("conditions.json",Buffer.from(JSON.stringify(conditions),'utf8'),null)
         if (source == null) {
             prog.detail = `Exporting actions`
@@ -2831,14 +2821,15 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
             ]),'utf8'),null)
         }
         prog.detail = `Writing compendium file`
-        zip.writeZip(filename)
-        prog.value = 98
-        prog.detail = `Saved compendium`
-        setTimeout(()=>prog.setCompleted(),1000)
-        console.log("Wrote compendium")
-        if (Notification.isSupported()) {
-            const notification = new Notification({title: "Export Complete", body: `Compendium exported to ${filename}`})
-            notification.show()
+        if (filename) {
+            zip.writeZip(filename)
+            prog.detail = `Saved compendium`
+            setTimeout(()=>prog.setCompleted(),1000)
+            console.log("Wrote compendium")
+            if (Notification.isSupported()) {
+                const notification = new Notification({title: "Export Complete", body: `Compendium exported to ${filename}`})
+                notification.show()
+            }
         }
     }
 
@@ -5390,6 +5381,8 @@ function doSearch(el,resId) {
                 prog.value = 80
                 var compS = await this.getSpells(moduleId,null,zip,prog)||[]
                 prog.value = 95
+                prog.text = "Getting V5 compendium..."
+                await this.getV5Compendium(moduleId,null,zip,imageMap,prog)
                 prog.text = "Finishing up..."
                 console.log("Merging compendiums...")
                 var compendium = { 
