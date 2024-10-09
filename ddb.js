@@ -4136,8 +4136,15 @@ font-weight: bold;
                                 this.getImage(m2).then(r=>zip.addFile(`assets/css/res/${resName}`,r)).catch(e=>console.log(`${m2}-${e}`))
                                 return `url(res/${resName})`
                             })
-                this.css.push("https://media.dndbeyond.com/ddb-compendium-client/compendium.590bdb9dc0538e3c4006.css")
+                console.log("Determining URL for compendium css...")
+                let br = await this.getImage('https://www.dndbeyond.com/sources/dnd/basic-rules-2014/introduction')
+                let brDom = new jsdom.JSDOM(br)
+                let compendiumCss = brDom?.window?.document?.querySelector('link[href*="ddb-compendium-client"]')?.href
+                console.log(`Adding compendium css ${compendiumCss}`)
+                this.css.push(compendiumCss)
+                //this.css.push("https://media.dndbeyond.com/ddb-compendium-client/compendium.056aa5f3a706765c00bf.css")
                 let cssRes = []
+                this.css = [...new Set(this.css)]
                 for (let css of this.css) {
                     cssRes.push((async ()=>{
                         try {
@@ -4536,7 +4543,18 @@ function displayModal(path,id) {
             modal.style.top = \`\${this.event.y - (modalH/2)}px\`
         }
 }
-                `
+document.addEventListener("scroll", ()=>{
+    let topEl = document.elementFromPoint(document.documentElement.clientWidth/4,0);
+    if (topEl instanceof HTMLElement && topEl.id != 'mainpage') window.lastKnownScrollElement = topEl;
+})
+window.addEventListener('resize',()=>{
+    if (window.lastKnownScrollElement) {
+        window.lastKnownScrollElement.scrollIntoView(true)
+    } else if(window.location.hash) {
+        window.location=window.location
+    }
+})
+`
                 zip.addFile('assets/js/custom.js',customjs)
                 const dice = new RegExp(/[0-9]*[dD][0-9]+( ?[-+×÷*\/] ?[0-9,]+)?/)
                 let rollTables = []
