@@ -1067,10 +1067,13 @@ class DDB {
                 if (sources.length>0) description += `\n<i>Source: ${sources.join(', ')}</i>`
                 spellEntry._content.push({source: sources.join(", ")})
             } else {
-                spellEntry._content.push({sources: spell.sources.map(s=>({
-                    name: he.decode(this.ruledata.sources.find(r=>r.id===s.sourceId)?.description||''),
-                    page: s.pageNumber
-                }))})
+                spellEntry._content.push({sources: spell.sources
+                    .filter(s=>this.ruledata.sources.find(r=>r.id===s.sourceId))
+                    .map(s=>({
+                        name: (this.ruledata.sources.find(r=>r.id===s.sourceId)?.name.toLowerCase()||s.sourceId.toString()),
+                        page: s.pageNumber,
+                        })
+                    )})
                 if (spell.sources[0]?.pageNumber) 
                     spellEntry._content.push({page: spell.sources[0]?.pageNumber})
             }
@@ -1319,9 +1322,11 @@ class DDB {
 		    itemEntry._content.push({source: sources.join(", ")})
                 } else {
                     itemEntry._content.push({text: tdSvc.turndown(description)})
-                    itemEntry._content.push({sources: item.sources.map(s=>({
-                        name: he.decode(this.ruledata.sources.find(r=>r.id===s.sourceId)?.description||''),
-                        page: s.pageNumber
+                    itemEntry._content.push({sources: item.sources
+                        .filter(s=>this.ruledata.sources.find(r=>r.id===s.sourceId))
+                        .map(s=>({
+                        name: (this.ruledata.sources.find(r=>r.id===s.sourceId)?.name.toLowerCase()||s.sourceId.toString()),
+                        page: s.pageNumber,
                     }))})
                 }
                 try{
@@ -1665,9 +1670,11 @@ class DDB {
                 id: uuid5(`ddb://classes/${(parentClass)?`${cls.parentClassId}/${cls.id}`:cls.id}`,uuid5.URL),
                 name: (cls.sources.find(s=>s.sourceId<=5))?`${cls.name} [Legacy]`:cls.name,
                 descr: tdSvc.turndown(cls.description).replaceAll(markDownLinks,this.v5LinkAdj),
-                sources: cls.sources.map(s=>({
-                        name: he.decode(this.ruledata.sources.find(r=>r.id===s.sourceId)?.description||''),
-                        page: s.pageNumber
+                sources: cls.sources
+                        .filter(s=>this.ruledata.sources.find(r=>r.id===s.sourceId))
+                        .map(s=>({
+                        name: (this.ruledata.sources.find(r=>r.id===s.sourceId)?.name.toLowerCase()||s.sourceId.toString()),
+                        page: s.pageNumber,
                     })),
                 page: entry.page,
                 data: entry
@@ -1723,8 +1730,10 @@ class DDB {
                     name: (race.isLegacy&&this.legacy=='mark')?`${race.fullName} [Legacy]`:race.fullName,
                     //(race.sources.find(s=>s.sourceId<=5))?`${race.fullName} (2014)`:race.fullName,
                     descr: tdSvc.turndown(race.description).replaceAll(markDownLinks,this.v5LinkAdj),
-                    sources: race.sources.map(s=>({
-                            name: he.decode(this.ruledata.sources.find(r=>r.id===s.sourceId)?.description||''),
+                    sources: race.sources
+                            .filter(s=>this.ruledata.sources.find(r=>r.id===s.sourceId))
+                            .map(s=>({
+                            name: (this.ruledata.sources.find(r=>r.id===s.sourceId)?.name.toLowerCase()||s.sourceId.toString()),
                             page: s.pageNumber,
                         })),
                     data: entry
@@ -1942,8 +1951,10 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     id: uuid5(`ddb://backgrounds/${background.id}`,uuid5.URL),
                     name: (background.sources.find(s=>s.sourceId<=5))?`${background.name} [Legacy]`:background.name,
                     descr: tdSvc.turndown(background.shortDescription.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')).replaceAll(markDownLinks,this.v5LinkAdj),
-                    sources: background.sources.map(s=>({
-                            name: he.decode(this.ruledata.sources.find(r=>r.id===s.sourceId)?.description||''),
+                    sources: background.sources
+                            .filter(s=>this.ruledata.sources.find(r=>r.id===s.sourceId))
+                            .map(s=>({
+                            name: (this.ruledata.sources.find(r=>r.id===s.sourceId)?.name.toLowerCase()||s.sourceId.toString()),
                             page: s.pageNumber,
                         })),
                     data: entry
@@ -2052,8 +2063,10 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     id: uuid5(`ddb://feats/${feat.id}`,uuid5.URL),
                     name: (feat.sources.find(s=>s.sourceId<=5))?`${feat.name} [Legacy]`:feat.name,
                     descr: tdSvc.turndown(feat.description.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')).replaceAll(markDownLinks,this.v5LinkAdj),
-                    sources: feat.sources.map(s=>({
-                            name: he.decode(this.ruledata.sources.find(r=>r.id===s.sourceId)?.description||''),
+                    sources: feat.sources
+                        .filter(s=>this.ruledata.sources.find(r=>r.id===s.sourceId))
+                        .map(s=>({
+                            name: (this.ruledata.sources.find(r=>r.id===s.sourceId)?.name.toLowerCase()||s.sourceId.toString()),
                             page: s.pageNumber,
                         })),
                     data: entry
@@ -2322,8 +2335,10 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     id: uuid5(`ddb://vehicles/${vehicle.id}`,uuid5.URL),
                     name: (vehicle.sources.find(s=>s.sourceId<=5))?`${vehicle.name} [Legacy]`:vehicle.name,
                     descr: tdSvc.turndown(fixDDBTag(vehicle.description)).replaceAll(markDownLinks,this.v5LinkAdj),
-                    sources: vehicle.sources.map(s=>({
-                            name: he.decode(this.ruledata.sources.find(r=>r.id===s.sourceId)?.description||''),
+                    sources: vehicle.sources
+                        .filter(s=>this.ruledata.sources.find(r=>r.id===s.sourceId))
+                        .map(s=>({
+                            name: (this.ruledata.sources.find(r=>r.id===s.sourceId)?.name.toLowerCase()||s.sourceId.toString()),
                             page: s.pageNumber,
                         })),
                     data: entry
@@ -2547,95 +2562,6 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                             .png()
                             .toBuffer()
         }
-        prog.detail = `Exporting actions`
-        for (const c of this.ruledata.basicActions) {
-            const icon = await this.getImage(`https://www.dndbeyond.com/content/1-0-2896-0/skins/waterdeep/images/icons/actions/light/${slugify(c.name)}.svg`).catch((e)=>console.log(`Could not add action ${c.name} icon: ${e}`))
-            if (icon) {
-                const iconpng = await removeBlack(sharp(icon))
-                zip.addFile(`icons/action-${slugify(c.name)}.png`,iconpng,null)
-            }
-        }
-        const actions = this.ruledata.basicActions.map(c=>({
-            id: uuid5(`ddb://basic-actions/${c.id}`,uuid5.URL),
-            name: c.name,
-            slug: slugify(`${c.name}`),
-            descr: tdSvc.turndown(c.description.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')),
-            type: "action",
-            icon: `action-${slugify(c.name)}.png`,
-            tags: [ "Action" ]
-        }))
-        prog.detail = `Exporting condtions`
-        for (const c of this.ruledata.conditions) {
-            const icon = await this.getImage(`https://www.dndbeyond.com/content/1-0-2896-0/skins/waterdeep/images/icons/conditions/white/${slugify(c.definition.name)}.svg`).catch((e)=>console.log(`Could not add condition ${c.definition.name} icon: ${e}`))
-            if (icon) {
-                const iconpng = await removeBlack(sharp(icon))
-                zip.addFile(`icons/condition-${slugify(c.definition.name)}.png`,iconpng,null)
-            }
-        }
-        const conditions = this.ruledata.conditions.map(c=>({
-                    id: uuid5(`ddb://conditions/${c.definition.id}`,uuid5.URL),
-                    name: c.definition.name,
-                    slug: slugify(`${c.definition.name}`),
-                    descr: tdSvc.turndown(c.definition.description.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')),
-                    type: "condition",
-                    icon: `condition-${slugify(c.definition.name)}.png`,
-                    tags: [ "Condition" ]
-                }))
-        prog.detail = `Exporting skills`
-        for (const c of this.ruledata.abilitySkills) {
-            const stat = this.ruledata.stats.find(s=>s.id==c.stat)?.name
-            if (!zip.getEntry(`icons/ability-${slugify(stat)}.png`)) {
-                const icon = await this.getImage(`https://www.dndbeyond.com/content/1-0-2896-0/skins/waterdeep/images/icons/abilities/white/${slugify(stat)}.svg`).catch((e)=>console.log(`Could not add ability ${stat} icon: ${e}`))
-                if (icon) {
-                    const iconpng = await removeBlack(sharp(icon))
-                    zip.addFile(`icons/ability-${slugify(stat)}.png`,iconpng,null)
-                }
-            }
-        }
-        const skills = this.ruledata.abilitySkills.map(c=>({
-                id: uuid5(`ddb://skills/${c.id}`,uuid5.URL),
-                name: c.name,
-                slug: slugify(`${c.name}`),
-                descr: tdSvc.turndown(c.description.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')),
-                type: "abilitySkill",
-                icon: `ability-${slugify(this.ruledata.stats.find(s=>s.id==c.stat)?.name)}.png`,
-                tags: [
-                    "Ability Skill",
-                    this.ruledata.stats.find(s=>s.id==c.stat).name
-                ],
-            }))
-        prog.detail = `Exporting stats`
-        const stats = this.ruledata.stats.map(c=>({
-                id: uuid5(`ddb://stats/${c.id}`,uuid5.URL),
-                name: c.name,
-                slug: slugify(`${c.name}`),
-                descr: tdSvc.turndown(c.compendiumText.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')),
-                type: "abilityScore",
-                icon: `ability-${slugify(c.name)}.png`,
-                tags: [
-                    "Ability Score"
-                ],
-            }))
-        prog.detail = `Exporting senses`
-        const senses = await new Promise((resolve,reject)=>{
-            if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
-                let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
-                manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
-            }
-            const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
-            const senses = db.prepare(`SELECT RPGSense.ID AS ID,Name,GROUP_CONCAT(Value,'<br>') AS Value FROM RPGSense LEFT JOIN ContentDetail ON RPGSense.DescriptionContentID=ContentDetail.ContentID GROUP BY RPGSense.ID ORDER BY RPGSense.ID,ContentDetail.DisplayOrder`).all().map(s=>({
-                id: uuid5(`ddb://senses/${s.ID}`,uuid5.URL),
-                name: s.Name,
-                slug: slugify(`${s.Name}`),
-                descr: tdSvc.turndown(s.Value||''),
-                type: "sense",
-                tags: [
-                    "Sense"
-                ],
-            })
-            )
-            resolve(senses)
-        })
 
         prog.text = "Assembling Compendium..."
         prog.value = 86
@@ -2660,15 +2586,189 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
         await zip.addFile("races.json",Buffer.from(JSON.stringify(races),'utf8'),null)
         prog.value = 96
         //await zip.addFile("conditions.json",Buffer.from(JSON.stringify(conditions),'utf8'),null)
-        prog.value = 97
-        await zip.addFile("rules.json",Buffer.from(JSON.stringify([
-            ...actions,
-            ...conditions,
-            ...stats,
-            ...skills,
-            ...senses,
-        ]),'utf8'),null)
-        prog.value = 98
+        if (source == null) {
+            prog.detail = `Exporting actions`
+            for (const c of this.ruledata.basicActions) {
+                const icon = await this.getImage(`https://www.dndbeyond.com/content/1-0-2896-0/skins/waterdeep/images/icons/actions/light/${slugify(c.name)}.svg`).catch((e)=>console.log(`Could not add action ${c.name} icon: ${e}`))
+                if (icon) {
+                    const iconpng = await removeBlack(sharp(icon))
+                    zip.addFile(`icons/action-${slugify(c.name)}.png`,iconpng,null)
+                }
+            }
+            const actions = this.ruledata.basicActions.map(c=>({
+                id: uuid5(`ddb://basic-actions/${c.id}`,uuid5.URL),
+                name: c.name,
+                slug: slugify(`${c.name}`),
+                descr: tdSvc.turndown(c.description.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')),
+                type: "action",
+                icon: `action-${slugify(c.name)}.png`,
+                tags: [ "Action" ]
+            }))
+            prog.detail = `Exporting condtions`
+            for (const c of this.ruledata.conditions) {
+                const icon = await this.getImage(`https://www.dndbeyond.com/content/1-0-2896-0/skins/waterdeep/images/icons/conditions/white/${slugify(c.definition.name)}.svg`).catch((e)=>console.log(`Could not add condition ${c.definition.name} icon: ${e}`))
+                if (icon) {
+                    const iconpng = await removeBlack(sharp(icon))
+                    zip.addFile(`icons/condition-${slugify(c.definition.name)}.png`,iconpng,null)
+                }
+            }
+            const conditions = this.ruledata.conditions.map(c=>({
+                        id: uuid5(`ddb://conditions/${c.definition.id}`,uuid5.URL),
+                        name: c.definition.name,
+                        slug: slugify(`${c.definition.name}`),
+                        descr: tdSvc.turndown(c.definition.description.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')),
+                        type: "condition",
+                        icon: `condition-${slugify(c.definition.name)}.png`,
+                        tags: [ "Condition" ]
+                    }))
+            prog.detail = `Exporting stats`
+            for (const statDef of this.ruledata.stats) {
+                const stat = statDef.name
+                if (!zip.getEntry(`icons/ability-${slugify(stat)}.png`)) {
+                    const icon = await this.getImage(`https://www.dndbeyond.com/content/1-0-2896-0/skins/waterdeep/images/icons/abilities/white/${slugify(stat)}.svg`).catch((e)=>console.log(`Could not add ability ${stat} icon: ${e}`))
+                    if (icon) {
+                        const iconpng = await removeBlack(sharp(icon))
+                        zip.addFile(`icons/ability-${slugify(stat)}.png`,iconpng,null)
+                    }
+                }
+            }
+            const stats = this.ruledata.stats.map(c=>({
+                    id: uuid5(`ddb://stats/${c.id}`,uuid5.URL),
+                    name: c.name,
+                    slug: slugify(`${c.name}`),
+                    descr: tdSvc.turndown(c.compendiumText.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')),
+                    type: "abilityScore",
+                    icon: `ability-${slugify(c.name)}.png`,
+                    tags: [
+                        "Ability Score"
+                    ],
+                }))
+            prog.detail = `Exporting skills`
+            for (const c of this.ruledata.abilitySkills) {
+                const stat = this.ruledata.stats.find(s=>s.id==c.stat)?.name
+                if (!zip.getEntry(`icons/ability-${slugify(stat)}.png`)) {
+                    const icon = await this.getImage(`https://www.dndbeyond.com/content/1-0-2896-0/skins/waterdeep/images/icons/abilities/white/${slugify(stat)}.svg`).catch((e)=>console.log(`Could not add ability ${stat} icon: ${e}`))
+                    if (icon) {
+                        const iconpng = await removeBlack(sharp(icon))
+                        zip.addFile(`icons/ability-${slugify(stat)}.png`,iconpng,null)
+                    }
+                }
+            }
+            const skills = this.ruledata.abilitySkills.map(c=>({
+                    id: uuid5(`ddb://skills/${c.id}`,uuid5.URL),
+                    name: c.name,
+                    slug: slugify(`${c.name}`),
+                    descr: tdSvc.turndown(c.description.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')),
+                    type: "abilitySkill",
+                    icon: `ability-${slugify(this.ruledata.stats.find(s=>s.id==c.stat)?.name)}.png`,
+                    tags: [
+                        "Ability Skill",
+                        this.ruledata.stats.find(s=>s.id==c.stat).name
+                    ],
+                }))
+            prog.detail = `Exporting senses`
+            const senses = await new Promise((resolve,reject)=>{
+                if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                    let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                    manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
+                }
+                const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
+                const senses = db.prepare(`SELECT RPGSense.ID AS ID,Name,GROUP_CONCAT(Value,'<br>') AS Value FROM RPGSense LEFT JOIN ContentDetail ON RPGSense.DescriptionContentID=ContentDetail.ContentID GROUP BY RPGSense.ID ORDER BY RPGSense.ID,ContentDetail.DisplayOrder`).all().map(s=>({
+                    id: uuid5(`ddb://senses/${s.ID}`,uuid5.URL),
+                    name: s.Name,
+                    slug: slugify(`${s.Name}`),
+                    descr: tdSvc.turndown(s.Value||''),
+                    type: "sense",
+                    tags: [
+                        "Sense"
+                    ],
+                })
+                )
+                resolve(senses)
+            })
+            prog.detail = `Exporting sources`
+            let manifestZip = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+            if (!fs.existsSync(path.join(app.getPath("userData"),"manifest.json"))) {
+                manifestZip.extractEntryTo("manifest.json",app.getPath("userData"))
+            }
+            const manifest = JSON.parse(fs.readFileSync(path.join(app.getPath("userData"),"manifest.json")))
+            const files  = JSON.parse(manifestZip.readAsText("files.txt"))?.files
+            for (const file of files) {
+                for (const local of file.LocalUrl) {
+                    if (local.match(/^\/images\/book-covers/)) {
+                        let filename = path.basename(local)
+                        if (!fs.existsSync(path.join(app.getPath("userData"),"book-covers"))) {
+                            fs.mkdirSync(path.join(app.getPath("userData"),"book-covers"))
+                        }
+                        if (fs.existsSync(path.join(app.getPath("userData"),"book-covers",filename))) {
+                            continue
+                        } else {
+                            let image = await this.getImage(file.RemoteUrl).catch(e=>`Couldn't download cover for ${local}: ${e}`)
+                            fs.writeFileSync(path.join(app.getPath("userData"),"book-covers",filename),image)
+                        }
+                    }
+                }
+            }
+            const sources = manifest.map(s=>{
+                zip.addLocalFile(path.join(app.getPath("userData"),"book-covers",s.ImageUrl),"rules",`source-${s.ImageUrl}`)
+                return {
+                    id: uuid5(`https://www.dndbeyond.com/sources/dnd${s.DirectoryName}`,uuid5.URL),
+                    name: s.Title,
+                    slug: s.DirectoryName,
+                    type: "source",
+                    tags: [ "Source", s.Type ],
+                    descr: tdSvc.turndown(s.ProductBlurb),
+                    image: `source-${s.ImageUrl}`
+                }
+            })
+            await zip.addFile("rules.json",Buffer.from(JSON.stringify([
+                ...actions,
+                ...conditions,
+                ...stats,
+                ...skills,
+                ...senses,
+                ...sources
+            ]),'utf8'),null)
+        } else {
+            prog.detail = `Exporting sources`
+            let manifestZip = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+            if (!fs.existsSync(path.join(app.getPath("userData"),"manifest.json"))) {
+                manifestZip.extractEntryTo("manifest.json",app.getPath("userData"))
+            }
+            const manifest = JSON.parse(fs.readFileSync(path.join(app.getPath("userData"),"manifest.json")))
+            const files  = JSON.parse(manifestZip.readAsText("files.txt"))?.files
+            for (const file of files) {
+                for (const local of file.LocalUrl) {
+                    if (local.match(/^\/images\/book-covers/)) {
+                        let filename = path.basename(local)
+                        if (!fs.existsSync(path.join(app.getPath("userData"),"book-covers"))) {
+                            fs.mkdirSync(path.join(app.getPath("userData"),"book-covers"))
+                        }
+                        if (fs.existsSync(path.join(app.getPath("userData"),"book-covers",filename))) {
+                            continue
+                        } else {
+                            let image = await this.getImage(file.RemoteUrl).catch(e=>`Couldn't download cover for ${local}: ${e}`)
+                            fs.writeFileSync(path.join(app.getPath("userData"),"book-covers",filename),image)
+                        }
+                    }
+                }
+            }
+            const sources = manifest.filter(f=>f.Id==source).map(s=>{
+                zip.addLocalFile(path.join(app.getPath("userData"),"book-covers",s.ImageUrl),"rules",`source-${s.ImageUrl}`)
+                return {
+                    id: uuid5(`https://www.dndbeyond.com/sources/dnd/${s.DirectoryName}`,uuid5.URL),
+                    name: s.Title,
+                    slug: s.DirectoryName,
+                    type: "source",
+                    tags: [ "Source", s.Type ],
+                    descr: tdSvc.turndown(s.ProductBlurb),
+                    image: `source-${s.ImageUrl}`
+                }
+            })
+            await zip.addFile("rules.json",Buffer.from(JSON.stringify([
+                ...sources
+            ]),'utf8'),null)
+        }
         prog.detail = `Writing compendium file`
         zip.writeZip(filename)
         prog.value = 98
@@ -3222,8 +3322,10 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
             if (!tdSvc) {
                 description += (monster.sourceId)?`\n<i>Source: ${this.ruledata.sources.find((s)=> monster.sourceId === s.id)?.description}${(monster.sourcePageNumber)?  ` p. ${monster.sourcePageNumber}` : '' }</i>`:''
             } else {
-                monsterEntry._content.push({sources: monster.sources.map(s=>({
-                    name: he.decode(this.ruledata.sources.find(r=>r.id===s.sourceId)?.description||''),
+                monsterEntry._content.push({sources: monster.sources
+                    .filter(s=>this.ruledata.sources.find(r=>r.id===s.sourceId))
+                    .map(s=>({
+                    name: (this.ruledata.sources.find(r=>r.id===s.sourceId)?.name.toLowerCase()||s.sourceId.toString()),
                     page: s.pageNumber,
                 }))})
             }
