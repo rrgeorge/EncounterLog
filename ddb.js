@@ -4914,7 +4914,9 @@ function doSearch(el,resId) {
                                     if (!caption.querySelector("A")?.dataset["title"]?.match(/(player|map)/i)&&!figure.id?.match(/map/i)) continue
                                     mapTitle = [...caption.childNodes].filter(c=>c.data).map(c=>c.data).join(' ')
                                     dmMap = figure.querySelector("img").getAttribute('src')
-                                    mapUrl = caption.querySelector("A")?.getAttribute('href') || dmMap;
+                                    mapUrl = caption.querySelector('A[data-title*="player" i]')?.getAttribute('href')
+                                        || caption.querySelector('A')?.getAttribute('href')
+                                        || dmMap;
                                 }
                                 if (dmMap) dmMap = encodeURI(dmMap)
                                 if (mapUrl) mapUrl = encodeURI(mapUrl)
@@ -5028,7 +5030,7 @@ function doSearch(el,resId) {
                                 if (!playerMap._content.find(c=>c.gridSize)) {
                                     console.log(`No meta data found for ${mapTitle}`)
                                     console.log(`Searching for grid ${mapTitle}`)
-                                    prog.detail = `${mapTitle} - Analyzing grid`
+                                    prog.detail = `${mapTitle} - Determining map grid`
                                     const gridWorker = new BrowserWindow({show: false, webPreferences: { nodeIntegration: true, contextIsolation: false, sandbox: false } })
                                     gridWorker.webContents.on('console-message',(ev,lv,msg,line,src)=>console.log(`GRID: ${mapTitle}: ${msg}`))
                                     gridWorker.loadFile(path.join(__dirname,"getgrid.html"))
@@ -5044,7 +5046,7 @@ function doSearch(el,resId) {
                                     const grid = await new Promise((resolve)=>{
                                         gridWorker.webContents.send("getGrid",pcMapImg,info)
                                         const gridProgress = (ev,gridProg)=>{
-                                            if (ev.sender === gridWorker.webContents) prog.detail=`${mapTitle} - Analyzing grid: ${gridProg}`
+                                            if (ev.sender === gridWorker.webContents) prog.detail=`${mapTitle} - Determining map grid: ${gridProg}`
                                         }
                                         ipcMain.on('gridProgress',gridProgress)
                                         const grid = (ev,result)=>{
@@ -5061,7 +5063,7 @@ function doSearch(el,resId) {
                                         //await getGrid(pcMapImg,info,prog,cv);
                                     console.log(`This might be a map: ${mapUrl}`)
                                     if (grid?.freq > 0) {
-                                        prog.detail = `${mapTitle} - Analyzing grid: ${grid.size}px`
+                                        prog.detail = `${mapTitle} - Determined grid: ${grid.size}px`
                                         playerMap._content.push( { gridSize: grid.size } )
                                         playerMap._content.push( { gridOffsetX: grid.x } )
                                         playerMap._content.push( { gridOffsetY: grid.y } )
@@ -5132,7 +5134,7 @@ function doSearch(el,resId) {
                                                     if (unit.toLowerCase() == "miles") unit = "mi"
                                                     if (unit.toLowerCase() == "meters") unit = "m"
                                                     console.log(`Setting map scale to ${mapScale[2]} ${unit}`)
-                                                    if (mapScale[2]) playerMap._content.push( { gridScale: mapScale[2] } )
+                                                    if (mapScale[2]) playerMap._content.push( { gridScale: parseInt(mapScale[2]) } )
                                                     if (unit) playerMap._content.push( { gridUnits: unit } )
                                                 }
                                                 return
@@ -5152,7 +5154,7 @@ function doSearch(el,resId) {
                                             let w = x2-x, h = y2-y
                                             let marker = null
                                             let pageslug = page.page.slug
-                                            const markerRegex = new RegExp(`^${txt.toLowerCase()}\\. `,'i')
+                                            const markerRegex = new RegExp(`^${txt.toLowerCase()}[:.] `,'i')
                                             marker = headings.find(h=>h.textContent.match(markerRegex))
                                             if (!marker && siblingHeadings) {
                                                 for(let sibling of siblingHeadings) {
@@ -5165,11 +5167,13 @@ function doSearch(el,resId) {
                                             }
                                             if (marker) {
                                                 console.log(`Adding marker for ${marker.textContent} to ${mapTitle}`)
-                                                prog.detail = `${prog.detail.substring(0,prog.detail.indexOf(')')+1)} ${marker.textContent.substring(0,marker.textContent.indexOf('.'))}`
+                                                let markerText = marker.textContent.substring(0,marker.textContent.indexOf('.'))
+                                                                || marker.textContent.substring(0,marker.textContent.indexOf(':'))
+                                                prog.detail = `${prog.detail.substring(0,prog.detail.indexOf(')')+1)} ${markerText}`
                                                 playerMap._content.push({
                                                     marker: {
                                                         name: "",
-                                                        label: marker.textContent.substring(0,marker.textContent.indexOf('.')),
+                                                        label: markerText,
                                                         color: "#ff0000",
                                                         shape: "circle",
                                                         size: (playerMap._content.find(g=>g.gridSize)?.gridSize<30)? "huge" : (playerMap._content.find(g=>g.gridSize)?.gridSize<50)? "large":"medium",
