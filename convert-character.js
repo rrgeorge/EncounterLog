@@ -87,7 +87,7 @@ function convertCharacter(ddb,rules) {
         }
     }
     const addAction = (m) => {
-        const tagRegex = /{{(?<level>characterlevel\+)?\(?(?<tag>classlevel|proficiency|scalevalue|(?:modifier|spellattack|savedc):(?<stat>(?:,?\w{3})+))(?:([-+*\/])(\d+))?\)?(?:@((?<mm>min|max):(?<mmv>\d)?|round(?:up|down)))?(#(?:un)?signed)?}}/g
+        const tagRegex = /{{(?<level>characterlevel\+)?\(?(?<tag>limiteduse|classlevel|proficiency|scalevalue|(?:modifier|spellattack|savedc):(?<stat>(?:,?\w{3})+))(?:([-+*\/])(\d+))?\)?(?:@((?<mm>min|max):(?<mmv>\d)?|round(?:up|down)))?(#(?:un)?signed)?}}/g
         const deTag = (match,level,tag,stat,fn,mult,round,mm,mmv,signed) => {
             console.log(match,level,tag,stat,fn,mult,round,mm,mmv,signed)
             console.log(m.name,m.componentTypeId)
@@ -161,10 +161,12 @@ function convertCharacter(ddb,rules) {
                     values.push(value)
                 }
                 return values.join('/')
+            } else if (tag == "limiteduse") {
+                return m.limitedUse?.maxUses
             }
             return match
         }
-        let unit = camelCase(rules.activationTypes.find(a=>a.id==m.activation.activationType).name)
+        let unit = camelCase(rules.activationTypes.find(a=>a.id==m.activation.activationType)?.name)
         let text = tdSvc.turndown(m.snippet.replace(tagRegex,deTag).replace(/(\r)?\n/g,'<br>'))
         let limitedUse
         if (m.limitedUse) {
@@ -180,6 +182,16 @@ function convertCharacter(ddb,rules) {
                     + (data.abilities[stat].otherBonus||0) - 10)*.5)
             }
         }
+        if (!m.attackType && m.actionType === 1 && !unit) {
+            unit = "action"
+            m.attackType = camelCase(rules.rangeTypes.find(a=>a.id==m.attackTypeRange)?.name)
+            m.ability = rules.stats.find(s=>s.id==m.abilityModifierStatId)?.key.toLowerCase()
+            m.damage = m.dice?.diceString || parseInt(m.dice?.fixedValue)
+            m.damage += "+ @abilityModifier"
+            m.attack = (m.isProficient)? "@abilityModifier + @proficiency" : "@abilityModifier"
+            m.damageType = camelCase(rules.damageTypes.find(a=>a.id==m.damageTypeId)?.name)
+            m.attackRange = `${((m.range?.range)? m.range?.range : 5)}/${((m.range?.longRange)? m.range?.longRange : 5)}`
+        }
         data.actions.push({
             id: m.id.toString(),
             name: m.name,
@@ -193,7 +205,8 @@ function convertCharacter(ddb,rules) {
             ability: m.ability,
             damage: m.damage,
             damageType: m.damageType,
-            range: m.attackRange
+            range: m.attackRange,
+            proficiency: (m.isProficient)? "proficient" : undefined
         })
     }
     const addSpell = (m,i) => {
