@@ -354,14 +354,14 @@ class DDB {
         const res = await this.postRequest(url,body).catch(e => console.log(`Could not check manifest update: ${e}`))
         return res
     }
-    async getRuleData() {
+    async getRuleData(force=false) {
         //const url = "https://character-service.dndbeyond.com/character/v4/rule-data"
         if (this.userId) await this.getCobaltAuth()
         let res
         if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache",`rulecache.json`))) {
              res = JSON.parse(fs.readFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`rulecache.json`)))
         }
-        if (!res || this.cacheInvalid || this.manifestTimestamp > res.lastUpdate) {
+        if (force || !res || this.cacheInvalid || this.manifestTimestamp > res.lastUpdate) {
             const url = "https://www.dndbeyond.com/api/config/json"
             res = await this.getRequest(url,(this.cobaltauth)?true:false).catch(e =>{ console.log(`Could not retrieve rule data: ${e}`); throw `Could not retrieve rule data: ${e}`; })
             res.lastUpdate = (new Date()).getTime()
@@ -389,9 +389,9 @@ class DDB {
     }
 
     postRequest(url,postbody='',auth=false) {
-        //console.log("POST request",url)
+        this.verbose && console.log("POST request",url)
             return new Promise((resolve,reject) => {
-                    const request = net.request({url: url,useSessionCookies: false,method: "POST"})
+                    const request = net.request({url: url,useSessionCookies: true,method: "POST"})
                     request.setHeader('Content-Type', "application/x-www-form-urlencoded")
                     if (auth) {
 		        request.setHeader('Authorization',`Bearer ${this.cobaltauth}`)
@@ -433,9 +433,9 @@ class DDB {
     }
 
     getRequest(url,auth=false) {
-        //console.log("GET request",url)
+        this.verbose && console.log("GET request",url)
             return new Promise((resolve,reject) => {
-                    const request = net.request({url: url,useSessionCookies: false})
+                    const request = net.request({url: url,useSessionCookies: true})
                     if (auth) {
 		        request.setHeader('Authorization',`Bearer ${this.cobaltauth}`)
                     }
@@ -515,7 +515,7 @@ class DDB {
                             }
                           })
                         } else {
-                            console.log(`IMG HEAD REQ ${url}`,metaData)
+                            this.verbose && console.log(`IMG HEAD REQ ${url}`,metaData)
                             const request = net.request({url: url,useSessionCookies: false,method:"HEAD"})
                             if (auth) {
                                 request.setHeader('Authorization',`Bearer ${this.cobaltauth}`)
@@ -601,7 +601,7 @@ class DDB {
                             request.setHeader('If-None-Match', metaData.etag)
                         }
                         else
-                            console.log("IMG GET request - no cache",url)
+                            this.verbose && console.log("IMG GET request - no cache",url)
                         request.on('response', (response) => {
                           let body = new Buffer.alloc(0)
                           if (response.statusCode != 200 && response.statusCode != 304) {
@@ -832,7 +832,7 @@ class DDB {
             fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`),JSON.stringify(res))
         }
         const sources = res
-        if (!this.ruledata) await this.getRuleData().catch(e=>{throw new Error(e)})
+        await this.getRuleData(force).catch(e=>{throw new Error(e)})
         const books = sources.Licenses.filter(f => f.EntityTypeID == "496802664")
                 .map((block) =>
                     block.Entities
@@ -5432,6 +5432,7 @@ function doSearch(el,resId) {
     
 
     constructor() {
+        this.verbose = (process.argv?.includes('-v') || process.argv?.includes('--verbose'))
         this.session = session.defaultSession
         this.expiration = new Date().getTime()
         this.campaigns = []

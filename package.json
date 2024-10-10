@@ -1,7 +1,7 @@
 {
   "name": "encounterlog",
   "productName": "EncounterLog",
-  "version": "2.7.0-b2",
+  "version": "2.7.0-b3",
   "repository": {
     "type": "git",
     "url": "https://github.com/rrgeorge/encounterlog"
@@ -26,9 +26,9 @@
     "publish-win": "electron-builder -p always --win",
     "publish-linux": "electron-builder -p always --linux",
     "publish-all": "electron-builder -p always -mwl",
-    "release": "security unlock&&git tag -f \"v$(jq -r .version package.json)\"&&git push&&git push -f --tags&&yarn publish-all",
+    "release": "security unlock&&git tag -f \"v$(jq -r .version package.json)\"&&git push&&git push -f --tags&&yarn publish-all;electron-builder install-app-deps",
     "postinstall": "electron-builder install-app-deps",
-    "app": "electron ."
+    "app": "electron . -v"
   },
   "build": {
     "protocols": [
