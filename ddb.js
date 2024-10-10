@@ -982,7 +982,7 @@ class DDB {
         if(!prog) prog = new ProgressBar({title: "Please wait...", text: "Converting spells...", detail: "Please wait...", indeterminate: false, maxValue: 100})
         let allSpells = []
         allSpells = await this.getAllSpells(prog,source)
-        const spells = allSpells.filter(s=>(source)?s.sources.some(b=>(source===10&&(b.sourceId===10||b.sourceId===4))||b.sourceId===source):!s.sources.some(b=>b.sourceId===29))
+        let spells = allSpells.filter(s=>(source)?s.sources.some(b=>(source===10&&(b.sourceId===10||b.sourceId===4))||b.sourceId===source):!s.sources.some(b=>b.sourceId===29))
         if (filename) zip = new AdmZip()
         var compendium = { 
             _name: "compendium",
@@ -1138,7 +1138,7 @@ class DDB {
             fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`itemscache.json`),JSON.stringify(response))
         }
         if (response?.data) {
-            const items = response.data.filter(s=>(source)?(s.sources.some(b=>b.sourceId===source&&b.sourceId!==29)||(source<=2&&s.sources.length==0)):true)
+            let items = response.data.filter(s=>(source)?(s.sources.some(b=>b.sourceId===source&&b.sourceId!==29)||(source<=2&&s.sources.length==0)):true)
             if (!prog) prog = new ProgressBar({title: "Please wait...",text: "Converting items...", detail: "Please wait...", indeterminate: false, maxValue: items.length})
             if (filename) zip = new AdmZip()
             var compendium = { 
