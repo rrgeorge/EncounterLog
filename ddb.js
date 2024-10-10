@@ -3505,14 +3505,12 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                 prog.value = p.percent * 15
                 //if (p.totalBytes && !prog.isCompleted()) prog.value = p.transferredBytes
             },
-            onCompleted: (f) => {
-                //prog.setCompleted()
-                let modCache = new AdmZip(filename)
-                modCache.addZipEntryComment(`${book.name.toLowerCase()}.db3`,bookkey.data[0].data)
-                modCache.writeZip(path.join(app.getPath("cache"),app.getName(),"modcache",`${book.name.toLowerCase()}.zip`))
-                this.convertModule(moduleId,bookkey.data[0].data,filename,prog)
-            }
         })
+        let modCache = new AdmZip(filename)
+        modCache.addZipEntryComment(`${book.name.toLowerCase()}.db3`,bookkey.data[0].data)
+        modCache.writeZip(path.join(app.getPath("cache"),app.getName(),"modcache",`${book.name.toLowerCase()}.zip`))
+        await this.convertModule(moduleId,bookkey.data[0].data,filename,prog)
+        return
     }
 
     async convertModule(moduleId,key,filename,prog=null) {
