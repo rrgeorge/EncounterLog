@@ -19,6 +19,7 @@ const http = require('./http')
 var _ws = null
 var _eWs = null
 var _eWsDelay = 1000;
+var _eWsTimeout = null;
 var _eCreatures = []
 var _eTokens = []
 var _knownConditions = []
@@ -497,13 +498,22 @@ app.on('ready', () => {
                         ddb.userId && win.webContents.executeJavaScript("Array.from(document.querySelectorAll('.ddb-campaigns-listing-active .ddb-campaigns-list-item-body-title')).map(t=>t?.textContent?.trim())").then(r=>{
                             const c = ddb.campaigns.map(c=>he.decode(c.name))
                             if (!r.every(i=>c.includes(i)) || !c.every(i=>r.includes(i))) {
-                                console.log("Campaign list differs, repopulating")
-                                populateCampaignMenu(true)
+                                console.log("Campaign list differs, repopulating",c)
+                                if (c.length == 0) {
+                                    console.log("Campaign list is empty!")
+                                    win.loadURL("https://www.dndbeyond.com/api/campaign/active-campaigns")
+                                } else {
+                                    populateCampaignMenu(true)
+                                }
                             }
                         })
                         //ddb.userId && populateCampaignMenu()
                     }
+                    
                 })
+                if (u == "https://www.dndbeyond.com/api/campaign/active-campaigns") {
+                    win.loadURL("https://www.dndbeyond.com/my-campaigns")
+                }
             }
         })
         win.on('resized',()=>{ preferences.value('window.size', win.getSize()); preferences.save() })
@@ -606,12 +616,46 @@ function populateCampaignMenu(force=false) {
         }))
         campaignMenu.submenu.append(new MenuItem({type: 'separator'}))
         for (const campaign of ddb.campaigns) {
-            campaignMenu.submenu.append( new MenuItem({
+            let campaignItem = new MenuItem({
                 label: he.decode(campaign.name).replaceAll("&","&&"),
-                id: campaign.id,
+                submenu: []
+            })
+            campaignItem.submenu.append( new MenuItem({
+                label: "Open",
                 toolTip: "Jump to campaign",
+                id: campaign.id,
                 click: (m) => _win?.loadURL(`https://www.dndbeyond.com/campaigns/${m.id}`,{httpReferrer: "https://www.dndbeyond.com/my-campaigns"}),
             }))
+            campaignItem.submenu.append(new MenuItem({type: 'separator'}))
+            campaignItem.submenu.append( new MenuItem({
+                label: "Convert Characters (v4)",
+                toolTip: "Convert characters for this campaign (uses play5e.online)",
+                click: () => {
+                    convertCharacters(campaign.id)
+                }
+            }))
+            campaignItem.submenu.append( new MenuItem({
+                label: "Convert Characters (v5)",
+                toolTip: "Convert characters for this campaign for EncounterPlus v5 Beta",
+                click: () => {
+                    convertCharactersV5(campaign.id)
+                }
+            }))
+            campaignItem.submenu.append(new MenuItem({
+                label: "Export this Campaign's Encounters",
+                click: () => {
+                    dialog.showSaveDialog(_win,{
+                        title: "Save exported encounters",
+                        filters: [ { name: "EncounterPlus Campaign", extensions: ["campaign"]} ],
+                        defaultPath: `${campaign.name.replaceAll("&&","&")}-encounters.campaign`,
+                    }).then((save) => {
+                        if (save.filePath) {
+                            ddb.getEncounters(campaign.id,save.filePath).catch(e=>displayError(e))
+                        }
+                    })
+                }
+            }))
+            campaignMenu.submenu.append( campaignItem )
         }
         campaignMenu.submenu.append(new MenuItem({type: 'separator'}))
         campaignMenu.submenu.append( new MenuItem({
@@ -1013,7 +1057,7 @@ function requestCampaignChars(gameId,cobalt) {
                                 label: "Campaign List",
                                 toolTip: "Jump to campaign list",
                                 accelerator: "CommandOrControl+Shift+C",
-                                click: (m) => _win?.loadURL(`https://www.dndbeyond.com/my-campaigns`,{httpReferrer: "https://www.dndbeyond.com"})
+                                click: () => _win?.loadURL(`https://www.dndbeyond.com/my-campaigns`,{httpReferrer: "https://www.dndbeyond.com"})
                             }))
                             campaignMenu.submenu.append(new MenuItem({type: 'separator'}))
                             for (const campaign of ddb.campaigns) {
@@ -1057,104 +1101,11 @@ function requestCampaignChars(gameId,cobalt) {
                             }))
                             campaignMenu.submenu.append(new MenuItem({
                                 label: "Export this Campaign's Characters",
-                                click: () => {
-                                    dialog.showSaveDialog(_win,{
-                                        title: "Save exported characters",
-                                        filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
-                                        defaultPath: `${thisCampaign.label.replaceAll("&&","&")}.compendium`,
-                                    }).then((save) => {
-                                        if (save.filePath) {
-                                            console.log(JSON.stringify(campaignChars).length);
-                                            let prog = new ProgressBar({title: "Converting campaign characters...", text: "Converting campaign characters...", detail: "Uploading character data...",maxValue: 1,indeterminate: false})
-                                            const request = net.request({url: "https://play5e.online",method: "POST"})
-                                            request.setHeader('Content-Type', "application/json")
-                                            request.chunkedEncoding = true
-                                            request.on('response', (response) => {
-                                              let body = new Buffer.alloc(0)
-                                              let size = 1
-                                              if (response.statusCode == 422) {
-                                                  prog.text = "Error"
-                                                  prog.detail = "Error converting characters."
-                                                  prog.close()
-                                                  let err = response.headers["x-ddb-error"]
-                                                  console.log("Error",err)
-                                                  dialog.showErrorBox("Error",`Could not convert characters:\n${err}`)
-                                              } else if (response.statusCode == 200) {
-                                                  prog.detail = "Downloading..."
-                                                  size = response.headers["content-length"]*1.00
-                                                  prog.value = 0;
-                                              } else {
-                                                  prog.text = "Error"
-                                                  prog.detail = "Error converting characters."
-                                                  prog.close()
-                                                  dialog.showErrorBox("Error",`Could not convert characters:\nError ${response.statusCode}`)
-                                              }
-                                              response.on('data', (chunk) => {
-                                                  body = Buffer.concat([body,chunk])
-                                                  prog.value = ((body.length*1.00)/(size*1.00))
-                                              })
-                                              response.on('end', () => {
-                                                  if (response.statusCode == 200) {
-                                                      try {
-                                                        fs.writeFileSync(save.filePath,body)
-                                                          const notification = new Notification({title: "Export Complete", body: `Characters exported to ${save.filePath}`})
-                                                          notification.show()
-                                                      } catch (e) {
-                                                            fs.rm(save.filePath,()=>{})
-                                                            if (prog.isInProgress()) prog.close()
-                                                            dialog.showErrorBox("Error",`Could not convert characters: ${e}`)
-                                                      }
-                                                      if (prog.isInProgress()) prog.close()
-                                                  }
-                                              })
-                                            })
-                                            prog.detail = "Uploading data..."
-                                            request.write(JSON.stringify({
-                                                api: true,
-                                                tokenmap: true,
-                                                circles: true,
-                                                campaignoverride: thisCampaign.label.replaceAll("&&","&"),
-                                                characterSheets: campaignChars.filter(c=>c.sheet).map(c=>c.sheet)
-                                            }),()=>prog.detail = "Processing (this could take a minute)...")
-                                            let upload
-                                            while(upload = request.getUploadProgress()) {
-                                                if (!upload.active) break;
-                                                if (!upload.started) continue;
-                                                prog.detail = "Uploading data..."+((upload.current*100.00)/(upload.total*1.00)).toFixed(0)+"%"
-                                            }
-                                            request.end()
-                                        }
-                                    })
-                                }
+                                click: ()=>convertCharacters(gameId)
                             }))
                             campaignMenu.submenu.append(new MenuItem({
                                 label: "Export this Campaign's v5 Characters",
-                                click: () => {
-                                    dialog.showSaveDialog(_win,{
-                                        title: "Save exported characters",
-                                        filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
-                                        defaultPath: `${thisCampaign.label.replaceAll("&&","&")}-characters.compendium`,
-                                    }).then((save) => {
-                                        if (save.filePath) {
-                                            ddb.getCampaignCharacters(thisCampaign.id,campaignChars,save.filePath).then(()=>{
-                                            if (preferences.value('export.launchserver').includes(true)) {
-                                                let httpServer = new http(save.filePath,`characters.${thisCampaign.id}`,`${thisCampaign.label.replaceAll("&&","&")} characters`)
-                                                httpServer.server.then((s)=>{
-                                                    dialog.showMessageBox(_win,{
-                                                        title: 'Server Running',
-                                                        message: `The web server is running. Set the manifest to:\nhttp://${httpServer.ipaddr}:${httpServer.port}\nIt will shutdown after you close this dialog.`,
-                                                        detail: `This will load ${path.basename(save.filePath)}`,
-                                                        type: "info"
-                                                    }).then((r)=>{
-                                                        s.close()
-                                                    })
-                                                })
-                                            }
-                                        }
-                                        ).catch(e=>displayError(e))
-                                        }
-                                    })
-                                }
+                                click: ()=>convertCharactersV5(gameId)
                             }))
                             Menu.setApplicationMenu(menu)
 			} catch (e) {
@@ -1165,6 +1116,105 @@ function requestCampaignChars(gameId,cobalt) {
 		})
 		request.end()
 	})
+}
+function convertCharacters(campaignId) {
+    const campaign = ddb.campaigns.find(c=>c.id==campaignId)
+    dialog.showSaveDialog(_win,{
+        title: "Save exported characters",
+        filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
+        defaultPath: `${campaign.name.replaceAll("&&","&")}-characters.compendium`,
+    }).then((save) => {
+        if (save.filePath) {
+            console.log(JSON.stringify(campaignChars).length);
+            let prog = new ProgressBar({title: "Converting campaign characters...", text: "Converting campaign characters...", detail: "Uploading character data...",maxValue: 1,indeterminate: false})
+            ddb.getCampaignCharacters(campaignId,null,null,prog).then(campaignChars=>{
+                const request = net.request({url: "https://play5e.online",method: "POST"})
+                request.setHeader('Content-Type', "application/json")
+                request.chunkedEncoding = true
+                request.on('response', (response) => {
+                  let body = new Buffer.alloc(0)
+                  let size = 1
+                  if (response.statusCode == 422) {
+                      prog.text = "Error"
+                      prog.detail = "Error converting characters."
+                      prog.close()
+                      let err = response.headers["x-ddb-error"]
+                      console.log("Error",err)
+                      dialog.showErrorBox("Error",`Could not convert characters:\n${err}`)
+                  } else if (response.statusCode == 200) {
+                      prog.detail = "Downloading..."
+                      size = response.headers["content-length"]*1.00
+                      prog.value = 0;
+                  } else {
+                      prog.text = "Error"
+                      prog.detail = "Error converting characters."
+                      prog.close()
+                      dialog.showErrorBox("Error",`Could not convert characters:\nError ${response.statusCode}`)
+                  }
+                  response.on('data', (chunk) => {
+                      body = Buffer.concat([body,chunk])
+                      prog.value = ((body.length*1.00)/(size*1.00))
+                  })
+                  response.on('end', () => {
+                      if (response.statusCode == 200) {
+                          try {
+                            fs.writeFileSync(save.filePath,body)
+                              const notification = new Notification({title: "Export Complete", body: `Characters exported to ${save.filePath}`})
+                              notification.show()
+                          } catch (e) {
+                                fs.rm(save.filePath,()=>{})
+                                if (prog.isInProgress()) prog.close()
+                                dialog.showErrorBox("Error",`Could not convert characters: ${e}`)
+                          }
+                          if (prog.isInProgress()) prog.close()
+                      }
+                  })
+                })
+                prog.detail = "Uploading data..."
+                request.write(JSON.stringify({
+                    api: true,
+                    tokenmap: true,
+                    circles: true,
+                    campaignoverride: campaign.name.replaceAll("&&","&"),
+                    characterSheets: campaignChars.filter(c=>c.sheet).map(c=>c.sheet)
+                }),()=>prog.detail = "Processing (this could take a minute)...")
+                let upload
+                while(upload = request.getUploadProgress()) {
+                    if (!upload.active) break;
+                    if (!upload.started) continue;
+                    prog.detail = "Uploading data..."+((upload.current*100.00)/(upload.total*1.00)).toFixed(0)+"%"
+                }
+                request.end()
+            })
+        }
+    })
+}
+function convertCharactersV5(campaignId) {
+    const campaign = ddb.campaigns.find(c=>c.id==campaignId)
+    dialog.showSaveDialog(_win,{
+        title: "Save exported characters",
+        filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
+        defaultPath: `${campaign.name.replaceAll("&&","&")}-characters.compendium`,
+    }).then((save) => {
+        if (save.filePath) {
+            ddb.getCampaignCharacters(campaignId,null,save.filePath).then(()=>{
+            if (preferences.value('export.launchserver').includes(true)) {
+                let httpServer = new http(save.filePath,`characters.${campaign.id}`,`${campaign.name.replaceAll("&&","&")} characters`)
+                httpServer.server.then((s)=>{
+                    dialog.showMessageBox(_win,{
+                        title: 'Server Running',
+                        message: `The web server is running. Set the manifest to:\nhttp://${httpServer.ipaddr}:${httpServer.port}\nIt will shutdown after you close this dialog.`,
+                        detail: `This will load ${path.basename(save.filePath)}`,
+                        type: "info"
+                    }).then((r)=>{
+                        s.close()
+                    })
+                })
+            }
+        }
+        ).catch(e=>displayError(e))
+        }
+    })
 }
 async function connectGameLog(gameId,userId,campaignName) {
         connectEWS(null,true)
@@ -1229,7 +1279,12 @@ async function connectGameLog(gameId,userId,campaignName) {
                                         "type":     "chat",
                                         "content": `I am ${(c.name=="Exhaustion")?`Exhausted (${c.level})`:c.name}`
                                     };
-                                    _eWs.send(JSON.stringify({name: "createMessage", data: msgJson}))
+                                    let message = JSON.stringify({name: "createMessage", data: msgJson})
+                                    if (_eWs?.readyState === WebSocket.OPEN) {
+                                        _eWs.send(JSON.stringify(message))
+                                    } else {
+                                        connectEWS(JSON.stringify(message))
+                                    }
                                 }
                             }
                         } else {
@@ -1241,7 +1296,12 @@ async function connectGameLog(gameId,userId,campaignName) {
                                             "type":     "chat",
                                             "content": `I am no longer ${(c.name=="Exhaustion")?`Exhausted (${c.level})`:c.name}`
                                         };
-                                        _eWs.send(JSON.stringify({name: "createMessage", data: msgJson}))
+                                        let message = JSON.stringify({name: "createMessage", data: msgJson})
+                                        if (_eWs?.readyState === WebSocket.OPEN) {
+                                            _eWs.send(JSON.stringify(message))
+                                        } else {
+                                            connectEWS(JSON.stringify(message))
+                                        }
                                     }
                                 }
                                 for (let c of f.conditions) {
@@ -1251,7 +1311,12 @@ async function connectGameLog(gameId,userId,campaignName) {
                                             "type":     "chat",
                                             "content": `I am ${(c.name=="Exhaustion")?`Exhausted (${c.level})`:c.name}`
                                         };
-                                        _eWs.send(JSON.stringify({name: "createMessage", data: msgJson}))
+                                        let message = JSON.stringify({name: "createMessage", data: msgJson})
+                                        if (_eWs?.readyState === WebSocket.OPEN) {
+                                            _eWs.send(JSON.stringify(message))
+                                        } else {
+                                            connectEWS(JSON.stringify(message))
+                                        }
                                     }
                                 }
                             }
@@ -1560,7 +1625,8 @@ async function connectGameLog(gameId,userId,campaignName) {
                 if (_eWs?.readyState === WebSocket.OPEN) {
                     _eWs.send(JSON.stringify({name: "createMessage", data: msgJson}))
                 } else {
-                    connectEWS(JSON.stringify({name: "createMessage", data: msgJson}))
+                    if (_eWsTimeout) clearTimeout(_eWsTimeout)
+                    //connectEWS(JSON.stringify({name: "createMessage", data: msgJson}))
                 }
 	})
 	ws.on('error',(e) => console.log(e))
@@ -1688,6 +1754,7 @@ function getEAPI () {
     request.end()
 }
 function connectEWS(msg=null,initial=false) {
+    console.log(new Date())
     if (!encounterhost) {
         if (initial) {
             dialog.showMessageBox(_win,{
@@ -1775,7 +1842,7 @@ function connectEWS(msg=null,initial=false) {
                 }
             })
         })
-        _eWs.on('close',(code,reason) => {
+        _eWs.once('close',(code,reason) => {
             _win.webContents.executeJavaScript(`{
                 let eplusws = document.getElementById('eWsStatus')
                 if (!eplusws) {
@@ -1791,7 +1858,9 @@ function connectEWS(msg=null,initial=false) {
                 eplusws.innerHTML = "Disconnected from EncounterPlus at ${encounterhost} &#x1F534;"
                 }`,true).catch(e=>console.log(e))
             if (!_ws?.isDisconnecting) {
-                    setTimeout(connectEWS,_eWsDelay)
+                    console.log(_eWsDelay,_win.webContents.getURL())
+                    if (_eWsTimeout) clearTimeout(_eWsTimeout)
+                    _eWsTimeout = setTimeout(connectEWS,_eWsDelay)
             }
         })
         if (msg)

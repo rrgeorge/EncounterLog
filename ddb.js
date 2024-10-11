@@ -2833,19 +2833,35 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
         }
     }
 
-    async getCampaignCharacters(campaignId,campaignChars,filename) {
-        let zip = new AdmZip() 
-        let prog = new ProgressBar({title: "Please wait...",text: "Converting Characters...", detail: "Please wait...", indeterminate: false, maxValue: 100})
-        //process.once('unhandledRejection', (reason, _) => {
-        //    if (prog) prog.close()
-        //    dialog.showErrorBox('Unexpected error', `An unexpected error occurred while trying to convert the module: ${reason.stack||reason}`)
-        //});
-        await new Promise(resolve=>{
-            prog.on('ready',()=>resolve())
-        })
-        prog.value = 0
+    async getCampaignCharacters(campaignId,campaignChars,filename,prog) {
+        let zip
+        if (!prog) {
+            zip = new AdmZip() 
+            prog = new ProgressBar({title: "Please wait...",text: "Converting Characters...", detail: "Please wait...", indeterminate: false, maxValue: 100})
+            //process.once('unhandledRejection', (reason, _) => {
+            //    if (prog) prog.close()
+            //    dialog.showErrorBox('Unexpected error', `An unexpected error occurred while trying to convert the module: ${reason.stack||reason}`)
+            //});
+            await new Promise(resolve=>{
+                prog.on('ready',()=>resolve())
+            })
+            prog.value = 0
+        }
         let characters = []
         await this.getRuleData()
+        if (campaignId && !campaignChars) {
+            prog.detail = "Retrieving campaign characters..."
+	    const url = `https://www.dndbeyond.com/api/campaign/characters/${campaignId}`
+            await this.getCobaltAuth()
+            if (!this.ruledata) await this.getRuleData().catch(e=>{throw new Error(e)})
+            const response = await this.getRequest(url,true).catch((e)=>{ console.log(`Error getting campaign characters: ${e}`); throw `Error getting campaign characters: ${e}`; })
+            campaignChars = response.data
+            for (let character of campaignChars) {
+                prog.detail = `Retrieving character ${character.name}`
+                character.sheet = await this.getCharacterSheet(character.id)
+            }
+        }
+        if (!filename) return campaignChars
         for (const character of campaignChars) {
             if (!character.sheet) continue
             if (character.sheet.isAssignedToPlayer === false) continue
