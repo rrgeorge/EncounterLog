@@ -1,7 +1,7 @@
 {
   "name": "encounterlog",
   "productName": "EncounterLog",
-  "version": "2.7.0-b3",
+  "version": "2.7.0-b4",
   "repository": {
     "type": "git",
     "url": "https://github.com/rrgeorge/encounterlog"
@@ -157,7 +157,7 @@
     "@google-cloud/vision": "^2.3.8",
     "@joplin/turndown-plugin-gfm": "^1.0.56",
     "adm-zip": "^0.5.9",
-    "better-sqlite3-multiple-ciphers": "^11.1.2",
+    "better-sqlite3-multiple-ciphers": "^11.3.0",
     "build": "^0.1.4",
     "electron-dl": "^3.2.1",
     "electron-preferences": "^2.8.2",
@@ -184,8 +184,8 @@
   },
   "devDependencies": {
     "@electron/universal": "^1.2.1",
-    "electron": "30.4.0",
-    "electron-builder": "^24.13.3"
+    "electron": "^32.2.0",
+    "electron-builder": "25.1.7"
   },
   "packageManager": "yarn@4.4.0"
 }

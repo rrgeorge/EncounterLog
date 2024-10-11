@@ -26,8 +26,8 @@ var _win = null
 var _dmScreen = null
 var ddb
 let platform = app.userAgentFallback.match(/\(([^)]+)\)/)[1]
-const firefox = `Mozilla/5.0 (${platform}; rv:129.0) Gecko/20100101 Firefox/129.0`
-const chrome = `Mozilla/5.0 (${platform}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36`
+const firefox = `Mozilla/5.0 (${platform}; rv:129.0) Gecko/20100101 Firefox/131.0.2`
+const chrome = `Mozilla/5.0 (${platform}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.178 Safari/537.36`
 app.userAgentFallback = chrome
 var ignored = []
 var campaignChars = []
@@ -525,7 +525,7 @@ app.on('ready', () => {
 	    console.log(`EncounterPlus URL: ${encounterhost}`)
 	}
         console.log("Checking menu cache...")
-    if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache",`campaignscache.json`))) {
+        if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache",`campaignscache.json`))) {
             const res = JSON.parse(fs.readFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`campaignscache.json`)))
             if (res && ddb.manifestTimestamp<res.lastUpdate) {
                 console.log("Using cached campagins")
