@@ -2985,7 +2985,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     )
                     resolve(ids)
                 })
-                let monstercache
+                let monstercache = []
                 let cachedmonsters = []
                 if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache","monstercache.json"))) {
                     console.log("loading cache")
