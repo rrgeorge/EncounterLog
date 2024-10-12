@@ -312,7 +312,7 @@ class DDB {
         this.cobaltsession = sess
     }
     async getUserData() {
-        if (!this.cobaltsession) await this.setCobaltSession()
+        await this.setCobaltSession()
         if (!this.cobaltsession) throw("Not logged in")
         //if (!this.cobaltauth) await this.getCobaltAuth()
         const url = "https://www.dndbeyond.com/mobile/api/v6/user-data"
@@ -327,7 +327,7 @@ class DDB {
 // https://character-service-scds.dndbeyond.com/v1/characters' -X POST -d'{"characterI  ds":[18412484]}'
     //
     async getCampaignCharacterStatus(characterIds) {
-        if (!this.cobaltsession) await this.setCobaltSession()
+        await this.setCobaltSession()
         await this.getCobaltAuth()
         const url = "https://character-service-scds.dndbeyond.com/v2/characters"
         const body = JSON.stringify({ 'characterIds': characterIds })
@@ -335,14 +335,14 @@ class DDB {
         return res?.foundCharacters
     }
     async getCharacterSheet(characterId) {
-        if (!this.cobaltsession) await this.setCobaltSession()
+        await this.setCobaltSession()
         await this.getCobaltAuth()
         const url = `https://character-service.dndbeyond.com/character/v5/character/${characterId}`
         const res = await this.getRequest(url,true).catch(e => console.log(`Could not retrieve character statuses: ${e}`))
         return res?.data
     }
     async checkManifestVersion(v=0,sv=null) {
-        if (!this.cobaltsession) await this.setCobaltSession()
+        await this.setCobaltSession()
         if (!this.cobaltauth) await this.getCobaltAuth()
         const url = "https://www.dndbeyond.com/mobile/api/v6/do-higher-versions-exist"
         let query = { manifestVersion: v, token: this.cobaltsession }
@@ -694,7 +694,7 @@ class DDB {
     async populateCampaigns(refresh=false) {
         const url = "https://www.dndbeyond.com/api/campaign/active-campaigns"
         //const url = "https://www.dndbeyond.com/api/campaign/stt/user-campaigns"
-        if (!this.cobaltsession) await this.setCobaltSession()
+        await this.setCobaltSession()
         const cachename = 'campaigns'
         let res
         if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`))) {
@@ -818,7 +818,7 @@ class DDB {
         return campaign
     }
     async getSources(force=false) {
-        if (!this.cobaltsession) await this.setCobaltSession()
+        await this.setCobaltSession()
         const url = "https://www.dndbeyond.com/mobile/api/v6/available-user-content"
         const body = (this.cobaltsession)?qs.stringify({ 'token': this.cobaltsession }):''
         const cachename = 'sources'
@@ -832,7 +832,7 @@ class DDB {
             fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`),JSON.stringify(res))
         }
         const sources = res
-        await this.getRuleData(force).catch(e=>{throw new Error(e)})
+        await this.getRuleData().catch(e=>{throw new Error(e)})
         const books = sources.Licenses.filter(f => f.EntityTypeID == "496802664")
                 .map((block) =>
                     block.Entities
@@ -3452,7 +3452,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
     }
 
     async getModule(moduleId,filename,win) {
-        if (!this.cobaltsession) await this.setCobaltSession()
+        await this.setCobaltSession()
         if (!this.ruledata) await this.getRuleData().catch(e=>{throw new Error(e)})
         const params = qs.stringify({ token: this.cobaltsession })
         const kparams = qs.stringify({ token: this.cobaltsession,sources:`[{\"sourceID\":${moduleId},\"versionID\":null}]`})

@@ -15,6 +15,7 @@ const { convert } = require('html-to-text')
 const { networkInterfaces } = require('os')
 const { isObject } = require('util')
 const http = require('./http')
+const qs = require('querystring')
 
 var _ws = null
 var _eWs = null
@@ -352,10 +353,34 @@ app.on('ready', () => {
                   { label: "Support this project", click: () => shell.openExternal("https://github.com/sponsors/rrgeorge") },
                   { label: "Refresh menus",
                       click: ()=>{
-                            populateCampaignMenu(true)
-                            populateCompendiumMenu(true)
+                            ddb.getRuleData(true).then(()=>{
+                                ddb.populateCampaigns(true).then(()=>{
+                                    ddb.getSources(true).then(()=>{
+                                        populateCampaignMenu()
+                                        populateCompendiumMenu()
+                                    }).catch(e=>{
+                                        win.loadURL("https://www.dndbeyond.com/mobile/api/v6/available-user-content",{
+                                            postData: [{
+                                                type: "rawData",
+                                                bytes: Buffer.from(
+                                                    qs.stringify({ 'token': ddb.cobaltsession })
+                                                )
+                                            }],
+                                            extraHeaders: "Content-Type: application/x-www-form-urlencoded; charset=UTF-8"
+                                        })
+                                        //displayError(`Error populating sources: ${e}`)
+                                    })
+                                }).catch(e=>{
+                                    win.loadURL("https://www.dndbeyond.com/api/campaign/active-campaigns")
+                                    //displayError(`Error populating campaigns: ${e}`)
+                                })
+                            }).catch(e=>{
+                                win.loadURL("https://www.dndbeyond.com/api/config/json")
+                                //displayError(`Error getting rule data: ${e}`)
+                            })
                     }},
-                  {
+                    { label: "Cache", submenu: [
+                    {
                       'click': function() {
                             fs.rm(path.join(app.getPath("cache"),app.getName(),"imagecache"),{recursive: true},(e)=>{
                                 if (e) {
@@ -367,14 +392,41 @@ app.on('ready', () => {
                             })
                       },
                       'label': "Clear image cache",
-                  },
-                  {
-                      'click': function() {
-                          win.webContents.session.clearStorageData().then(()=>
-                              dialog.showMessageBox(_win,{title:"Data Cleared",message: "All cache and cookies have been cleared."}).then(()=>_win.loadURL("https://www.dndbeyond.com/sign-in?returnUrl=/my-campaigns",{httpReferrer: "https://www.dndbeyond.com/my-campaigns"})))
                       },
-                      'label': "Clear all Cache and Cookies",
-                  },
+                      {
+                          'click': function() {
+                                fs.rm(path.join(app.getPath("cache"),app.getName(),"datacache"),{recursive: true},(e)=>{
+                                    if (e) {
+                                        dialog.showErrorBox("Error",`Could not remove data cache: ${e}`)
+                                    } else {
+                                        fs.mkdir(path.join(app.getPath("cache"),app.getName(),"datacache"),{recursive: true},()=>{})
+                                        dialog.showMessageBox(_win,{title:"Data Cache Cleared",message: "Data cache has been cleared."})
+                                    }
+                                })
+                          },
+                          'label': "Clear data cache",
+                      },
+                      {
+                          'click': function() {
+                                fs.rm(path.join(app.getPath("cache"),app.getName(),"modcache"),{recursive: true},(e)=>{
+                                    if (e) {
+                                        dialog.showErrorBox("Error",`Could not remove mod cache: ${e}`)
+                                    } else {
+                                        fs.mkdir(path.join(app.getPath("cache"),app.getName(),"modcache"),{recursive: true},()=>{})
+                                        dialog.showMessageBox(_win,{title:"Module Cache Cleared",message: "Module cache has been cleared."})
+                                    }
+                                })
+                          },
+                          'label': "Clear module cache",
+                      },
+                      {
+                          'click': function() {
+                              win.webContents.session.clearStorageData().then(()=>
+                                  dialog.showMessageBox(_win,{title:"Data Cleared",message: "Web cache and cookies have been cleared."}).then(()=>_win.loadURL("https://www.dndbeyond.com/sign-in?returnUrl=/my-campaigns",{httpReferrer: "https://www.dndbeyond.com/my-campaigns"})))
+                          },
+                          'label': "Clear web cache and cookies",
+                      },
+                    ]}
               ] },
 	  ])
 	Menu.setApplicationMenu(menu);
@@ -458,6 +510,7 @@ app.on('ready', () => {
             }
         })
         win.webContents.on('did-navigate',(e,u,r,m) => {
+            (process.argv?.includes('-v') || process.argv?.includes('--verbose')) && console.log(e,u,r,m)
             if (r==200) {
             win.webContents.once('did-finish-load',()=> {
                     if (win.webContents.getURL().match(/dndbeyond.com\/campaigns\/[0-9]+/)) {
@@ -513,6 +566,16 @@ app.on('ready', () => {
                 })
                 if (u == "https://www.dndbeyond.com/api/campaign/active-campaigns") {
                     win.loadURL("https://www.dndbeyond.com/my-campaigns")
+                    populateCampaignMenu()
+                }
+                if (u == "https://www.dndbeyond.com/mobile/api/v6/available-user-content") {
+                    win.loadURL("https://www.dndbeyond.com/my-campaigns")
+                    populateCompendiumMenu()
+                }
+                if (u == "https://www.dndbeyond.com/api/config/json") {
+                    win.loadURL("https://www.dndbeyond.com/my-campaigns")
+                    populateCampaignMenu()
+                    populateCompendiumMenu()
                 }
             }
         })
