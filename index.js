@@ -661,6 +661,7 @@ function updateManifest() {
                         let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
                         manifest.extractEntryTo("skeleton.db3",app.getPath("userData"),false,true)
                         manifest.extractEntryTo("manifest.json",app.getPath("userData"),false,true)
+                        populateCompendiumMenu(true)
                         resolve("Updated")
                     }
                 }).catch(e=>{
@@ -785,7 +786,7 @@ function populateCompendiumMenu(force=false) {
                             }).then((save) => {
                                 if (save.filePath)
                                     ddb.getModule(book.id,save.filePath,_win).then(()=>{
-                                            if (preferences.value('export.launchserver').includes(true)) {
+                                            if (preferences.value('export.launchserver')?.includes(true)) {
                                                 let httpServer = new http(save.filePath,book.bookCode.toLowerCase(),book.book)
                                                 httpServer.server.then((s)=>{
                                                     dialog.showMessageBox(_win,{

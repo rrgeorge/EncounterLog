@@ -701,7 +701,7 @@ class DDB {
              res = JSON.parse(fs.readFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`)))
         }
         if (refresh || !res || this.cacheInvalid || this.manifestTimestamp>res.lastUpdate) {
-            res = await this.getRequest(url,true).catch(e => {console.log(`Could not populate campaings: ${e}`); throw e})
+            res = await this.getRequest(url).catch(e => {console.log(`Could not populate campaings: ${e}`); throw e})
             res.lastUpdate = (new Date()).getTime()
             fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`),JSON.stringify(res))
         }
