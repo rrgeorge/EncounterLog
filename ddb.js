@@ -483,7 +483,7 @@ class DDB {
                         && alt.toString()!=url
                         && fs.existsSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(alt.toString(),uuid5.URL)))
                     ) {
-                        //console.log(`USING Fixed URL for ${url}`)
+                        this.verbose && console.log(`USING Fixed URL for ${url}`)
                         url = alt.toString()
                     }
                     if ((alt.search||alt.hash) && fs.existsSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)))) {
@@ -1360,7 +1360,7 @@ class DDB {
                                         }
                                     }       
                                 }
-                                description += `<td><a href="/item/${linkedId}">${linked.type}</a></td><td>${(linked.categoryId==2)?"Martial":"Simple"} ${(linked.attackType==2)?"Ranged":"Melee"}</td><td>${linked.damage?.diceString||linked.fixedDamage||'-'}${(linked.damage||linked.fixedDamage)&&bonus} ${(linked.damage||linked.fixedDamage)&&linked.damageType}</td><td>${linked.properties.map(p=>(p.notes)?`${p.name} (${p.notes})`:(p.name=="Range")?`(${p.name} ${linked.range}/${linked.longRange})`:(p.name=="Thrown")?`${p.name} (range ${linked.range}/${linked.longRange})`:p.name).join(", ")}</td>`
+                                description += `<td><a href="/item/${linkedId}">${linked.type}</a></td><td>${(linked.categoryId==2)?"Martial":"Simple"} ${(linked.attackType==2)?"Ranged":"Melee"}</td><td>${linked.damage?.diceString||linked.fixedDamage||'-'}${(linked.damage||linked.fixedDamage)&&bonus} ${(linked.damage||linked.fixedDamage)&&linked.damageType}</td><td>${linked.properties?.map(p=>(p.notes)?`${p.name} (${p.notes})`:(p.name=="Range")?`(${p.name} ${linked.range}/${linked.longRange})`:(p.name=="Thrown")?`${p.name} (range ${linked.range}/${linked.longRange})`:p.name).join(", ")||"-"}</td>`
                             } else {
                                 description += `<td><a href="/item/${linkedId}">${linked.name}</a></td>`
                             }
@@ -4152,6 +4152,10 @@ font-weight: bold;
                             })
                 console.log("Determining URL for compendium css...")
                 let br = await this.getImage('https://www.dndbeyond.com/sources/dnd/basic-rules-2014/introduction')
+                            .catch(e=>{
+                                prog?.close()
+                                throw(`Could not determine compendium css: ${e}`)
+                            })
                 let brDom = new jsdom.JSDOM(br)
                 let compendiumCss = brDom?.window?.document?.querySelector('link[href*="ddb-compendium-client"]')?.href
                 console.log(`Adding compendium css ${compendiumCss}`)
@@ -4826,7 +4830,7 @@ function doSearch(el,resId) {
 }`)
                 zip.addFile("assets/js/fuse.min.js",fs.readFileSync(path.join(require.resolve('fuse.js'),"../fuse.min.js")))
                 if (this.maps && this.maps != "nomaps") {
-                    const mapgroup = uuid5(`https://www.dndbeyond.com/${book.sourceURL}/maps`,uuid5.URL)
+                    const mapgroup = uuid5(`https://www.dndbeyond.com/${book.sourceURL}/groups/maps`,uuid5.URL)
                     prog.text = "Searching for Maps..."
                     let ddbMeta = []
                     const metaLatest = await this.getRequest("https://api.github.com/repos/MrPrimate/ddb-meta-data/releases/latest").catch(e=>console.log(`Could not check for new meta data: ${e}`))
@@ -5467,6 +5471,7 @@ function doSearch(el,resId) {
                 if (mstat.mtime.getTime() > stat.mtime.getTime()) {
                     let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
                     manifest.extractEntryTo("skeleton.db3",app.getPath("userData"),false,true)
+                    manifest.extractEntryTo("manifest.json",app.getPath("userData"))
                 }
                 this.manifestTimestamp = mstat.mtimeMs
             }

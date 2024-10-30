@@ -358,7 +358,7 @@ app.on('ready', () => {
                                     ddb.getSources(true).then(()=>{
                                         populateCampaignMenu()
                                         populateCompendiumMenu()
-                                    }).catch(e=>{
+                                    }).catch(()=>{
                                         win.loadURL("https://www.dndbeyond.com/mobile/api/v6/available-user-content",{
                                             postData: [{
                                                 type: "rawData",
@@ -366,16 +366,20 @@ app.on('ready', () => {
                                                     qs.stringify({ 'token': ddb.cobaltsession })
                                                 )
                                             }],
-                                            extraHeaders: "Content-Type: application/x-www-form-urlencoded; charset=UTF-8"
+                                            extraHeaders: "Content-Type: application/x-www-form-urlencoded; charset=UTF-8\nAccept: text/html, application/json"
                                         })
                                         //displayError(`Error populating sources: ${e}`)
                                     })
-                                }).catch(e=>{
-                                    win.loadURL("https://www.dndbeyond.com/api/campaign/active-campaigns")
+                                }).catch(()=>{
+                                    win.loadURL("https://www.dndbeyond.com/api/campaign/active-campaigns",{
+                                        extraHeaders: "Accept: text/html, application/json"
+                                    })
                                     //displayError(`Error populating campaigns: ${e}`)
                                 })
-                            }).catch(e=>{
-                                win.loadURL("https://www.dndbeyond.com/api/config/json")
+                            }).catch(()=>{
+                                win.loadURL("https://www.dndbeyond.com/api/config/json",{
+                                    extraHeaders: "Accept: text/html, application/json"
+                                })
                                 //displayError(`Error getting rule data: ${e}`)
                             })
                     }},
@@ -467,14 +471,15 @@ app.on('ready', () => {
         })
         
         const checkLogin = (e,u,r,m) => {
-            console.log(e,u,r,m)
             if (r == 200 && u.startsWith("https://www.dndbeyond.com")) {
                 (() => new Promise(resolve => setTimeout(resolve, Math.floor(Math.random()*500))))().then(()=>
                 ddb.getUserData()
                     .then(()=>{
                         updateManifest().then(()=>{
-                                populateCampaignMenu()
-                                populateCompendiumMenu()
+                                ddb.getRuleData().then(()=>{
+                                    populateCampaignMenu()
+                                    populateCompendiumMenu()
+                                }).catch(e=>displayError(`Could not load rule data: ${e}`))
                             }
                         )
                     })
@@ -551,7 +556,8 @@ app.on('ready', () => {
                         ddb.userId && win.webContents.executeJavaScript("Array.from(document.querySelectorAll('.ddb-campaigns-listing-active .ddb-campaigns-list-item-body-title')).map(t=>t?.textContent?.trim())").then(r=>{
                             const c = ddb.campaigns.map(c=>he.decode(c.name))
                             if (!r.every(i=>c.includes(i)) || !c.every(i=>r.includes(i))) {
-                                console.log("Campaign list differs, repopulating",c)
+                                console.log("Campaign list differs, repopulating")
+                                console.log(c,r)
                                 if (c.length == 0) {
                                     console.log("Campaign list is empty!")
                                     win.loadURL("https://www.dndbeyond.com/api/campaign/active-campaigns")
@@ -619,7 +625,7 @@ app.on('ready', () => {
 function displayError(e) {
     _win.loadURL("https://www.dndbeyond.com/my-campaigns")
     console.log(e)
-    dialog.showErrorBox("Error",e)
+    dialog.showErrorBox("Error",e.toString())
 }
 app.on('will-quit', () => {
 		if (_ws !== null) {
@@ -638,6 +644,7 @@ function updateManifest() {
                 const mstat = fs.statSync(path.join(app.getPath("userData"),"manifest.zip"))
                 if (mstat.mtime > stat.mtime) 
                     manifest.extractEntryTo("skeleton.db3",app.getPath("userData"),false,true)
+                    manifest.extractEntryTo("manifest.json",app.getPath("userData"),false,true)
             }
         }
         ddb.checkManifestVersion(manifestVersion).then(res=>{
@@ -653,6 +660,7 @@ function updateManifest() {
                     onCompleted: () => {
                         let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
                         manifest.extractEntryTo("skeleton.db3",app.getPath("userData"),false,true)
+                        manifest.extractEntryTo("manifest.json",app.getPath("userData"),false,true)
                         resolve("Updated")
                     }
                 }).catch(e=>{
