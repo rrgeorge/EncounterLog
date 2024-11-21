@@ -856,7 +856,7 @@ function populateCompendiumMenu(force=false) {
                             }).then((save) => {
                                 if (save.filePath)
                                     ddb.getV5Compendium(book.id,save.filePath).then(()=>{
-                                        if (preferences.value('export.launchserver').includes(true)) {
+                                        if (preferences.value('export.launchserver')?.includes(true)) {
                                             let httpServer = new http(save.filePath,'all','Complete Compendium')
                                             httpServer.server.then((s)=>{
                                                 dialog.showMessageBox(_win,{
@@ -935,7 +935,7 @@ function populateCompendiumMenu(force=false) {
                                 }).then((save) => {
                                     if (save.filePath)
                                         ddb.getModule(book.id,save.filePath,_win).then(()=>{
-                                            if (preferences.value('export.launchserver').includes(true)) {
+                                            if (preferences.value('export.launchserver')?.includes(true)) {
                                                 let httpServer = new http(save.filePath,book.bookCode.toLowerCase(),book.book)
                                                 httpServer.server.then((s)=>{
                                                     dialog.showMessageBox(_win,{
@@ -1056,7 +1056,7 @@ function populateCompendiumMenu(force=false) {
                     }).then((save) => {
                         if (save.filePath)
                             ddb.getV5Compendium(null,save.filePath).then(()=>{
-                                if (preferences.value('export.launchserver').includes(true)) {
+                                if (preferences.value('export.launchserver')?.includes(true)) {
                                     let httpServer = new http(save.filePath,'all','Complete Compendium')
                                     httpServer.server.then((s)=>{
                                         dialog.showMessageBox(_win,{
@@ -1270,7 +1270,7 @@ function convertCharactersV5(campaignId) {
     }).then((save) => {
         if (save.filePath) {
             ddb.getCampaignCharacters(campaignId,null,save.filePath).then(()=>{
-            if (preferences.value('export.launchserver').includes(true)) {
+            if (preferences.value('export.launchserver')?.includes(true)) {
                 let httpServer = new http(save.filePath,`characters.${campaign.id}`,`${campaign.name.replaceAll("&&","&")} characters`)
                 httpServer.server.then((s)=>{
                     dialog.showMessageBox(_win,{
