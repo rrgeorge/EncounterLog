@@ -16,6 +16,11 @@ const { networkInterfaces } = require('os')
 const { isObject } = require('util')
 const http = require('./http')
 const qs = require('querystring')
+const { slugify, camelCase } = require('./ddbutils');
+const turndown = require('turndown');
+const turndownGfm = require('@joplin/turndown-plugin-gfm');
+const { v4: uuid } = require('uuid')
+
 
 var _ws = null
 var _eWs = null
@@ -23,6 +28,7 @@ var _eWsDelay = 1000;
 var _eWsTimeout = null;
 var _eCreatures = []
 var _eTokens = []
+var _eV5 = false;
 var _knownConditions = []
 var _win = null
 var _dmScreen = null
@@ -1323,61 +1329,99 @@ async function connectGameLog(gameId,userId,campaignName) {
                         let conditions = f.conditions.map(c=>`i-condition-white-${c.name.toLowerCase()}`)
                         let senses = f.senses.map(s=>`${s.name} ${s.distance}`)
                         let exhaustion = f.conditions.find(c=>c.name.toLowerCase()=="exhaustion")?.level||0
-                        const token = _eTokens.filter(t=>t.reference?.startsWith('/player/')).find(t=>t.name?.trim()==f.name.trim())
-                        if (token && (token.health != (f.hitPointInfo.current+f.hitPointInfo.temp) || token.hitpoints != f.hitPointInfo.maximum)) {
-                            console.log(`Update ${f.name}`)
-                            const model = {
-                                name: "updateModel",
-                                model: "token",
-                                data: {
-                                    id: token.id,
-                                    health: f.hitPointInfo.current+f.hitPointInfo.temp,
-                                    hitpoints: f.hitPointInfo.maximum
-                                }
-                            }
-                            if (_eWs?.readyState === WebSocket.OPEN) {
-                                _eWs.send(JSON.stringify(model))
-                            } else {
-                                connectEWS(JSON.stringify(model))
-                            }
-                        }
-                        let knownCondition = _knownConditions.find(kc=>kc.name==f.name)
-                        if (!knownCondition) {
-                            _knownConditions.push({name: f.name.trim(), conditions: f.conditions})
-                            if (preferences.value("main.chatconditions")?.includes("change")) {
-                                for (let c of f.conditions) {
-                                    const msgJson = {
-                                        "source": f.name.trim(),
-                                        "type":     "chat",
-                                        "content": `I am ${(c.name=="Exhaustion")?`Exhausted (${c.level})`:c.name}`
-                                    };
-                                    let message = JSON.stringify({name: "createMessage", data: msgJson})
-                                    if (_eWs?.readyState === WebSocket.OPEN) {
-                                        _eWs.send(JSON.stringify(message))
-                                    } else {
-                                        connectEWS(JSON.stringify(message))
-                                    }
-                                }
-                            }
-                        } else {
-                            if (preferences.value("main.chatconditions")?.includes("change")) {
-                                for (let c of knownCondition.conditions) {
-                                    if (!f.conditions.find(nc=>nc.name==c.name&&nc.level==c.level)) {
-                                        const msgJson = {
-                                            "source": f.name.trim(),
-                                            "type":     "chat",
-                                            "content": `I am no longer ${(c.name=="Exhaustion")?`Exhausted (${c.level})`:c.name}`
-                                        };
-                                        let message = JSON.stringify({name: "createMessage", data: msgJson})
-                                        if (_eWs?.readyState === WebSocket.OPEN) {
-                                            _eWs.send(JSON.stringify(message))
-                                        } else {
-                                            connectEWS(JSON.stringify(message))
+                        if ( _eV5 ) {
+                            const character = _eCreatures.find(c=>c.entityType == "Character" && c.name?.trim()==f.name.trim())
+                            if (character?.entityId) {
+                                getEChar(character.entityId).then(c=>{
+                                    const model = {
+                                        name: "updateEntity",
+                                        data: {
+                                            id: c.id,
+                                            data: {
+                                                hp: {
+                                                    current: f.hitPointInfo.current,
+                                                    temporary: (f.hitPointInfo.temp == 0)? null : f.hitPointInfo.temp,
+                                                    maximum: f.hitPointInfo.maximum
+                                                }
+                                            }
                                         }
                                     }
+                                    if (_eWs?.readyState === WebSocket.OPEN) {
+                                        _eWs.send(JSON.stringify(model))
+                                    } else {
+                                        connectEWS(JSON.stringify(model))
+                                    }
+                                    let effects = c.combatant?.effects || []
+                                    let updateEffects = false
+                                    for (let i = effects.length - 1; i >= 0; i--) {
+                                        let condition = effects[i]
+                                        if (!f.conditions.find(ddbcon=>ddbcon.name==condition.name||condition.name.startsWith(`${ddbcon.name} (`))) {
+                                            updateEffects = true
+                                            effects.splice(i,1)
+                                        }
+                                    }
+                                    for (const condition of f.conditions) {
+                                        const tdSvc = new turndown()
+                                        tdSvc.use(turndownGfm.gfm)
+                                        if (effects.find(e=>e.name==condition.name)) continue
+                                        if (effects.find(e=>e.name==`${condition.name} (${condition.level})`)) continue
+                                        let ddbCondition = ddb.ruledata.conditions.find(ddbc=>ddbc.definition.name==condition.name)?.definition
+                                        if (ddbCondition) {
+                                            updateEffects = true
+                                            if (condition.name == "Exhaustion" && effects.find(e=>e.name.startsWith(`${condition.name} (`))) {
+                                                effects[effects.findIndex(e=>e.name.startsWith(`${condition.name} (`))].name = `${condition.name} (${condition.level})`
+                                            }
+                                            else {
+                                                effects.push( {
+                                                    name: (condition.name=="Exhaustion")?`${condition.name} (${condition.level})`:condition.name,
+                                                    descr: tdSvc.turndown(ddbCondition.description.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')),
+                                                    reference: `/condition/${slugify(condition.name)}`,
+                                                    id: uuid().toString(),
+                                                    icon: `condition-${slugify(condition.name)}.png`,
+                                                } )
+                                            }
+                                        }
+                                    }
+                                    if (updateEffects) {
+                                        const model = {
+                                            name: "updateCombatant",
+                                            data: {
+                                                id: c.combatant.id,
+                                                effects: effects
+                                            }
+                                        }
+                                        if (_eWs?.readyState === WebSocket.OPEN) {
+                                            _eWs.send(JSON.stringify(model))
+                                        } else {
+                                            connectEWS(JSON.stringify(model))
+                                        }
+                                    }
+                                }).catch(e=>console.log(`Could not update character ${f.name}: ${e}`))
+                            }
+                        } else {
+                            const token = _eTokens.filter(t=>t.reference?.startsWith('/player/')).find(t=>t.name?.trim()==f.name.trim())
+                            if (token && (token.health != (f.hitPointInfo.current+f.hitPointInfo.temp) || token.hitpoints != f.hitPointInfo.maximum)) {
+                                console.log(`Update ${f.name}`)
+                                const model = {
+                                    name: "updateModel",
+                                    model: "token",
+                                    data: {
+                                        id: token.id,
+                                        health: f.hitPointInfo.current+f.hitPointInfo.temp,
+                                        hitpoints: f.hitPointInfo.maximum
+                                    }
                                 }
-                                for (let c of f.conditions) {
-                                    if (!knownCondition.conditions.find(nc=>nc.name==c.name&&nc.level==c.level)) {
+                                if (_eWs?.readyState === WebSocket.OPEN) {
+                                    _eWs.send(JSON.stringify(model))
+                                } else {
+                                    connectEWS(JSON.stringify(model))
+                                }
+                            }
+                            let knownCondition = _knownConditions.find(kc=>kc.name==f.name)
+                            if (!knownCondition) {
+                                _knownConditions.push({name: f.name.trim(), conditions: f.conditions})
+                                if (preferences.value("main.chatconditions")?.includes("change")) {
+                                    for (let c of f.conditions) {
                                         const msgJson = {
                                             "source": f.name.trim(),
                                             "type":     "chat",
@@ -1391,8 +1435,41 @@ async function connectGameLog(gameId,userId,campaignName) {
                                         }
                                     }
                                 }
+                            } else {
+                                if (preferences.value("main.chatconditions")?.includes("change")) {
+                                    for (let c of knownCondition.conditions) {
+                                        if (!f.conditions.find(nc=>nc.name==c.name&&nc.level==c.level)) {
+                                            const msgJson = {
+                                                "source": f.name.trim(),
+                                                "type":     "chat",
+                                                "content": `I am no longer ${(c.name=="Exhaustion")?`Exhausted (${c.level})`:c.name}`
+                                            };
+                                            let message = JSON.stringify({name: "createMessage", data: msgJson})
+                                            if (_eWs?.readyState === WebSocket.OPEN) {
+                                                _eWs.send(JSON.stringify(message))
+                                            } else {
+                                                connectEWS(JSON.stringify(message))
+                                            }
+                                        }
+                                    }
+                                    for (let c of f.conditions) {
+                                        if (!knownCondition.conditions.find(nc=>nc.name==c.name&&nc.level==c.level)) {
+                                            const msgJson = {
+                                                "source": f.name.trim(),
+                                                "type":     "chat",
+                                                "content": `I am ${(c.name=="Exhaustion")?`Exhausted (${c.level})`:c.name}`
+                                            };
+                                            let message = JSON.stringify({name: "createMessage", data: msgJson})
+                                            if (_eWs?.readyState === WebSocket.OPEN) {
+                                                _eWs.send(JSON.stringify(message))
+                                            } else {
+                                                connectEWS(JSON.stringify(message))
+                                            }
+                                        }
+                                    }
+                                }
+                                knownCondition.conditions = f.conditions
                             }
-                            knownCondition.conditions = f.conditions
                         }
                         _win.webContents.executeJavaScript(`(()=>{
                             let characters = document.querySelectorAll('.ddb-campaigns-character-card')
@@ -1810,12 +1887,19 @@ function getEAPI () {
             r.on('end',()=>{
                 try {
                     const eAPI = JSON.parse(body)
-                    _eTokens = eAPI?.map?.tokens || []
-                    _eCreatures = eAPI?.game?.creatures || []
+                    if (eAPI?.build >= 3714) {
+                        _eV5 = true
+                        _eCreatures = eAPI?.game?.combatants || []
+                    } else {
+                        _eV5 = false;
+                        _eTokens = eAPI?.map?.tokens || []
+                        _eCreatures = eAPI?.game?.creatures || []
+                    }
                 } catch (e) {
                     console.log(`API Error: ${e}`)
                     console.log(body)
                     _eTokens = []
+                    _eV5 = false;
                 }
             })
             r.on('data',c=>body+=c.toString())
@@ -1824,6 +1908,32 @@ function getEAPI () {
         }
     })
     request.end()
+}
+function getEChar(characterId) {
+    return new Promise((resolve,reject)=>{
+        const request = net.request({url: (new URL(`api/entities/${characterId}`,encounterhost)).href,method: "GET"})
+        request.on('error',e=>console.log(e))
+        request.on('response',r=>{
+            if (r.statusCode == 200) {
+                let body = ''
+                r.on('end',()=>{
+                    try {
+                        const character = JSON.parse(body)
+                        return resolve(character)
+                    } catch (e) {
+                        console.log(`API Error: ${e}`)
+                        console.log(body)
+                        return reject(e)
+                    }
+                })
+                r.on('data',c=>body+=c.toString())
+            } else {
+                console.log(`API Error: ${r.statusMessage}`)
+                return reject(r.statusMessage)
+            }
+        })
+        request.end()
+    })
 }
 function connectEWS(msg=null,initial=false) {
     console.log(new Date())
