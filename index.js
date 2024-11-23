@@ -560,17 +560,19 @@ app.on('ready', () => {
                     }
                     if (win.webContents.getURL().match(/dndbeyond.com\/my-campaigns/)) {
                         ddb.userId && win.webContents.executeJavaScript("Array.from(document.querySelectorAll('.ddb-campaigns-listing-active .ddb-campaigns-list-item-body-title')).map(t=>t?.textContent?.trim())").then(r=>{
-                            const c = ddb.campaigns.map(c=>he.decode(c.name))
-                            if (!r.every(i=>c.includes(i)) || !c.every(i=>r.includes(i))) {
-                                console.log("Campaign list differs, repopulating")
-                                console.log(c,r)
-                                if (c.length == 0) {
-                                    console.log("Campaign list is empty!")
-                                    win.loadURL("https://www.dndbeyond.com/api/campaign/active-campaigns")
-                                } else {
-                                    populateCampaignMenu(true)
+                            ddb.populateCampaigns().then(() => {
+                                const c = ddb.campaigns.map(c=>he.decode(c.name))
+                                if (!r.every(i=>c.includes(i)) || !c.every(i=>r.includes(i.trim()))) {
+                                    console.log("Campaign list differs, repopulating")
+                                    console.log(c,r)
+                                    if (c.length == 0) {
+                                        console.log("Campaign list is empty!")
+                                        win.loadURL("https://www.dndbeyond.com/api/campaign/active-campaigns")
+                                    } else {
+                                        populateCampaignMenu(true)
+                                    }
                                 }
-                            }
+                            })
                         })
                         //ddb.userId && populateCampaignMenu()
                     }
