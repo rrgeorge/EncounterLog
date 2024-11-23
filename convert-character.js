@@ -420,12 +420,11 @@ function convertCharacter(ddb,rules) {
     ddb.spells.feat?.forEach(addSpell)
 
     data.currency = ddb.currencies
-    data.hp.maximum += Math.floor((data.abilities.con.base-10)*.5)*overallLevel
+    data.hp.maximum += Math.floor(((data.abilities.con.base+(data.abilities.con.otherBonus||0))-10)*.5)*overallLevel
     data.hp.current = data.hp.maximum - ddb.removedHitPoints
     data.initiativeBonus += Math.floor((data.abilities.dex.base-10)*.5)
 
     data.xp = { current: ddb.currentXp }
-
     return character
 }
 module.exports = convertCharacter
