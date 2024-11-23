@@ -89,8 +89,6 @@ function convertCharacter(ddb,rules) {
     const addAction = (m) => {
         const tagRegex = /{{(?<level>characterlevel\+)?\(?(?<tag>limiteduse|classlevel|proficiency|scalevalue|(?:modifier|spellattack|savedc):(?<stat>(?:,?\w{3})+))(?:([-+*\/])(\d+))?\)?(?:@((?<mm>min|max):(?<mmv>\d)?|round(?:up|down)))?(#(?:un)?signed)?}}/g
         const deTag = (match,level,tag,stat,fn,mult,round,mm,mmv,signed) => {
-            console.log(match,level,tag,stat,fn,mult,round,mm,mmv,signed)
-            console.log(m.name,m.componentTypeId)
             if (signed == '#unsigned') signed = false
             if (tag == 'scalevalue') {
                 if (m.componentTypeId == 12168134) {
@@ -132,7 +130,6 @@ function convertCharacter(ddb,rules) {
                                 value = Math.floor(value)
                             }
                         }
-                        console.log(value)
                         return `${(signed&&value>=0)?'+':''}${value}`
                     }
                 }
