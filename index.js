@@ -21,6 +21,23 @@ const turndown = require('turndown');
 const turndownGfm = require('@joplin/turndown-plugin-gfm');
 const { v4: uuid } = require('uuid')
 
+const conditionIcons = {
+    blinded:		"gi-blindfold",
+    charmed:		"gi-charm",
+    deafened:		"gi-hearing-disabled",
+    frightened:		"gi-paranoia",
+    grappled:		"gi-grab",
+    incapacitated:	"gi-knockout",
+    invisible:		"gi-invisible",
+    paralyzed:		"gi-frozen-body",
+    petrified:		"gi-rock-golem",
+    poisoned:		"gi-poison-gas",
+    prone:		"gi-falling",
+    retrained:		"gi-imprisoned",
+    stunned:		"gi-surprised",
+    unconcious:		"gi-dead-head",
+    exhaustion:		"gi-oppression"
+}
 
 var _ws = null
 var _eWs = null
@@ -72,6 +89,7 @@ const preferences = new ElectronPreferences({
         'defaults': {
             'main': {
                 'encounterhost': 'http://localhost:8080',
+                'conditionsiconset': 'gameicons'
             },
             'export': {
                 'art': [ 'artwork', 'tokens' ],
@@ -108,7 +126,18 @@ const preferences = new ElectronPreferences({
                                             { 'label': 'Announce Conditions on Turn', 'value': 'turn' },
                                             { 'label': 'Announce Conditions on Change', 'value': 'change' }
                                         ]
-                                    }],
+                                    },
+                                    {
+                                        'label': "When updating conditions (v5 only), use the following iconset:",
+                                        'key': "conditionsiconset",
+                                        'type': "dropdown",
+                                        'options': [
+                                            { 'label': 'Game Icons (built-in)', 'value': 'gameicons' },
+                                            { 'label': 'D&D Beyond Icons (requires v5 compendium)', 'value': 'ddb' }
+                                        ]
+
+                                    }
+                                ],
                             },
                             {
                                 'fields': [
@@ -1367,6 +1396,10 @@ async function connectGameLog(gameId,userId,campaignName) {
                                         tdSvc.use(turndownGfm.gfm)
                                         if (effects.find(e=>e.name==condition.name)) continue
                                         if (effects.find(e=>e.name==`${condition.name} (${condition.level})`)) continue
+                                        let conditionIcon = conditionIcons[slugify(condition.name)]
+                                        if (preferences.value("main.conditionsiconset") == "ddb") {
+                                            conditionIcon = `condition-${slugify(condition.name)}.png`
+                                        }
                                         let ddbCondition = ddb.ruledata.conditions.find(ddbc=>ddbc.definition.name==condition.name)?.definition
                                         if (ddbCondition) {
                                             updateEffects = true
@@ -1379,7 +1412,7 @@ async function connectGameLog(gameId,userId,campaignName) {
                                                     descr: tdSvc.turndown(ddbCondition.description.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')),
                                                     reference: `/condition/${slugify(condition.name)}`,
                                                     id: uuid().toString(),
-                                                    icon: `condition-${slugify(condition.name)}.png`,
+                                                    icon: conditionIcon,
                                                 } )
                                             }
                                         }
