@@ -1386,6 +1386,7 @@ async function connectGameLog(gameId,userId,campaignName) {
                                     let updateEffects = false
                                     for (let i = effects.length - 1; i >= 0; i--) {
                                         let condition = effects[i]
+                                        if (!ddb.ruledata.conditions.find(ddbc=>ddbc.definition.name==condition.name||ddbc.definition.name.startsWith(`${condition.name} (`))) continue
                                         if (!f.conditions.find(ddbcon=>ddbcon.name==condition.name||condition.name.startsWith(`${ddbcon.name} (`))) {
                                             updateEffects = true
                                             effects.splice(i,1)
