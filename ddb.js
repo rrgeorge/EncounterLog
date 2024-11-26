@@ -516,7 +516,7 @@ class DDB {
                           })
                         } else {
                             this.verbose && console.log(`IMG HEAD REQ ${url}`,metaData)
-                            const request = net.request({url: url,useSessionCookies: false,method:"HEAD"})
+                            const request = net.request({url: url,useSessionCookies: true,method:"HEAD"})
                             if (auth) {
                                 request.setHeader('Authorization',`Bearer ${this.cobaltauth}`)
                             }
@@ -592,7 +592,7 @@ class DDB {
                             ratelimit()
                         }
                     } else {
-                        const request = net.request({url: url,useSessionCookies: false})
+                        const request = net.request({url: url,useSessionCookies: true})
                         if (auth) {
                             request.setHeader('Authorization',`Bearer ${this.cobaltauth}`)
                         }
