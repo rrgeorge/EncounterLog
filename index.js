@@ -25,17 +25,17 @@ const conditionIcons = {
     blinded:		"gi-blindfold",
     charmed:		"gi-charm",
     deafened:		"gi-hearing-disabled",
-    frightened:		"gi-paranoia",
+    frightened:		"gi-screaming",
     grappled:		"gi-grab",
     incapacitated:	"gi-knockout",
     invisible:		"gi-invisible",
     paralyzed:		"gi-frozen-body",
     petrified:		"gi-rock-golem",
-    poisoned:		"gi-poison-gas",
+    poisoned:		"gi-poison-bottle",
     prone:		"gi-falling",
-    retrained:		"gi-imprisoned",
+    restrained:		"gi-imprisoned",
     stunned:		"gi-surprised",
-    unconcious:		"gi-dead-head",
+    unconscious:	"gi-dead-head",
     exhaustion:		"gi-oppression"
 }
 
@@ -1384,11 +1384,13 @@ async function connectGameLog(gameId,userId,campaignName) {
                                     }
                                     let effects = c.combatant?.effects || []
                                     let updateEffects = false
+                                    let hidden
                                     for (let i = effects.length - 1; i >= 0; i--) {
                                         let condition = effects[i]
-                                        if (!ddb.ruledata.conditions.find(ddbc=>ddbc.definition.name==condition.name||ddbc.definition.name.startsWith(`${condition.name} (`))) continue
+                                        if (!ddb.ruledata.conditions.find(ddbc=>ddbc.definition.name==condition.name||condition.name.startsWith(`${ddbc.definition.name} (`))) continue
                                         if (!f.conditions.find(ddbcon=>ddbcon.name==condition.name||condition.name.startsWith(`${ddbcon.name} (`))) {
                                             updateEffects = true
+                                            if (condition.name == "Invisible") hidden = false
                                             effects.splice(i,1)
                                         }
                                     }
@@ -1408,6 +1410,7 @@ async function connectGameLog(gameId,userId,campaignName) {
                                                 effects[effects.findIndex(e=>e.name.startsWith(`${condition.name} (`))].name = `${condition.name} (${condition.level})`
                                             }
                                             else {
+                                                if (condition.name == "Invisible") hidden = true
                                                 effects.push( {
                                                     name: (condition.name=="Exhaustion")?`${condition.name} (${condition.level})`:condition.name,
                                                     descr: tdSvc.turndown(ddbCondition.description.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')),
@@ -1418,12 +1421,13 @@ async function connectGameLog(gameId,userId,campaignName) {
                                             }
                                         }
                                     }
-                                    if (updateEffects) {
+                                    if (updateEffects || hidden != undefined ) {
                                         const model = {
                                             name: "updateCombatant",
                                             data: {
                                                 id: c.combatant.id,
-                                                effects: effects
+                                                effects: effects,
+                                                hidden: hidden
                                             }
                                         }
                                         if (_eWs?.readyState === WebSocket.OPEN) {
