@@ -1,7 +1,7 @@
 {
   "name": "encounterlog",
   "productName": "EncounterLog",
-  "version": "2.7.0-b11",
+  "version": "2.7.0-b12",
   "repository": {
     "type": "git",
     "url": "https://github.com/rrgeorge/encounterlog"
