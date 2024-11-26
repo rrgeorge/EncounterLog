@@ -1037,6 +1037,33 @@ function populateCompendiumMenu(force=false) {
                     )
                 }
                 }))
+            homebrewSubMenu.push( new MenuItem({
+                label: "Download Homebrew v5 Compendium",
+                click: () => {
+                    dialog.showSaveDialog(_win,{
+                        title: "Save v5 homebrew compendium",
+                        filters: [ { name: "EncounterPlus Compendium", extensions: ["compendium"]} ],
+                        defaultPath: `homebrew_v5.compendium`,
+                    }).then((save) => {
+                        if (save.filePath)
+                            ddb.getV5Compendium(null,save.filePath,null,null,null,true).then(()=>{
+                                if (preferences.value('export.launchserver')?.includes(true)) {
+                                    let httpServer = new http(save.filePath,'all','Homebrew Compendium')
+                                    httpServer.server.then((s)=>{
+                                        dialog.showMessageBox(_win,{
+                                            title: 'Server Running',
+                                            message: `The web server is running. Set the manifest to:\nhttp://${httpServer.ipaddr}:${httpServer.port}\nIt will shutdown after you close this dialog.`,
+                                            type: "info"
+                                        }).then((r)=>{
+                                            s.close()
+                                        })
+                                    })
+                                }
+                            })
+                        }
+                    )
+                }
+                }))
             compendiumMenu.submenu.append(
                 new MenuItem({ label: "Homebrew Collection", submenu: homebrewSubMenu })
             )
