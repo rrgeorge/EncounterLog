@@ -502,11 +502,13 @@ app.on('ready', () => {
             }
         )
         win.once('ready-to-show', () => {
+            let maxLoop = 60
             let splashInt = setInterval(()=>{
                     if (!splash?.isVisible()) 
                         clearInterval(splashInt)
                     const op = splash.getOpacity()
-                    if (op > 0) {
+                    if (op > 0 && maxLoop > 0) {
+                        maxLoop -= 1
                         splash.setOpacity(op - .02)
                     } else {
                         clearInterval(splashInt)
