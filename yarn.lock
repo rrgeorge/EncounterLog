@@ -421,13 +421,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@joplin/turndown-plugin-gfm@npm:^1.0.56":
-  version: 1.0.56
-  resolution: "@joplin/turndown-plugin-gfm@npm:1.0.56"
-  checksum: 10/8ed332004824da1291ef18d3cec6df5ad572741b25b46c4734fc11d51a613fac42cfb2bcdab0a451a5c442ef72345662a22e0a05906d3316df6798e573cb1ada
-  languageName: node
-  linkType: hard
-
 "@malept/cross-spawn-promise@npm:^1.1.0":
   version: 1.1.1
   resolution: "@malept/cross-spawn-promise@npm:1.1.1"
@@ -562,6 +555,13 @@ __metadata:
   version: 1.1.0
   resolution: "@protobufjs/utf8@npm:1.1.0"
   checksum: 10/131e289c57534c1d73a0e55782d6751dd821db1583cb2f7f7e017c9d6747addaebe79f28120b2e0185395d990aad347fb14ffa73ef4096fa38508d61a0e64602
+  languageName: node
+  linkType: hard
+
+"@rrgeorge/turndown-plugin-gfm@https://github.com/rrgeorge/joplin#turndown-plugin-gfm":
+  version: 1.0.56
+  resolution: "@rrgeorge/turndown-plugin-gfm@https://github.com/rrgeorge/joplin.git#commit=ec2785bcb31661cea0db1e33ac0eaa657f495508"
+  checksum: 10/42ee953f82837db626e7022f6ebf255b04be461bc95c192cfc73962ecaa19ce45e8c39e3e97ea9fdebd4c17649fa6842c65cb4fc2f4f6bbfb9eb2bf05fe89152
   languageName: node
   linkType: hard
 
@@ -2183,7 +2183,7 @@ __metadata:
     "@electron/notarize": "npm:^2.2.0"
     "@electron/universal": "npm:^1.2.1"
     "@google-cloud/vision": "npm:^2.3.8"
-    "@joplin/turndown-plugin-gfm": "npm:^1.0.56"
+    "@rrgeorge/turndown-plugin-gfm": "https://github.com/rrgeorge/joplin#turndown-plugin-gfm"
     adm-zip: "npm:^0.5.9"
     better-sqlite3-multiple-ciphers: "npm:^11.3.0"
     build: "npm:^0.1.4"
@@ -2205,7 +2205,6 @@ __metadata:
     tiny-async-pool: "npm:^2.1.0"
     tmp: "npm:^0.2.1"
     turndown: "npm:^7.2.0"
-    turndown-plugin-gfm: "npm:^1.0.2"
     uuid: "npm:^8.3.2"
     ws: "npm:^8.18.0"
   languageName: unknown
@@ -5601,13 +5600,6 @@ __metadata:
   dependencies:
     safe-buffer: "npm:^5.0.1"
   checksum: 10/7f0d9ed5c22404072b2ae8edc45c071772affd2ed14a74f03b4e71b4dd1a14c3714d85aed64abcaaee5fec2efc79002ba81155c708f4df65821b444abb0cfade
-  languageName: node
-  linkType: hard
-
-"turndown-plugin-gfm@npm:^1.0.2":
-  version: 1.0.2
-  resolution: "turndown-plugin-gfm@npm:1.0.2"
-  checksum: 10/07d8520ad4d272da5b69ed8032bf10c4cf5ff605541da0df1ac2c61bd5e0df6e25cbd8395a4f66e5db03cb2c4421d202feeeebb39c59a0fe45966ffcde3c5564
   languageName: node
   linkType: hard
 

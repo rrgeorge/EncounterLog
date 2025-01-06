@@ -1,5 +1,5 @@
 const turndown = require('turndown');
-const turndownGfm = require('@joplin/turndown-plugin-gfm');
+const turndownGfm = require('@rrgeorge/turndown-plugin-gfm');
 
 const { slugify, camelCase, fixDDBLinks, fixDDBTag, markDownLinks } = require('./ddbutils');
 

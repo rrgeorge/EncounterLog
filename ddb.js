@@ -19,7 +19,7 @@ const asyncPool = require('tiny-async-pool');
 const fs = require('fs');
 const semver = require('semver');
 const turndown = require('turndown');
-const turndownGfm = require('@joplin/turndown-plugin-gfm');
+const turndownGfm = require('@rrgeorge/turndown-plugin-gfm');
 const { slugify, camelCase, fixDDBLinks, fixDDBTag, markDownLinks, markDownImages, sanitize } = require('./ddbutils');
 const convertCharacter = require('./convert-character');
 
