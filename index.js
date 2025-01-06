@@ -620,6 +620,9 @@ app.on('ready', () => {
                     populateCampaignMenu()
                     populateCompendiumMenu()
                 }
+                if (u.startsWith("https://www.dndbeyond.com/api/campaign/characters/")) {
+                    win.loadURL("https://www.dndbeyond.com/my-campaigns")
+                }
             }
         })
         win.on('resized',()=>{ preferences.value('window.size', win.getSize()); preferences.save() })
@@ -656,7 +659,13 @@ app.on('ready', () => {
             }
         }
         win.webContents.once('did-navigate',checkLogin)
-        win.loadURL("https://www.dndbeyond.com/my-campaigns" )
+        ddb.setCobaltSession().then(()=>{
+            if (ddb.cobaltsession) {
+                win.loadURL("https://www.dndbeyond.com/my-campaigns" )
+            } else {
+                win.loadURL("https://www.dndbeyond.com/sign-in?returnUrl=/my-campaigns",{httpReferrer: "https://www.dndbeyond.com  /my-campaigns"})
+            }
+        }).catch(()=>win.loadURL("https://www.dndbeyond.com/sign-in?returnUrl=/my-campaigns",{httpReferrer: "https://www.dndbeyond.com  /my-campaigns"}))
         if (Notification.isSupported()) new Notification()
 });
 function displayError(e) {
@@ -1245,6 +1254,9 @@ function requestCampaignChars(gameId,cobalt) {
                             }))
                             Menu.setApplicationMenu(menu)
 			} catch (e) {
+                            _win.loadURL(url,{
+                                extraHeaders: "Accept: text/html, application/json"
+                            })
                           return reject(e.message)
 			}
 		    	return resolve(campaignChars)
@@ -1321,6 +1333,12 @@ function convertCharacters(campaignId) {
                     prog.detail = "Uploading data..."+((upload.current*100.00)/(upload.total*1.00)).toFixed(0)+"%"
                 }
                 request.end()
+            }).catch(()=>{
+                prog?.close()
+		const url = `https://www.dndbeyond.com/api/campaign/characters/${campaignId}`
+                _win.loadURL(url,{
+                    extraHeaders: "Accept: text/html, application/json"
+                })
             })
         }
     })
@@ -1348,7 +1366,12 @@ function convertCharactersV5(campaignId) {
                 })
             }
         }
-        ).catch(e=>displayError(e))
+        ).catch(()=>{
+		const url = `https://www.dndbeyond.com/api/campaign/characters/${campaignId}`
+                _win.loadURL(url,{
+                    extraHeaders: "Accept: text/html, application/json"
+                })
+            })
         }
     })
 }

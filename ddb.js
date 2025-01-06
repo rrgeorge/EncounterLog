@@ -2854,7 +2854,11 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
 	    const url = `https://www.dndbeyond.com/api/campaign/characters/${campaignId}`
             await this.getCobaltAuth()
             if (!this.ruledata) await this.getRuleData().catch(e=>{throw new Error(e)})
-            const response = await this.getRequest(url,true).catch((e)=>{ console.log(`Error getting campaign characters: ${e}`); throw `Error getting campaign characters: ${e}`; })
+            const response = await this.getRequest(url,true).catch((e)=>{
+                prog?.close()
+                console.log(`Error getting campaign characters: ${e}`);
+                throw `Error getting campaign characters: ${e}`;
+            })
             campaignChars = response.data
             for (let character of campaignChars) {
                 prog.detail = `Retrieving character ${character.name}`
