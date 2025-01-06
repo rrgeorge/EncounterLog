@@ -460,8 +460,19 @@ app.on('ready', () => {
                       },
                       {
                           'click': function() {
-                              win.webContents.session.clearStorageData().then(()=>
-                                  dialog.showMessageBox(_win,{title:"Data Cleared",message: "Web cache and cookies have been cleared."}).then(()=>_win.loadURL("https://www.dndbeyond.com/sign-in?returnUrl=/my-campaigns",{httpReferrer: "https://www.dndbeyond.com/my-campaigns"})))
+                              win.webContents.session.clearStorageData().then(()=>{
+                                if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache",`campaignscache.json`))) {
+                                    fs.rmSync(path.join(app.getPath("cache"),app.getName(),"datacache",`campaignscache.json`))
+                                }
+                                if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache",`sourcescache.json`))) {
+                                    fs.rmSync(path.join(app.getPath("cache"),app.getName(),"datacache",`sourcescache.json`))
+                                }
+                                dialog.showMessageBox(_win,{title:"Data Cleared",message: "Web cache and cookies have been cleared."})
+                                    .then(()=>
+                                        _win.loadURL("https://www.dndbeyond.com/sign-in?returnUrl=/my-campaigns",{httpReferrer: "https://www.dndbeyond.com/my-campaigns"})
+                                    )
+                                return;
+                              })
                           },
                           'label': "Clear web cache and cookies",
                       },
@@ -1194,65 +1205,6 @@ function requestCampaignChars(gameId,cobalt) {
                             campaignChars.forEach(character=>{
                                 ddb.getCharacterSheet(character.id).then(sheet=>character.sheet = sheet)
                             })
-                            const menu = Menu.getApplicationMenu()
-                            const campaignMenu = menu.getMenuItemById('campaignMenu')
-                            const thisCampaign = campaignMenu.submenu.getMenuItemById(parseInt(gameId))
-                            campaignMenu.submenu.clear()
-                            campaignMenu.submenu.append( new MenuItem({
-                                label: "Campaign List",
-                                toolTip: "Jump to campaign list",
-                                accelerator: "CommandOrControl+Shift+C",
-                                click: () => _win?.loadURL(`https://www.dndbeyond.com/my-campaigns`,{httpReferrer: "https://www.dndbeyond.com"})
-                            }))
-                            campaignMenu.submenu.append(new MenuItem({type: 'separator'}))
-                            for (const campaign of ddb.campaigns) {
-                                campaignMenu.submenu.append( new MenuItem({
-                                    label: he.decode(campaign.name).replaceAll("&","&&"),
-                                    id: campaign.id,
-                                    toolTip: "Jump to campaign",
-                                    click: (m) => _win?.loadURL(`https://www.dndbeyond.com/campaigns/${m.id}`,{httpReferrer: "https://www.dndbeyond.com/my-campaigns"})
-                                }))
-                            }
-                            campaignMenu.submenu.append(new MenuItem({type: 'separator'}))
-                            campaignMenu.submenu.append( new MenuItem({
-                                label: "Export All Encounters",
-                                toolTip: "Export all Encounters from the Encounter Builder",
-                                click: () => {
-                                    dialog.showSaveDialog(win,{
-                                        title: "Save Encounters",
-                                        filters: [ { name: "EncounterPlus Campaign", extensions: ["campaign"]} ],
-                                        defaultPath: `encounters.campaign`,
-                                    }).then((save) => {
-                                        if (save.filePath)
-                                            ddb.getEncounters(null,save.filePath).catch(e=>displayError(e))
-                                        }
-                                    )
-                                }
-                            }))
-                            campaignMenu.submenu.append(new MenuItem({type: 'separator'}))
-                            campaignMenu.submenu.append(new MenuItem({
-                                label: "Export this Campaign's Encounters",
-                                click: () => {
-                                    dialog.showSaveDialog(_win,{
-                                        title: "Save exported encounters",
-                                        filters: [ { name: "EncounterPlus Campaign", extensions: ["campaign"]} ],
-                                        defaultPath: `${thisCampaign.label.replaceAll("&&","&")}-encounters.campaign`,
-                                    }).then((save) => {
-                                        if (save.filePath) {
-                                            ddb.getEncounters(thisCampaign.id,save.filePath).catch(e=>displayError(e))
-                                        }
-                                    })
-                                }
-                            }))
-                            campaignMenu.submenu.append(new MenuItem({
-                                label: "Export this Campaign's Characters",
-                                click: ()=>convertCharacters(gameId)
-                            }))
-                            campaignMenu.submenu.append(new MenuItem({
-                                label: "Export this Campaign's v5 Characters",
-                                click: ()=>convertCharactersV5(gameId)
-                            }))
-                            Menu.setApplicationMenu(menu)
 			} catch (e) {
                             _win.loadURL(url,{
                                 extraHeaders: "Accept: text/html, application/json"
