@@ -2961,6 +2961,34 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
         const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting monster id ${id}: ${e}`))
         return response?.data
     }
+    async findMonsterByName(name) {
+        //https://monster-service.dndbeyond.com/v1/Monster?search=bandit&skip=0&take=10
+        let monstercache = []
+        if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache","monstercache.json"))) {
+            console.log("loading cache")
+            monstercache = JSON.parse(fs.readFileSync(path.join(app.getPath("cache"),app.getName(),"datacache","monstercache.json")))
+            let cached = monstercache.find(c=>c.name==name)
+            if (cached && !this.cacheInvalid && this.manifestTimestamp<=cached.lastUpdate) {
+                console.log("sending cached")
+                return cached
+            }
+        }
+        const url = "https://monster-service.dndbeyond.com/v1/Monster"
+        const params = qs.stringify({ 'search': name, 'skip': 0, 'take': 10 })
+        await this.getCobaltAuth()
+        const response = await this.getRequest(`${url}?${params}`,true).catch((e)=>console.log(`Error getting monster id ${id}: ${e}`))
+        if (response?.data) {
+            let monsters = response.data
+            for(let mu of monsters) {
+                mu.lastUpdate = new Date().getTime()
+            }
+            fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache","monstercache.json"),JSON.stringify(
+                monstercache.filter(c=>!monsters.find(m=>m.id==c.id)).concat(monsters)
+            ))
+            let cached = monstercache.find(c=>c.name==name)
+            return cached
+        }
+    }
     async getMonsters(source = 0,filename,zip=null,imageMap=null,prog=null,homebrew=false,tdSvc=null) {
         const url = "https://monster-service.dndbeyond.com/v1/Monster"
         var params

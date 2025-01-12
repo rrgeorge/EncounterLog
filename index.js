@@ -89,7 +89,8 @@ const preferences = new ElectronPreferences({
         'defaults': {
             'main': {
                 'encounterhost': 'http://localhost:8080',
-                'conditionsiconset': 'gameicons'
+                'conditionsiconset': 'gameicons',
+                'sendrolls': []
             },
             'export': {
                 'art': [ 'artwork', 'tokens' ],
@@ -136,7 +137,15 @@ const preferences = new ElectronPreferences({
                                             { 'label': 'D&D Beyond Icons (requires v5 compendium)', 'value': 'ddb' }
                                         ]
 
-                                    }
+                                    },
+                                    {
+					'label': "We can send dice rolls made in Encounter Plus to the D&D Beyond Game Log. Rolls made on character sheets or monster stat blocks that can be matched to a character or monster from D&D Beyond will show in the Game Log as from that character/monster. Other rolls will come from Dungeon Master if you're the owner of the campaign, otherwise it will be your D&D Beyond username.",
+					'key': 'sendrolls',
+					'type': 'checkbox',
+                                        'options': [
+                                            { 'label': 'Send rolls made in Encounter Plus to D&D Beyond', 'value': 'sendrolls' },
+                                        ]
+                                    },
                                 ],
                             },
                             {
@@ -1333,10 +1342,12 @@ async function connectGameLog(gameId,userId,campaignName) {
         connectEWS(null,true)
 	const cobalt = await ddb.getCobaltAuth()
         ddb.gameId = gameId
+        ddb.campaignCharacters = []
         let updateChars = () => {}
         _knownConditions = []
 	requestCampaignChars(gameId,cobalt).then(chars=>{
             const charIds = chars.map(c=>c.id)
+            ddb.campaignCharacters = chars
             updateChars = (chars=charIds)=>{
                 if (_dmScreen) clearTimeout(_dmScreen)
                 const screenTimeout = Math.floor(Math.random() * (120 - 50 + 1) + 50)
@@ -1823,7 +1834,7 @@ async function connectGameLog(gameId,userId,campaignName) {
                 }
 	})
 	ws.on('error',(e) => console.log(e))
-        const msgEvent = (data,isBin) => {
+        const msgEvent = (data,_) => {
                 try {
 		    const msgData = JSON.parse(data.toString()
                         .replaceAll(/\x18/g,"\u2018")
@@ -2065,6 +2076,138 @@ function connectEWS(msg=null,initial=false) {
                     }
                 } else if (msg?.name == 'mapUpdated' || msg?.name == 'mapLoaded') {
                     getEAPI()
+                } else if (msg?.name == 'messageCreated' && msg?.data?.type == 'roll' && msg?.data.source === undefined && preferences.value("main.sendrolls")?.includes("sendrolls")) {
+                    const rollTypeMap = {
+                        "damage": "damage",
+                        "attack": "to hit",
+                        "check": "check",
+                        "save": "save",
+                    }
+                    const rollType = rollTypeMap[msg.data.content.type]
+                    let beyondRoll = {
+                        id: uuid().toString(),
+                        dateTime: (new Date(msg.data.created)).getTime(),
+                        gameId: ddb.gameId.toString(),
+                        userId: ddb.userId.toString(),
+                        source: "web",
+                        entityId: ddb.userId.toString(),
+                        entityType: "user",
+                        eventType: "dice/roll/pending",
+                        persist: false,
+                        messageScope: "gameId",
+                        messageTarget: ddb.gameId.toString(),
+                        data: {
+                            context: {
+                              entityId: ddb.userId.toString(),
+                              entityType: "user",
+                              messageScope: "gameId",
+                              messageTarget: ddb.gameId.toString()
+                            },
+                            setId: "00101",
+                            rollId: msg.data.id.toLowerCase(),
+                            action: "custom",
+                            rolls: [
+                                {
+                                    diceNotation: {
+                                        set: [],
+                                        constant: 0
+                                    },
+                                    rollType: (rollType)? rollType : "roll",
+                                    rollKind: ""
+                                },
+                            ],
+                        }
+                    }
+                    if (msg.data.content.name) {
+                        if ([
+                            "strength",
+                            "dexterity",
+                            "constitution",
+                            "intelligence",
+                            "wisdom",
+                            "charisma"
+                        ].includes(msg.data.content.name.toLowerCase())) {
+                            beyondRoll.data.action = msg.data.content.name.toLowerCase().substring(0,3)
+                        } else {
+                            beyondRoll.data.action = msg.data.content.name
+                        }
+                    }
+                    for (const die of msg.data.content.format.dice) {
+                        let set = {
+                            count: die.rolls.length,
+                            dieType: `d${die.faces}`,
+                            dice: [],
+                            operation: 0
+                        }
+                        for (const _ of die.rolls) {
+                            set.dice.push( { dieType: `d${die.faces}`, dieValue: 0 } )
+                        }
+                        beyondRoll.data.rolls[0].diceNotation.set.push(set)
+                    }
+                    let mod = 1
+                    for (const part of msg.data.content.format.parts) {
+                        if (part == '-') mod = -1
+                        if (part == '+') mod = 1
+                        if (part.match(/^\d+$/)) beyondRoll.data.rolls[0].diceNotation.constant += (parseInt(part)*mod)
+                    }
+
+                    const sendfinal = ()=>{
+                        beyondRoll.id = uuid().toString()
+                        beyondRoll.dateTime = (new Date(msg.data.created)).getTime()
+                        beyondRoll.persist = true
+                        beyondRoll.eventType = "dice/roll/fulfilled"
+                        beyondRoll.data.rolls[0].diceNotation.set = []
+                        beyondRoll.data.rolls[0].result = {
+                            constant: 0,
+                            values: [],
+                            total: msg.data.content.result,
+                            text: ""
+                        }
+                        for (const die of msg.data.content.format.dice) {
+                            let set = {
+                                count: die.rolls.length,
+                                dieType: `d${die.faces}`,
+                                dice: [],
+                                operation: 0
+                            }
+                            for (const result of die.rolls) {
+                                set.dice.push( { dieType: `d${die.faces}`, dieValue: result } )
+                                beyondRoll.data.rolls[0].result.values.push(result)
+                            }
+                            beyondRoll.data.rolls[0].diceNotation.set.push(set)
+                        }
+                        beyondRoll.data.rolls[0].result.constant = beyondRoll.data.rolls[0].diceNotation.constant
+                        beyondRoll.data.rolls[0].result.text = beyondRoll.data.rolls[0].result.values.join('+')
+                        if (beyondRoll.data.rolls[0].result.constant<0) {
+                            beyondRoll.data.rolls[0].result.text += beyondRoll.data.rolls[0].diceNotation.constant.toString()
+                        } else if (beyondRoll.data.rolls[0].result.constant>0) {
+                            beyondRoll.data.rolls[0].result.text += `+${beyondRoll.data.rolls[0].diceNotation.constant.toString()}`
+                        }
+                        console.log("send final")
+                        _ws?.send(JSON.stringify(beyondRoll))
+                    }
+
+                    if (msg.data.creature) {
+                        const character = ddb.campaignCharacters.find(c=>c.name==msg.data.creature)
+                        if (character) {
+                            beyondRoll.data.context.name = msg.data.creature
+                            beyondRoll.data.context.entityId = beyondRoll.entityId = character.id
+                            beyondRoll.data.context.entityType = beyondRoll.entityType = "character"
+                            _ws?.send(JSON.stringify(beyondRoll), {}, sendfinal)
+                        } else {
+                            ddb.findMonsterByName(msg.data.creature).then(beyondMonster=>{
+                                if (beyondMonster) {
+                                    beyondRoll.data.context.name = msg.data.creature
+                                    beyondRoll.data.context.entityId = beyondRoll.entityId = beyondMonster.id
+                                    beyondRoll.data.context.entityType = beyondRoll.entityType = "monster"
+                                    beyondRoll.data.context.avatarUrl = beyondMonster.avatarUrl
+                                }
+                                _ws?.send(JSON.stringify(beyondRoll), {}, sendfinal)
+                            })
+                        }
+                    } else {
+                        _ws?.send(JSON.stringify(beyondRoll), {}, sendfinal)
+                    }
                 }
             })
         })
