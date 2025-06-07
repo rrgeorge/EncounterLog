@@ -2973,7 +2973,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                 const icon = await this.getImage(`https://www.dndbeyond.com/content/1-0-2896-0/skins/waterdeep/images/icons/actions/light/${slugify(c.name)}.svg`).catch((e)=>console.log(`Could not add action ${c.name} icon: ${e}`))
                 if (icon) {
                     const iconpng = await removeBlack(sharp(icon))
-                    zip.addFile(`icons/action-${slugify(c.name)}.png`,iconpng,null)
+                    zip.addFile(`rules/icons/action-${slugify(c.name)}.png`,iconpng,null)
                 }
             }
             const actions = this.ruledata.basicActions.map(c=>({
@@ -2982,7 +2982,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                 slug: slugify(`${c.name}`),
                 descr: tdSvc.turndown(c.description.replace(/(<table[^>]*>)<caption>(.*?)<\/caption>/sg,'$2\n$1')),
                 type: "action",
-                icon: `action-${slugify(c.name)}.png`,
+                icon: `rules/icons/action-${slugify(c.name)}.png`,
                 tags: [ "Action" ]
             }))
             prog.detail = `Exporting condtions`
@@ -2990,7 +2990,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                 const icon = await this.getImage(`https://www.dndbeyond.com/content/1-0-2896-0/skins/waterdeep/images/icons/conditions/white/${slugify(c.definition.name)}.svg`).catch((e)=>console.log(`Could not add condition ${c.definition.name} icon: ${e}`))
                 if (icon) {
                     const iconpng = await removeBlack(sharp(icon))
-                    zip.addFile(`icons/condition-${slugify(c.definition.name)}.png`,iconpng,null)
+                    zip.addFile(`rules/icons/condition-${slugify(c.definition.name)}.png`,iconpng,null)
                 }
             }
             const conditions = this.ruledata.conditions.map(c=>({
@@ -2999,7 +2999,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                         slug: slugify(`${c.definition.name}`),
                         descr: tdSvc.turndown(c.definition.description.replace(/(<table[^>]*>)<caption>(.*?)<\/caption>/sg,'$2\n$1')),
                         type: "condition",
-                        icon: `condition-${slugify(c.definition.name)}.png`,
+                        icon: `rules/icons/condition-${slugify(c.definition.name)}.png`,
                         tags: [ "Condition" ]
                     }))
             prog.detail = `Exporting stats`
@@ -3009,7 +3009,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     const icon = await this.getImage(`https://www.dndbeyond.com/content/1-0-2896-0/skins/waterdeep/images/icons/abilities/white/${slugify(stat)}.svg`).catch((e)=>console.log(`Could not add ability ${stat} icon: ${e}`))
                     if (icon) {
                         const iconpng = await removeBlack(sharp(icon))
-                        zip.addFile(`icons/ability-${slugify(stat)}.png`,iconpng,null)
+                        zip.addFile(`rules/icons/ability-${slugify(stat)}.png`,iconpng,null)
                     }
                 }
             }
@@ -3019,7 +3019,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     slug: slugify(`${c.name}`),
                     descr: tdSvc.turndown(c.compendiumText.replace(/(<table[^>]*>)<caption>(.*?)<\/caption>/sg,'$2\n$1')),
                     type: "abilityScore",
-                    icon: `ability-${slugify(c.name)}.png`,
+                    icon: `rules/icons/ability-${slugify(c.name)}.png`,
                     tags: [
                         "Ability Score"
                     ],
@@ -3027,11 +3027,11 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
             prog.detail = `Exporting skills`
             for (const c of this.ruledata.abilitySkills) {
                 const stat = this.ruledata.stats.find(s=>s.id==c.stat)?.name
-                if (!zip.getEntry(`icons/ability-${slugify(stat)}.png`)) {
+                if (!zip.getEntry(`rules/icons/ability-${slugify(stat)}.png`)) {
                     const icon = await this.getImage(`https://www.dndbeyond.com/content/1-0-2896-0/skins/waterdeep/images/icons/abilities/white/${slugify(stat)}.svg`).catch((e)=>console.log(`Could not add ability ${stat} icon: ${e}`))
                     if (icon) {
                         const iconpng = await removeBlack(sharp(icon))
-                        zip.addFile(`icons/ability-${slugify(stat)}.png`,iconpng,null)
+                        zip.addFile(`rules/icons/ability-${slugify(stat)}.png`,iconpng,null)
                     }
                 }
             }
@@ -3041,7 +3041,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     slug: slugify(`${c.name}`),
                     descr: tdSvc.turndown(c.description.replace(/(<table[^>]*>)<caption>(.*?)<\/caption>/sg,'$2\n$1')),
                     type: "abilitySkill",
-                    icon: `ability-${slugify(this.ruledata.stats.find(s=>s.id==c.stat)?.name)}.png`,
+                    icon: `rules/icons/ability-${slugify(this.ruledata.stats.find(s=>s.id==c.stat)?.name)}.png`,
                     tags: [
                         "Ability Skill",
                         this.ruledata.stats.find(s=>s.id==c.stat).name
