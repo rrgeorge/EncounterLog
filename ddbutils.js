@@ -191,7 +191,7 @@ function sanitize(text,rulesdata=null) {
             {selector: 'u',format: 'underline'},
             {selector: 'blockquote',format: 'quote'}
         ]
-    }).replaceAll(/[\p{Pd}−]/gu, "-").replaceAll(/<[^>]*[\n][^>]*>/g,m=>m.replaceAll("\n"," "))
+    }).replaceAll(/[\p{Pd}−]/gu, "-").replaceAll(/<[^>]*[\n][^>]*>/g,m=>m.replaceAll("\n"," ")).replaceAll(/[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD\u10000-\u10FFFF]/g,"??")
 }
 
 module.exports = { slugify, camelCase, fixDDBLinks, fixDDBTag, markDownLinks, markDownImages, sanitize }
