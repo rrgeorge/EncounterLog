@@ -2848,6 +2848,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
             prog.value = 0
         }
         let characters = []
+        let errors = []
         await this.getRuleData()
         if (campaignId && !campaignChars) {
             prog.detail = "Retrieving campaign characters..."
@@ -2870,7 +2871,14 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
             if (!character.sheet) continue
             if (character.sheet.isAssignedToPlayer === false) continue
             if (!character.sheet.campaign) continue
-            let ch = convertCharacter(character.sheet,this.ruledata)
+            let ch
+            try {
+                ch = convertCharacter(character.sheet,this.ruledata)
+            } catch (e) {
+                errors.push(`Skipped ${character.sheet.name} (${character.sheet.id}): ${e} (#${e.lineNumber})`)
+                console.log(e)
+                continue
+            }
             try{
                 if (character.avatarUrl&&this.art?.includes('artwork')) {
                     var imageFile = `${uuid5(character.avatarUrl,uuid5.URL)}${path.extname(character.avatarUrl)}`
@@ -2927,6 +2935,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
             const notification = new Notification({title: "Export Complete", body: `Compendium exported to ${filename}`})
             notification.show()
         }
+        if (errors.length > 0) return errors;
     }
 
     async getMonsterCount(source = 0,homebrew = false) {

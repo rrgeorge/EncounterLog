@@ -207,8 +207,13 @@ function convertCharacter(ddb,rules) {
         })
     }
     const addSpell = (m,i) => {
+        try {
         spellName = (m.definition.isLegacy)?`${m.definition.name} [Legacy]`:m.definition.name
             //(m.definition.sources.find(s=>s.sourceId<=5))?`${m.definition.name} (2014)`:m.definition.name
+            //
+        } catch (e) {
+            console.error(m);
+        }
         data.spells.push({
             name: spellName,
             reference: `/spell/${slugify(spellName)}`,

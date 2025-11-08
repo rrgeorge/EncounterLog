@@ -1296,7 +1296,7 @@ function convertCharacters(campaignId) {
                     prog.detail = "Uploading data..."+((upload.current*100.00)/(upload.total*1.00)).toFixed(0)+"%"
                 }
                 request.end()
-            }).catch(()=>{
+            }).catch((e)=>{
                 prog?.close()
 		const url = `https://www.dndbeyond.com/api/campaign/characters/${campaignId}`
                 _win.loadURL(url,{
@@ -1314,7 +1314,10 @@ function convertCharactersV5(campaignId) {
         defaultPath: `${campaign.name.replaceAll("&&","&")}-characters.compendium`,
     }).then((save) => {
         if (save.filePath) {
-            ddb.getCampaignCharacters(campaignId,null,save.filePath).then(()=>{
+            ddb.getCampaignCharacters(campaignId,null,save.filePath).then((errors)=>{
+            if (errors) {
+                dialog.showErrorBox(`Errors encountered`, errors.join("\n"))
+            }
             if (preferences.value('export.launchserver')?.includes(true)) {
                 let httpServer = new http(save.filePath,`characters.${campaign.id}`,`${campaign.name.replaceAll("&&","&")} characters`)
                 httpServer.server.then((s)=>{
@@ -1329,7 +1332,8 @@ function convertCharactersV5(campaignId) {
                 })
             }
         }
-        ).catch(()=>{
+        ).catch((e)=>{
+                console.log(e)
 		const url = `https://www.dndbeyond.com/api/campaign/characters/${campaignId}`
                 _win.loadURL(url,{
                     extraHeaders: "Accept: text/html, application/json"
