@@ -23,7 +23,7 @@ const turndownGfm = require('@rrgeorge/turndown-plugin-gfm');
 const { slugify, camelCase, fixDDBLinks, fixDDBTag, markDownLinks, markDownImages, sanitize } = require('./ddbutils');
 const convertCharacter = require('./convert-character');
 
-const RATE = 10000
+const RATE = 100000
 
 const numbers = {
     one: 1,
@@ -597,8 +597,21 @@ class DDB {
                             request.setHeader('Authorization',`Bearer ${this.cobaltauth}`)
                         }
                         if (metaData?.etag && cacheExists) {
-                            //console.log("REVALIDAING CACHE", metaData.etag, url, uuid5(url,uuid5.URL))
-                            request.setHeader('If-None-Match', metaData.etag)
+                            if (metaData?.expires > today.getTime()) {
+                                    fs.readFile(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),(e,f)=>{
+                                      if (e) {
+                                          console.log(`Cache error: ${e}`)
+                                          fs.rmSync(path.join(app.getPath("cache"),app.getName(),"imagecache",uuid5(url,uuid5.URL)),{force: true})
+                                          this.getImage(url,auth).then(img=>resolve(img)).catch(e=>reject(e))
+                                      } else {
+                                        //this.verbose && console.log("NOT REVALIDAING CACHE", metaData.etag, url, uuid5(url,uuid5.URL))
+                                        return resolve(f)
+                                      }
+                                    })
+                            } else {
+                                this.verbose && console.log("REVALIDAING CACHE", metaData.etag, url, uuid5(url,uuid5.URL))
+                                request.setHeader('If-None-Match', metaData.etag)
+                            }
                         }
                         else
                             this.verbose && console.log("IMG GET request - no cache",url)
@@ -3089,7 +3102,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                         })
                     })
                 console.log(`Retreiving ${id_chunks.length} sets of 25/${count}`)
-                for await (const _ of asyncPool(10,id_chunks,getChunk)) { }
+                for await (const _ of asyncPool(15,id_chunks,getChunk)) { }
                 monsters = monsters.concat(cachedmonsters)
                 console.log(`Retrieved ${monsters.length} (${cachedmonsters.length} cached)`)
                 fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache","monstercache.json"),JSON.stringify(
