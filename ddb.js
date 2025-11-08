@@ -3407,6 +3407,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     }
                 } else {
                     for (let t of sanitize(field,this.ruledata).split(/\r\n|\n/)) {
+                        traitRegex.lastIndex = 0;
                         let m = traitRegex.exec(t); if (!m||!m[0]) continue
                         let name = `${prefix}${m[2]||''}`
                         let txt = m[0].replace(m[1],'')
