@@ -1290,7 +1290,7 @@ class DDB {
 
                 }
                 itemEntry._content.push({type: type})
-                let description = (tdSvc)?item.description.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')
+                let description = (tdSvc)?item.description.replace(/(<table[^>]*>)<caption>(.*?)<\/caption>/sg,'$2\n$1')
                     :sanitize(item.description,this.ruledata)
                 if (items.some(s=>s.groupedId===item.id)) {
                     let linkedItems = items.filter(s=>s.groupedId===item.id).sort((a,b)=>{
@@ -1712,7 +1712,7 @@ class DDB {
                         .replace('— Spell Slots per Spell Level —','— Slots** | **per** | **Spell** | **Level —')
                 } else {
                     // Fix tables with caption
-                    description = tdSvc.turndown(feat.description.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1'))
+                    description = tdSvc.turndown(feat.description.replace(/(<table[^>]*>)<caption>(.*?)<\/caption>/sg,'$2\n$1'))
                 }
                 entry.features.push({
                     level: feat.requiredLevel,
@@ -1933,7 +1933,7 @@ class DDB {
                 entry.equipment = tdSvc.turndown(background.equipmentDescription)
                 let backgroundFeature = { name: background.featureName, text: "" }
                 if (background.featureDescription) {
-                    backgroundFeature.text = tdSvc.turndown(background.featureDescription.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')).replaceAll(markDownLinks,this.v5LinkAdj)
+                    backgroundFeature.text = tdSvc.turndown(background.featureDescription.replace(/(<table[^>]*>)<caption>(.*?)<\/caption>/sg,'$2\n$1')).replaceAll(markDownLinks,this.v5LinkAdj)
                     if (background.featList) {
                         for (const featId of background.featList.featIds) {
                             backgroundFeature.text = backgroundFeature.text.replace(markDownLinks,(m,p1,p2,p3) => {
@@ -2011,7 +2011,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                 let fullEntry = {
                     id: uuid5(`ddb://backgrounds/${background.id}`,uuid5.URL),
                     name: (background.sources.find(s=>s.sourceId<=5))?`${background.name} [Legacy]`:background.name,
-                    descr: tdSvc.turndown(background.shortDescription.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')).replaceAll(markDownLinks,this.v5LinkAdj),
+                    descr: tdSvc.turndown(background.shortDescription.replace(/(<table[^>]*>)<caption>(.*?)<\/caption>/sg,'$2\n$1')).replaceAll(markDownLinks,this.v5LinkAdj),
                     sources: background.sources
                             .filter(s=>this.ruledata.sources.find(r=>r.id===s.sourceId))
                             .map(s=>({
@@ -2123,7 +2123,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                 let fullEntry = {
                     id: uuid5(`ddb://feats/${feat.id}`,uuid5.URL),
                     name: (feat.sources.find(s=>s.sourceId<=5))?`${feat.name} [Legacy]`:feat.name,
-                    descr: tdSvc.turndown(feat.description.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')).replaceAll(markDownLinks,this.v5LinkAdj),
+                    descr: tdSvc.turndown(feat.description.replace(/(<table[^>]*>)<caption>(.*?)<\/caption>/sg,'$2\n$1')).replaceAll(markDownLinks,this.v5LinkAdj),
                     sources: feat.sources
                         .filter(s=>this.ruledata.sources.find(r=>r.id===s.sourceId))
                         .map(s=>({
@@ -2475,7 +2475,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
         }
     }
 
-    async getV5Compendium(source=null,filename,zip=null,imageMap=null,prog=null,homebrew=false) {
+    async getV5Compendium(source=null,filename,zip=null,imageMap=null,prog=null,homebrew=false,monsterIds=null) {
         if (filename) zip = new AdmZip() 
         const tdSvc = new turndown()
         tdSvc.use(turndownGfm.gfm)
@@ -2563,7 +2563,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
             races,
             vehicles
         ] = await Promise.all([
-            this.getMonsters(source,null,zip,imageMap,prog,homebrew,tdSvc),
+            this.getMonsters(monsterIds||source,null,zip,imageMap,prog,homebrew,tdSvc),
             this.getItems(source,null,zip,imageMap,prog,homebrew,tdSvc),
             this.getSpells(source,null,zip,prog,homebrew,tdSvc),
             this.getBackgrounds(source,null,zip,imageMap,prog,homebrew),
@@ -2650,7 +2650,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                 id: uuid5(`ddb://basic-actions/${c.id}`,uuid5.URL),
                 name: c.name,
                 slug: slugify(`${c.name}`),
-                descr: tdSvc.turndown(c.description.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')),
+                descr: tdSvc.turndown(c.description.replace(/(<table[^>]*>)<caption>(.*?)<\/caption>/sg,'$2\n$1')),
                 type: "action",
                 icon: `action-${slugify(c.name)}.png`,
                 tags: [ "Action" ]
@@ -2667,7 +2667,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                         id: uuid5(`ddb://conditions/${c.definition.id}`,uuid5.URL),
                         name: c.definition.name,
                         slug: slugify(`${c.definition.name}`),
-                        descr: tdSvc.turndown(c.definition.description.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')),
+                        descr: tdSvc.turndown(c.definition.description.replace(/(<table[^>]*>)<caption>(.*?)<\/caption>/sg,'$2\n$1')),
                         type: "condition",
                         icon: `condition-${slugify(c.definition.name)}.png`,
                         tags: [ "Condition" ]
@@ -2687,7 +2687,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     id: uuid5(`ddb://stats/${c.id}`,uuid5.URL),
                     name: c.name,
                     slug: slugify(`${c.name}`),
-                    descr: tdSvc.turndown(c.compendiumText.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')),
+                    descr: tdSvc.turndown(c.compendiumText.replace(/(<table[^>]*>)<caption>(.*?)<\/caption>/sg,'$2\n$1')),
                     type: "abilityScore",
                     icon: `ability-${slugify(c.name)}.png`,
                     tags: [
@@ -2709,7 +2709,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     id: uuid5(`ddb://skills/${c.id}`,uuid5.URL),
                     name: c.name,
                     slug: slugify(`${c.name}`),
-                    descr: tdSvc.turndown(c.description.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')),
+                    descr: tdSvc.turndown(c.description.replace(/(<table[^>]*>)<caption>(.*?)<\/caption>/sg,'$2\n$1')),
                     type: "abilitySkill",
                     icon: `ability-${slugify(this.ruledata.stats.find(s=>s.id==c.stat)?.name)}.png`,
                     tags: [
@@ -3411,9 +3411,9 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
             handleTraits(monster.reactionsDescription,"reaction")
             handleTraits(monster.legendaryActionsDescription,"legendary")
             handleTraits(monster.mythicActionsDescription,"mythic")
-            let description = (tdSvc)? tdSvc.turndown(monster.characteristicsDescription.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')) : sanitize(monster.characteristicsDescription,this.ruledata)
+            let description = (tdSvc)? tdSvc.turndown((monster.characteristicsDescription||"").replace(/(<table[^>]*>)<caption>(.*?)<\/caption>/sg,'$2\n$1')) : sanitize(monster.characteristicsDescription,this.ruledata)
             if (tdSvc) {
-                description = description.replace(markDownImages,(m,p1,p2,p3)=>{
+                description = description?.replace(markDownImages,(m,p1,p2,p3)=>{
                     var imageFile = `${uuid5(p2,uuid5.URL)}${path.extname(p2)}`
                     if (!zip.getEntry(`monsters/${imageFile}`)) {
                         this.getImage(p2).then(imagesrc=>
@@ -5463,7 +5463,7 @@ function doSearch(el,resId) {
                 var compS = await this.getSpells(moduleId,null,zip,prog)||[]
                 prog.value = 95
                 prog.text = "Getting V5 compendium..."
-                await this.getV5Compendium(moduleId,null,zip,imageMap,prog)
+                await this.getV5Compendium(moduleId,null,zip,imageMap,prog,false,monsterIds)
                 prog.text = "Finishing up..."
                 console.log("Merging compendiums...")
                 var compendium = { 
