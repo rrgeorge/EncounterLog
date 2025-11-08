@@ -164,6 +164,7 @@ function convertCharacter(ddb,rules) {
             return match
         }
         let unit = camelCase(rules.activationTypes.find(a=>a.id==m.activation.activationType)?.name)
+        console.log(m,m.snippet)
         let text = tdSvc.turndown(m.snippet.replace(tagRegex,deTag).replace(/(\r)?\n/g,'<br>'))
         let limitedUse
         if (m.limitedUse) {
