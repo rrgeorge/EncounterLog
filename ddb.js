@@ -1387,8 +1387,13 @@ class DDB {
                 description = fixDDBTag(description)
                 let sources = []
                 for (let source of item.sources) {
-                    let sourceName = he.decode(this.ruledata.sources.find(s=>s.id===source.sourceId)?.description)
-                    sources.push((source.pageNumber)?`${sourceName} p. ${source.pageNumber}`:sourceName)
+                    let bookSource = this.ruledata.sources.find(s=>s.id===source.sourceId)
+                    if (bookSource) {
+                        let sourceName = he.decode(bookSource.description)
+                        sources.push((source.pageNumber)?`${sourceName} p. ${source.pageNumber}`:sourceName)
+                    } else {
+                        console.log(`UNKNOWN SOURCE ${source} for ${item.name}`)
+                    }
                 }
                 if (!tdSvc) {
                     if (sources.length>0) description += `\n<i>Source: ${sources.join(', ')}</i>`
