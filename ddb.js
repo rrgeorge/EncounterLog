@@ -2913,7 +2913,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                             await zip.addFile(`characters/${imageFile}`,image)
                         }
                     }
-                    ch.image = `${imageFile}`
+                    ch.image = `characters/${imageFile}`
                 }
             } catch (e) {
                 console.log(e)
@@ -2935,7 +2935,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                             .webp().toBuffer().catch(e=>console.log(`Could not create token: ${e}`))
                         await zip.addFile(`characters/${uuid5(character.avatarUrl,uuid5.URL)}_token.webp`,image)
                     }
-                    ch.token = `${uuid5(character.avatarUrl,uuid5.URL)}_token.webp`
+                    ch.token = `characters/${uuid5(character.avatarUrl,uuid5.URL)}_token.webp`
                 }
             } catch (e) {
                 console.log(`Error creating token: ${e}\n${monster.avatarUrl}`)
