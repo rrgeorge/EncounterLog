@@ -1970,7 +1970,7 @@ function getEAPI () {
 }
 function getEChar(characterId) {
     return new Promise((resolve,reject)=>{
-        const request = net.request({url: (new URL(`api/entities/${characterId}`,encounterhost)).href,method: "GET"})
+        const request = net.request({url: (new URL(`api/characters/${characterId}`,encounterhost)).href,method: "GET"})
         request.on('error',e=>console.log(e))
         request.on('response',r=>{
             if (r.statusCode == 200) {
