@@ -35,7 +35,7 @@ function convertCharacter(ddb,rules) {
             }
             else { console.log(m.type,m.subType) }
         } else if (m.type == "proficiency") {
-            if (m.subType.endsWith("-saving-throws")) {
+            if (m.subType.endsWith("-saving-throws") && m.subType != "death-saving-throws") {
                 if (ddb.classes.slice(1).find(c=>
                     c.classFeatures.find(f=>
                         f.definition.name.match(/Proficiencies/)&&f.definition.id==m.componentId
