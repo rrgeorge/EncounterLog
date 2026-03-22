@@ -3059,7 +3059,6 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                         "system": "dnd5e",
                         "tags": [ 'D&D Beyond', 'Compandium' ]
                     }),'utf8'),null)
-                    await zip.addLocalFile(path.join(__dirname,"icon.png"),"encounterlog")
                 } else {
                     console.warn(`COULD NOT ADD module.json FOR UNKNOWN MODULE ID ${source}`)
                 }
@@ -3074,7 +3073,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     "image": "encounterlog/icon.png",
                     "system" : "dnd5e"
                 }),'utf8'),null)
-                await zip.addLocalFile(path.join(__dirname,"icon.png"),"encounterlog")
+                await zip.addFile("encounterlog/icon.png",fs.readFileSync(path.join(__dirname,"icon.png")))
             }
         }
         prog.detail = `Writing compendium file`
