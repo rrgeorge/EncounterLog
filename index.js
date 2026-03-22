@@ -873,7 +873,7 @@ function populateCompendiumMenu(force=false) {
                           }
                       }),
                       new MenuItem({
-                          label: "Download Only Monsters",
+                          label: "Download Only Monsters (v4)",
                           click: () => {
                             dialog.showSaveDialog(_win,{
                                 title: "Save monsters compendium",
@@ -887,7 +887,7 @@ function populateCompendiumMenu(force=false) {
                           }
                       }),
                       new MenuItem({
-                          label: "Download Only Items",
+                          label: "Download Only Items (v4)",
                           click: () => {
                             dialog.showSaveDialog(_win,{
                                 title: "Save items compendium",
@@ -901,7 +901,7 @@ function populateCompendiumMenu(force=false) {
                           }
                       }),
                       new MenuItem({
-                          label: "Download Only Spells",
+                          label: "Download Only Spells (v4)",
                           click: () => {
                             dialog.showSaveDialog(_win,{
                                 title: "Save spells compendium",
@@ -1027,7 +1027,7 @@ function populateCompendiumMenu(force=false) {
             }
             var homebrewSubMenu = []
             homebrewSubMenu.push( new MenuItem({
-                label: "Download Homebrew Monsters",
+                label: "Download Homebrew Monsters (v4)",
                 click: () => {
                     dialog.showSaveDialog(_win,{
                         title: "Save monsters compendium",
@@ -1041,7 +1041,7 @@ function populateCompendiumMenu(force=false) {
                 }
                 }))
             homebrewSubMenu.push( new MenuItem({
-                label: "Download Homebrew Items",
+                label: "Download Homebrew Items (v4)",
                 click: () => {
                     dialog.showSaveDialog(_win,{
                         title: "Save items compendium",
@@ -1055,7 +1055,7 @@ function populateCompendiumMenu(force=false) {
                 }
                 }))
             homebrewSubMenu.push( new MenuItem({
-                label: "Download Homebrew Spells",
+                label: "Download Homebrew Spells (v4)",
                 click: () => {
                     dialog.showSaveDialog(_win,{
                         title: "Save spells compendium",
@@ -1100,7 +1100,7 @@ function populateCompendiumMenu(force=false) {
             )
             compendiumMenu.submenu.append( new MenuItem({ type: 'separator' }))
             compendiumMenu.submenu.append( new MenuItem({
-                label: "Download All Monsters",
+                label: "Download All Monsters (v4)",
                 click: () => {
                     dialog.showSaveDialog(_win,{
                         title: "Save monsters compendium",
@@ -1114,7 +1114,7 @@ function populateCompendiumMenu(force=false) {
                 }
                 }))
             compendiumMenu.submenu.append( new MenuItem({
-                label: "Download All Items",
+                label: "Download All Items (v4)",
                 click: () => {
                     dialog.showSaveDialog(_win,{
                         title: "Save items compendium",
@@ -1128,7 +1128,7 @@ function populateCompendiumMenu(force=false) {
                 }
                 }))
             compendiumMenu.submenu.append( new MenuItem({
-                label: "Download All Spells",
+                label: "Download All Spells (v4)",
                 click: () => {
                     dialog.showSaveDialog(_win,{
                         title: "Save spells compendium",
