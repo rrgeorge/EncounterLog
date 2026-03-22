@@ -2818,7 +2818,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
         await zip.addFile("feats.json",Buffer.from(JSON.stringify(feats),'utf8'),null)
         await zip.addFile("races.json",Buffer.from(JSON.stringify(races),'utf8'),null)
         //await zip.addFile("conditions.json",Buffer.from(JSON.stringify(conditions),'utf8'),null)
-        if (source == null) {
+        if (source == null || source == 148) {
             prog.detail = `Exporting actions`
             for (const c of this.ruledata.basicActions) {
                 const icon = await this.getImage(`https://www.dndbeyond.com/content/1-0-2896-0/skins/waterdeep/images/icons/actions/light/${slugify(c.name)}.svg`).catch((e)=>console.log(`Could not add action ${c.name} icon: ${e}`))
