@@ -952,7 +952,7 @@ class DDB {
             let classes = []
             if (source == 10) source = 4
             const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
-            db.prepare(`SELECT C.ID AS ID, C.Name AS Name, SC.Name AS Parent, C.RPGSourceID AS CSource,SC.RPGSourceID AS SCSource FROM RPGSpell S LEFT JOIN RPGClassSpellMapping AS M ON S.ID = M.RPGSpellID LEFT JOIN RPGClass AS C ON M.RPGClassID = C.ID LEFT JOIN RPGClass AS SC ON SC.ID = C.ParentClassID ${(source)?` WHERE S.RPGSourceID=${source}`:''} GROUP BY C.ID`).all().forEach(r=>{
+            db.prepare(`SELECT C.ID AS ID, C.Name AS Name, SC.Name AS Parent, C.RPGSourceID AS CSource,SC.RPGSourceID AS SCSource FROM RPGSpell S LEFT JOIN RPGClassSpellMapping AS M ON S.ID = M.RPGSpellID LEFT JOIN RPGClass AS C ON M.RPGClassID = C.ID LEFT JOIN RPGClass AS SC ON SC.ID = C.ParentClassID LEFT JOIN RPGEntityAdditionalSourceMapping SRC ON SRC.EntityID = S.ID AND SRC.EntityTypeID = (SELECT ID FROM EntityType WHERE Name='RPGSpell') ${(source)?` WHERE (S.RPGSourceID=${source} OR SRC.RPGSourceID=${source})`:''} GROUP BY C.ID`).all().forEach(r=>{
                     prog.detail = `Retrieving class list ${(r.Parent)?`${r.Parent}/${r.Name}`:r.Name}`
                     let className = (r.CSource<=5)?`${r.Name} [Legacy]`:r.Name
                     let parentClassName = (r.SCSource<=5)?`${r.Parent} [Legacy]`:r.Parent
@@ -992,6 +992,23 @@ class DDB {
                         throw `Error getting spells: ${e}`
                     })
                     classSpells.lastUpdate = (new Date()).getTime()
+                    const sources = await new Promise((resolve,reject)=>{
+                        if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                            let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                            manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
+                        }
+                        const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
+                        const sources = db.prepare(`SELECT RPGSpell.ID AS id,Sources.RPGSourceID as sourceId FROM RPGSpell LEFT JOIN RPGEntityAdditionalSourceMapping AS Sources ON RPGSpell.ID=Sources.EntityID AND Sources.EntityTypeID=(SELECT ID FROM EntityType WHERE Name='RPGSpell') WHERE sourceId NOT NULL`).all()
+                        resolve(sources)
+                    })
+                    for (const spell of classSpells.data) {
+                        const srcs = sources.filter(s=>s.id==spell.definition.id)
+                        if (!srcs) continue
+                        for (const src of srcs) {
+                            if (spell.definition.sources.find(s=>s.sourceId==src.sourceId)) continue
+                            spell.definition.sources.push({ sourceId: src.sourceId, pageNumber: null })
+                        }
+                    }
                     fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`spellscache_${ddbClass.id}_${url.split('/').pop()}.json`),JSON.stringify(classSpells))
                 }
                 allResponses.push(classSpells)
@@ -1126,7 +1143,9 @@ class DDB {
             let description = (tdSvc)?tdSvc.turndown(spell.description):sanitize(spell.description,this.ruledata)
             let sources = []
             for (let source of spell.sources) {
-                let sourceName = he.decode(this.ruledata.sources.find(s=>s.id===source.sourceId)?.description)
+                const ruleSource = this.ruledata.sources.find(s=>s.id===source.sourceId)
+                if (!ruleSource) continue
+                let sourceName = he.decode(ruleSource.description)
                 sources.push((source.pageNumber)?`${sourceName} p. ${source.pageNumber}`:sourceName)
             }
             if (!tdSvc) {
@@ -1527,6 +1546,23 @@ class DDB {
         if (!response || this.cacheInvalid || this.manifestTimestamp>response.lastUpdate) {
             response = await this.getRequest(`${apiurl}?${params}`,true).catch((e)=>{ console.log(`Error getting classes: ${e}`); throw `Error getting classes: ${e}`; })
             response.lastUpdate = (new Date()).getTime()
+            const sources = await new Promise((resolve,reject)=>{
+                if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                    let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                    manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
+                }
+                const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
+                const sources = db.prepare(`SELECT RPGClass.ID AS id,Sources.RPGSourceID as sourceId FROM RPGClass LEFT JOIN RPGEntityAdditionalSourceMapping AS Sources ON RPGClass.ID=Sources.EntityID AND Sources.EntityTypeID=(SELECT ID FROM EntityType WHERE Name='RPGClass') WHERE sourceId NOT NULL`).all()
+                resolve(sources)
+            })
+            for (const cls of response.data) {
+                const srcs = sources.filter(s=>s.id==cls.id)
+                if (!srcs) continue
+                for (const src of srcs) {
+                    if (cls.sources.find(s=>s.sourceId==src.sourceId)) continue
+                    cls.sources.push({ sourceId: src.sourceId, pageNumber: null })
+                }
+            }
             fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`),JSON.stringify(response))
         }
         if (response?.data) {
@@ -1599,6 +1635,23 @@ class DDB {
                 if (!sresponse || this.cacheInvalid || this.manifestTimestamp>sresponse.lastUpdate) {
                     sresponse = await this.getRequest(`${sapiurl}?${sparams}`,true).catch((e)=>{ console.log(`Error getting subclasses: ${e}`); throw `Error getting subclasses: ${e}`; })
                     sresponse.lastUpdate = (new Date()).getTime()
+                    const sources = await new Promise((resolve,reject)=>{
+                        if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                            let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                            manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
+                        }
+                        const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
+                        const sources = db.prepare(`SELECT RPGClass.ID AS id,Sources.RPGSourceID as sourceId FROM RPGClass LEFT JOIN RPGEntityAdditionalSourceMapping AS Sources ON RPGClass.ID=Sources.EntityID AND Sources.EntityTypeID=(SELECT ID FROM EntityType WHERE Name='RPGClass') WHERE sourceId NOT NULL`).all()
+                        resolve(sources)
+                    })
+                    for (const cls of sresponse.data) {
+                        const srcs = sources.filter(s=>s.id==cls.id)
+                        if (!srcs) continue
+                        for (const src of srcs) {
+                            if (cls.sources.find(s=>s.sourceId==src.sourceId)) continue
+                            cls.sources.push({ sourceId: src.sourceId, pageNumber: null })
+                        }
+                    }
                     fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${scachename}cache.json`),JSON.stringify(sresponse))
                 }
                 if (sresponse?.data) {
@@ -1827,6 +1880,23 @@ class DDB {
         if (!response || this.cacheInvalid || this.manifestTimestamp>response.lastUpdate) {
             response = await this.getRequest(`${apiurl}?${params}`,true).catch((e)=>{ console.log(`Error getting races: ${e}`); throw `Error getting races: ${e}`; })
             response.lastUpdate = (new Date()).getTime()
+            const sources = await new Promise((resolve,reject)=>{
+                if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                    let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                    manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
+                }
+                const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
+                const sources = db.prepare(`SELECT RPGRace.ID AS id,Sources.RPGSourceID as sourceId FROM RPGRace LEFT JOIN RPGEntityAdditionalSourceMapping AS Sources ON RPGRace.ID=Sources.EntityID AND Sources.EntityTypeID=(SELECT ID FROM EntityType WHERE Name='RPGRace') WHERE sourceId NOT NULL`).all()
+                resolve(sources)
+            })
+            for (const race of response.data) {
+                const srcs = sources.filter(s=>s.id==race.entityRaceId)
+                if (!srcs) continue
+                for (const src of srcs) {
+                    if (race.sources.find(s=>s.sourceId==src.sourceId)) continue
+                    race.sources.push({ sourceId: src.sourceId, pageNumber: null })
+                }
+            }
             fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`),JSON.stringify(response))
         }
         if (response?.data) {
@@ -1955,6 +2025,23 @@ class DDB {
         if (!response || this.cacheInvalid || this.manifestTimestamp>response.lastUpdate) {
             response = await this.getRequest(`${apiurl}?${params}`,true).catch((e)=>{ console.log(`Error getting backgrounds: ${e}`); throw `Error getting backgrounds: ${e}`; })
             response.lastUpdate = (new Date()).getTime()
+            const sources = await new Promise((resolve,reject)=>{
+                if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                    let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                    manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
+                }
+                const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
+                const sources = db.prepare(`SELECT RPGBackground.ID AS id,Sources.RPGSourceID as sourceId FROM RPGBackground LEFT JOIN RPGEntityAdditionalSourceMapping AS Sources ON RPGBackground.ID=Sources.EntityID AND Sources.EntityTypeID=(SELECT ID FROM EntityType WHERE Name='RPGBackground') WHERE sourceId NOT NULL`).all()
+                resolve(sources)
+            })
+            for (const background of response.data) {
+                const srcs = sources.filter(s=>s.id==background.id)
+                if (!srcs) continue
+                for (const src of srcs) {
+                    if (background.sources.find(s=>s.sourceId==src.sourceId)) continue
+                    background.sources.push({ sourceId: src.sourceId, pageNumber: null })
+                }
+            }
             fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`),JSON.stringify(response))
         }
         if (response?.data) {
@@ -2174,6 +2261,23 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
         if (!response || this.cacheInvalid || this.manifestTimestamp>response.lastUpdate) {
             response = await this.getRequest(`${apiurl}?${params}`,true).catch((e)=>{ console.log(`Error getting feats: ${e}`); throw `Error getting feats: ${e}`; })
             response.lastUpdate = (new Date()).getTime()
+            const sources = await new Promise((resolve,reject)=>{
+                if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                    let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                    manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
+                }
+                const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
+                const sources = db.prepare(`SELECT RPGFeat.ID AS id,Sources.RPGSourceID as sourceId FROM RPGFeat LEFT JOIN RPGEntityAdditionalSourceMapping AS Sources ON RPGFeat.ID=Sources.EntityID AND Sources.EntityTypeID=(SELECT ID FROM EntityType WHERE Name='RPGFeat') WHERE sourceId NOT NULL`).all()
+                resolve(sources)
+            })
+            for (const feat of response.data) {
+                const srcs = sources.filter(s=>s.id==feat.id)
+                if (!srcs) continue
+                for (const src of srcs) {
+                    if (feat.sources.find(s=>s.sourceId==src.sourceId)) continue
+                    feat.sources.push({ sourceId: src.sourceId, pageNumber: null })
+                }
+            }
             fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`${cachename}cache.json`),JSON.stringify(response))
         }
         if (response?.data) {
@@ -3059,9 +3163,15 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
                 }
                 const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
-                db.prepare(`SELECT COUNT(*) AS C FROM RPGMonster${(source)?` WHERE RPGSourceID == ${source}`:''}`).all().forEach(
-                    r=>resolve(r?.C)
-                )
+                if (source) {
+                    db.prepare(`SELECT COUNT(*) AS C FROM (SELECT RPGMonster.ID FROM RPGMonster LEFT JOIN RPGEntityAdditionalSourceMapping SRC ON RPGMonster.ID=SRC.EntityID AND SRC.EntityTypeID=(SELECT ID FROM EntityType WHERE Name='RPGMonster') WHERE (SRC.RPGSourceID=${source} OR RPGMonster.RPGSourceID=${source}) GROUP BY RPGMonster.ID)`).all().forEach(
+                        r=>resolve(r?.C)
+                    )
+                } else {
+                    db.prepare(`SELECT COUNT(*) AS C FROM RPGMonster${(source)?` WHERE RPGSourceID == ${source}`:''}`).all().forEach(
+                        r=>resolve(r?.C)
+                    )
+                }
             })
             return count
         }
@@ -3134,9 +3244,15 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     }
                     let ids = []
                     const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
-                    db.prepare(`SELECT ID FROM RPGMonster${(source)?` WHERE RPGSourceID == ${source}`:''}`).all().forEach(
+                    if (source) {
+                        db.prepare(`SELECT RPGMonster.ID FROM RPGMonster LEFT JOIN RPGEntityAdditionalSourceMapping SRC ON RPGMonster.ID=SRC.EntityID AND SRC.EntityTypeID=(SELECT ID FROM EntityType WHERE Name='RPGMonster') WHERE (SRC.RPGSourceID=${source} OR RPGMonster.RPGSourceID=${source}) GROUP BY RPGMonster.ID`).all().forEach(
                             r=>r?.ID&&ids.push(r.ID)
-                    )
+                        )
+                    } else {
+                        db.prepare(`SELECT ID FROM RPGMonster${(source)?` WHERE RPGSourceID == ${source}`:''}`).all().forEach(
+                            r=>r?.ID&&ids.push(r.ID)
+                        )
+                    }
                     resolve(ids)
                 })
                 let monstercache = []
