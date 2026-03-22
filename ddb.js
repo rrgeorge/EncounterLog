@@ -1312,15 +1312,20 @@ class DDB {
                         || item.grantedModifiers.some(s=>(s.type=="damage"))
                         ) {
                         let damage = []
+                        let modifiers = []
                         if (item.damage?.diceString) damage.push(item.damage.diceString)
                         for (let mod of item.grantedModifiers) {
                             if (mod.type == "bonus" && mod.subType == "magic") {
-                                if (mod.value) damage.push((mod.value>0)?`+${mod.value}`:mod.value.toString())
+                                if (mod.value) {
+                                    damage.push((mod.value>0)?`+${mod.value}`:mod.value.toString())
+                                    modifiers.push({ id: uuid5(`${itemurl}/${item.id}/${mod.id}`,uuid5.URL), attribute: "data.attackBonus", mode: "add", name: `${mod.subType} ${mod.type}`, scope: "self", value: mod.value.toString(), enabled: true })
+                                }
                             } else if (mod.type=="damage") {
                                 if (mod.value) damage.push(`(${mod.dice?.diceString||((mod.value>0)?"+"+mod.value.toString():mod.value.toString())} ${mod.subType})`)
                             }
                         }
                         itemEntry._content.push({dmg1: damage.join(" ") })
+                        itemEntry._content.push({modifiers: modifiers})
                     }
                     if (tdSvc) {
                         if (item.properties.length > 0) {
@@ -2677,7 +2682,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     "strReq": "str"
                 }
                 let key = keyMap[k] || k
-                if (["name","slug","token","image","descr","source","tags","page","sources"].includes(key)) {
+                if (["name","slug","token","image","descr","source","tags","page","sources","modifiers"].includes(key)) {
                     if (key == "descr") {
                         attrib[k]=attrib[k].replaceAll(markDownLinks,this.v5LinkAdj)
                     }
