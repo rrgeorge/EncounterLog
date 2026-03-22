@@ -2662,7 +2662,8 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
         const convertXmlObj = (o)=>{
             let obj = {
                 id: o._attrs.id,
-                data: {}
+                data: {},
+                systemVersion: 'v0.9.12'
             }
             for (const attrib of o._content) {
                 const keys = Object.keys(attrib)
