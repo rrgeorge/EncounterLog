@@ -925,7 +925,7 @@ function populateCompendiumMenu(force=false) {
                                 if (save.filePath)
                                     ddb.getV5Compendium(book.id,save.filePath).then(()=>{
                                         if (preferences.value('export.launchserver')?.includes(true)) {
-                                            let httpServer = new http(save.filePath,'all','Complete Compendium')
+                                            let httpServer = new http(save.filePath,'all',`${he.decode(book.book)} Compendium`)
                                             httpServer.server.then((s)=>{
                                                 dialog.showMessageBox(_win,{
                                                     title: 'Server Running',
@@ -1152,7 +1152,7 @@ function populateCompendiumMenu(force=false) {
                         if (save.filePath)
                             ddb.getV5Compendium(null,save.filePath).then(()=>{
                                 if (preferences.value('export.launchserver')?.includes(true)) {
-                                    let httpServer = new http(save.filePath,'all','Complete Compendium')
+                                    let httpServer = new http(save.filePath,'all','EncounterLog Compendium')
                                     httpServer.server.then((s)=>{
                                         dialog.showMessageBox(_win,{
                                             title: 'Server Running',
