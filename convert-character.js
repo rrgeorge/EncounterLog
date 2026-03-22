@@ -87,21 +87,110 @@ function convertCharacter(ddb,rules) {
         }
     }
     const addAction = (m) => {
-        const tagRegex = /{{(?<level>characterlevel\+)?\(?(?<tag>limiteduse|classlevel|proficiency|scalevalue|(?:modifier|spellattack|savedc):(?<stat>(?:,?\w{3})+))(?:([-+*\/])(\d+))?\)?(?:@((?<mm>min|max):(?<mmv>\d)?|round(?:up|down)))?(#(?:un)?signed)?}}/g
-        const deTag = (match,level,tag,stat,fn,mult,round,mm,mmv,signed) => {
+        const tagRegex = /{{(?<level>(?:characterlevel|8\+proficiency)\+)?\(?(?<multiplier>\d+[-+*\/])?(?<tag>limiteduse|classlevel|proficiency|scalevalue|(?:modifier|spellattack|savedc):(?<stat>(?:,?\w{3})+))(?:([-+*\/])(\d+|classlevel))?\)?(?:@((?<mm>min|max):(?<mmv>\d)?|round(?:up|down)))?(#(?:un)?signed)?}}(?:{{(?<tag2>limiteduse|classlevel|proficiency|scalevalue|(?:modifier|spellattack|savedc):(?<stat2>(?:,?\w{3})+))(?:([-+*\/])(\d+|classlevel))?\)?(?:@((?<mm2>min|max):(?<mmv2>\d)?|round(?:up|down)))?(#(?:un)?signed)?}})?/g
+        const deTag = (match,level,multiplier,tag,stat,fn,mult,round,mm,mmv,signed,tag2,stat2,fn2,mult2,round2,mm2,mmv2,signed2) => {
+            const getModifier = (tag,stat,fn,mult,round,mm,mmv,signed) => {
+                if (tag == 'classlevel') {
+                    let cls = ddb.classes.find(c=>c.classFeatures.find(f=>f.definition.id==m.componentId))
+                    if (!cls) cls = ddb.classes[0]
+                    if (cls) {
+                        let value = cls.level
+                        if (fn && mult) {
+                            if (mult == 'classlevel') mult = ddb.classes.find(c=>c.classFeatures.find(f=>f.definition.id==m.componentId))?.level||ddb.classes[0].level
+                            if (fn == '+') {
+                                value += parseInt(mult)
+                            } else if (fn == '-') {
+                                value -= parseInt(mult)
+                            } else if (fn == '*') {
+                                value *= parseInt(mult)
+                            } else if (fn == '/') {
+                                value /= parseInt(mult)
+                            }
+                            if (round == "roundup") {
+                                value = Math.ceil(value)
+                            } else if (round == "rounddown") {
+                                value = Math.floor(value)
+                            }
+                        } else if (multiplier) {
+                            if (multiplier.slice(-1) == '+') {
+                                value += parseInt(multiplier.slice(0,-1))
+                            } else if (multiplier.slice(-1) == '-') {
+                                value -= parseInt(multiplier.slice(0,-1))
+                            } else if (multiplier.slice(-1) == '/') {
+                                value /= parseInt(multiplier.slice(0,-1))
+                            } else if (multiplier.slice(-1) == '*') {
+                                value *= parseInt(multiplier.slice(0,-1))
+                            }
+                        }
+                        return `${(signed&&value>=0)?'+':''}${value}`
+                    }
+                } else if (tag == 'proficiency') {
+                    let value  = data.proficiencyBonus
+                    if (multiplier) {
+                        if (multiplier.slice(-1) == '+') {
+                            value += parseInt(multiplier.slice(0,-1))
+                        } else if (multiplier.slice(-1) == '-') {
+                            value -= parseInt(multiplier.slice(0,-1))
+                        } else if (multiplier.slice(-1) == '/') {
+                            value /= parseInt(multiplier.slice(0,-1))
+                        } else if (multiplier.slice(-1) == '*') {
+                            value *= parseInt(multiplier.slice(0,-1))
+                        }
+                    }
+                    return `${(signed&&value>=0)?'+':''}${value}`
+                } else if (tag.startsWith('savedc') || tag.startsWith('modifier') || tag.startsWith('spellattack')) {
+                    let values = []
+                    for (const st of stat.split(/,/)) {
+                        let value
+                        const modifier = Math.floor((data.abilities[st.toLowerCase()].base
+                            + (data.abilities[st.toLowerCase()].otherBonus||0) - 10)*.5)
+                        if (tag.startsWith('savedc')) {
+                            value = (8+data.proficiencyBonus+modifier)
+                        } else if (tag.startsWith('spellattack')) {
+                            value = `+${data.proficiencyBonus+modifier}`
+                        } else if (tag.startsWith('modifier')) {
+                            value = modifier
+                        }
+                        if (
+                            (mm == 'min' && value < parseInt(mmv))
+                            || (mm == 'max' && value > parseInt(mmv))
+                        )
+                            value = mmv
+                        if (level) {
+                            if (level == 'characterlevel+') {
+                                value += overallLevel
+                            } else if (level == '8+proficiency+') {
+                                value += (8 + data.proficiencyBonus)
+                            }
+                        }
+                        values.push(`${(signed&&value>=0)?'+':''}${value}`)
+                    }
+                    return values.join('/')
+                }
+            }
             if (signed == '#unsigned') signed = false
             if (tag == 'scalevalue') {
+
                 if (m.componentTypeId == 12168134) {
                     let feature = ddb.classes.find(c=>c.classFeatures.find(f=>f.definition.id==m.componentId))
                         ?.classFeatures.find(f=>f.definition.id==m.componentId)
+                    if (!feature) {
+                        feature = ddb.classes.find(c=>c.subclassDefinition.classFeatures.find(f=>f.id==m.componentId))?.subclassDefinition.classFeatures.find(f=>f.id=$=m.componentId)
+                    }
                     if (feature) {
                         if (feature.levelScale.fixedValue) {
                             const value = feature.levelScale.fixedValue
                             return `${(signed&&value>=0)?'+':''}${value}`
                         } else if (feature.levelScale.dice) {
-                            const value = feature.levelScale.dice.diceString
-                            return `[${value}](</roll/${value}/${m.name}>)`
+                            const value = feature.levelScale.dice.diceString + ((tag2)?(getModifier(tag2,stat2,fn2,mult2,round2,mm2,mmv2,signed2)):'')
+                            return `[${value}](&lt;/roll/${value}/${m.name}&gt;)`
                         }
+                    } else if (m.fixedValue) {
+                        const value = m.fixedValue
+                        return `${(signed&&value>=0)?'+':''}${value}`
+                    } else if (m.dice) {
+                        const value = m.dice.diceString + ((tag2)?(getModifier(tag2,stat2,fn2,mult2,round2,mm2,mmv2,signed2)):'')
+                        return `[${value}](&lt;/roll/${value}/${m.name}&gt;)`
                     }
                 } else if (m.componentTypeId == 1960452172) {
                     //race
@@ -109,7 +198,7 @@ function convertCharacter(ddb,rules) {
                     //feats
                 }
             } else if (tag == 'classlevel') {
-                if (m.componentTypeId == 12168134) {
+                /*if (m.componentTypeId == 12168134)*/ {
                     let cls = ddb.classes.find(c=>c.classFeatures.find(f=>f.definition.id==m.componentId))
                     if (!cls) cls = ddb.classes[0]
                     if (cls) {
@@ -129,12 +218,33 @@ function convertCharacter(ddb,rules) {
                             } else if (round == "rounddown") {
                                 value = Math.floor(value)
                             }
+                        } else if (multiplier) {
+                            if (multiplier.slice(-1) == '+') {
+                                value += parseInt(multiplier.slice(0,-1))
+                            } else if (multiplier.slice(-1) == '-') {
+                                value -= parseInt(multiplier.slice(0,-1))
+                            } else if (multiplier.slice(-1) == '/') {
+                                value /= parseInt(multiplier.slice(0,-1))
+                            } else if (multiplier.slice(-1) == '*') {
+                                value *= parseInt(multiplier.slice(0,-1))
+                            }
                         }
                         return `${(signed&&value>=0)?'+':''}${value}`
                     }
                 }
             } else if (tag == 'proficiency') {
                 let value  = data.proficiencyBonus
+                if (multiplier) {
+                    if (multiplier.slice(-1) == '+') {
+                        value += parseInt(multiplier.slice(0,-1))
+                    } else if (multiplier.slice(-1) == '-') {
+                        value -= parseInt(multiplier.slice(0,-1))
+                    } else if (multiplier.slice(-1) == '/') {
+                        value /= parseInt(multiplier.slice(0,-1))
+                    } else if (multiplier.slice(-1) == '*') {
+                        value *= parseInt(multiplier.slice(0,-1))
+                    }
+                }
                 return `${(signed&&value>=0)?'+':''}${value}`
             } else if (tag.startsWith('savedc') || tag.startsWith('modifier') || tag.startsWith('spellattack')) {
                 let values = []
@@ -155,7 +265,7 @@ function convertCharacter(ddb,rules) {
                     )
                         value = mmv
                     if (level) value += overallLevel
-                    values.push(value)
+                    values.push(`${(signed&&value>=0)?'+':''}${value}`)
                 }
                 return values.join('/')
             } else if (tag == "limiteduse") {
@@ -228,9 +338,11 @@ function convertCharacter(ddb,rules) {
                     :(ddb.classes[i].subclassDefinition?.canCastSpells)?
                         rules.stats.find(s=>s.id==ddb.classes[i].subclassDefinition.spellCastingAbilityId).key.toLowerCase()
                         :undefined
-            const attack = Math.floor((data.abilities[spellcastingAbility].base
+            const attack = (spellcastingAbility)?
+                Math.floor((data.abilities[spellcastingAbility].base
                 + (data.abilities[spellcastingAbility].otherBonus||0) - 10)*.5)
                 + data.proficiencyBonus
+                :0
             const savedc = (8+attack)
             console.log(`This is an attack: ${m.definition.name}, ${attack}, DC ${savedc}`)
             let action = m.definition
@@ -420,10 +532,10 @@ function convertCharacter(ddb,rules) {
                 data.spellSlots[i+1] = { available: v }
             })
     }
-    ddb.spells.race?.forEach(addSpell)
-    ddb.spells.background?.forEach(addSpell)
+    ddb.spells.race?.forEach(s=>addSpell(s,0))
+    ddb.spells.background?.forEach(s=>addSpell(s,0))
     ddb.classSpells?.forEach((c,i)=>c.spells.forEach(s=>addSpell(s,i)))
-    ddb.spells.feat?.forEach(addSpell)
+    ddb.spells.feat?.forEach(s=>addSpell(s,0))
 
     data.currency = ddb.currencies
     data.hp.maximum += Math.floor(((data.abilities.con.base+(data.abilities.con.otherBonus||0))-10)*.5)*overallLevel
