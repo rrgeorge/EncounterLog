@@ -26,7 +26,7 @@
     "publish-win": "electron-builder -p always --win",
     "publish-linux": "electron-builder -p always --linux",
     "publish-all": "yarn publish-mac&&yarn publish-win&&yarn publish-linux",
-    "release": "security unlock&&git tag -f \"v$(jq -r .version package.json)\"&&git push&&git push -f --tags&&yarn publish-all;electron-builder install-app-deps",
+    "release": "security unlock&&./scripts/getChangeLog.sh|git tag -s -f \"v$(jq -r .version package.json)\" -F - &&git push&&git push -f --tags&&yarn publish-all;electron-builder install-app-deps",
     "postinstall": "electron-builder install-app-deps",
     "app": "electron-builder install-app-deps&&electron . -v"
   },
