@@ -1506,7 +1506,7 @@ class DDB {
                                 await zip.addFile(`items/${imageFile}`,image)
                             }
                         }
-                        itemEntry._content.push( { image: `${imageFile}` } )
+                        itemEntry._content.push( { image: `${(tdSvc)?'items/':''}${imageFile}` } )
                     }
                 } catch (e) {
                     console.log(`Could not load item image: ${e}`)
@@ -1602,7 +1602,7 @@ class DDB {
                                 await zip.addFile(`classes/${imageFile}`,image)
                             }
                         }
-                        fullEntry.image = imageFile
+                        fullEntry.image = `classes/${imageFile}`
                     }
                 } catch (e) {
                     console.log(`Error adding artwork: ${e}\n${cls.name}: ${cls.largeAvatarUrl||cls.avatarUrl}`)
@@ -1618,7 +1618,7 @@ class DDB {
                                 .webp().toBuffer().catch(e=>console.log(`Could not create token: ${e}`))
                             await zip.addFile(`classes/${uuid5(cls.portraitAvatarUrl,uuid5.URL)}_token.webp`,image)
                         }
-                        fullEntry.token = `${uuid5(cls.portraitAvatarUrl,uuid5.URL)}_token.webp`
+                        fullEntry.token = `classes/${uuid5(cls.portraitAvatarUrl,uuid5.URL)}_token.webp`
                     }
                 } catch (e) {
                     console.log(`Error creating token: ${e}\n${cls.portraitAvatarUrl}`)
@@ -1683,7 +1683,7 @@ class DDB {
                                         await zip.addFile(`subclasses/${imageFile}`,image)
                                     }
                                 }
-                                fullEntry.image = imageFile
+                                fullEntry.image = `subclasses/${imageFile}`
                             }
                         } catch (e) {
                             console.log(`Error adding artwork: ${e}\n${subcls.name}: ${subcls.largeAvatarUrl||subcls.avatarUrl}`)
@@ -1699,7 +1699,7 @@ class DDB {
                                         .webp().toBuffer().catch(e=>console.log(`Could not create token: ${e}`))
                                     await zip.addFile(`subclasses/${uuid5(subcls.portraitAvatarUrl,uuid5.URL)}_token.webp`,image)
                                 }
-                                fullEntry.token = `${uuid5(subcls.portraitAvatarUrl,uuid5.URL)}_token.webp`
+                                fullEntry.token = `subclasses/${uuid5(subcls.portraitAvatarUrl,uuid5.URL)}_token.webp`
                             }
                         } catch (e) {
                             console.log(`Error creating token: ${e}\n${subcls.portraitAvatarUrl}`)
@@ -1964,7 +1964,7 @@ class DDB {
                                 await zip.addFile(`races/${imageFile}`,image)
                             }
                         }
-                        fullEntry.image = imageFile
+                        fullEntry.image = `races/${imageFile}`
                     }
                 } catch (e) {
                     console.log(`Error adding artwork: ${e}\n${race.name}: ${race.largeAvatarUrl||race.avatarUrl}`)
@@ -1985,7 +1985,7 @@ class DDB {
                                 .webp().toBuffer().catch(e=>console.log(`Could not create token: ${e}`))
                             await zip.addFile(`races/${uuid5(race.portraitAvatarUrl,uuid5.URL)}_token.webp`,image)
                         }
-                        fullEntry.token = `${uuid5(race.portraitAvatarUrl,uuid5.URL)}_token.webp`
+                        fullEntry.token = `races/${uuid5(race.portraitAvatarUrl,uuid5.URL)}_token.webp`
                     }
                 } catch (e) {
                     console.log(`Error creating token: ${e}\n${race.portraitAvatarUrl}`)
@@ -2202,7 +2202,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                                 await zip.addFile(`backgrounds/${imageFile}`,image)
                             }
                         }
-                        fullEntry.image = imageFile
+                        fullEntry.image = `backgrounds/${imageFile}`
                     }
                 } catch (e) {
                     console.log(`Error adding artwork: ${e}\n${background.name}: ${background.largeAvatarUrl||background.avatarUrl}`)
@@ -2223,7 +2223,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                                 .webp().toBuffer().catch(e=>console.log(`Could not create token: ${e}`))
                             await zip.addFile(`backgrounds/${uuid5(background.portraitAvatarUrl,uuid5.URL)}_token.webp`,image)
                         }
-                        fullEntry.token = `${uuid5(background.portraitAvatarUrl,uuid5.URL)}_token.webp`
+                        fullEntry.token = `backgrounds/${uuid5(background.portraitAvatarUrl,uuid5.URL)}_token.webp`
                     }
                 } catch (e) {
                     console.log(`Error creating token: ${e}\n${background.portraitAvatarUrl}`)
@@ -2331,7 +2331,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                                 await zip.addFile(`feats/${imageFile}`,image)
                             }
                         }
-                        fullEntry.image = imageFile
+                        fullEntry.image = `feats/${imageFile}`
                     }
                 } catch (e) {
                     console.log(`Error adding artwork: ${e}\n${feat.name}: ${feat.largeAvatarUrl||feat.avatarUrl}`)
@@ -2352,7 +2352,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                                 .webp().toBuffer().catch(e=>console.log(`Could not create token: ${e}`))
                             await zip.addFile(`feats/${uuid5(feat.portraitAvatarUrl,uuid5.URL)}_token.webp`,image)
                         }
-                        fullEntry.token = `${uuid5(feat.portraitAvatarUrl,uuid5.URL)}_token.webp`
+                        fullEntry.token = `feats/${uuid5(feat.portraitAvatarUrl,uuid5.URL)}_token.webp`
                     }
                 } catch (e) {
                     console.log(`Error creating token: ${e}\n${feat.portraitAvatarUrl}`)
@@ -2603,7 +2603,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                                 await zip.addFile(`vehicles/${imageFile}`,image)
                             }
                         }
-                        fullEntry.image = imageFile
+                        fullEntry.image = `vehicles/${imageFile}`
                     }
                 } catch (e) {
                     console.log(`Error adding artwork: ${e}\n${vehicle.name}: ${vehicle.largeAvatarUrl||vehicle.avatarUrl}`)
@@ -2625,7 +2625,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                                 .webp().toBuffer().catch(e=>console.log(`Could not create token: ${e}`))
                             await zip.addFile(`vehicles/${uuid5(vehicle.portraitAvatarUrl,uuid5.URL)}_token.webp`,image)
                         }
-                        fullEntry.token = `${uuid5(vehicle.portraitAvatarUrl,uuid5.URL)}_token.webp`
+                        fullEntry.token = `vehicles/${uuid5(vehicle.portraitAvatarUrl,uuid5.URL)}_token.webp`
                     }
                 } catch (e) {
                     console.log(`Error creating token: ${e}\n${vehicle.portraitAvatarUrl}`)
@@ -3698,7 +3698,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                             await zip.addFile(`monsters/${imageFile}`,image)
                         }
                     }
-                    monsterEntry._content.push( { image: `${imageFile}` } )
+                    monsterEntry._content.push( { image: `${(tdSvc)?'monsters/':''}${imageFile}` } )
                 }
             } catch (e) {
                 console.log(`Error adding artwork: ${e}\n${monster.name}: ${monster.basicAvatarUrl||monster.largeAvatarUrl}`)
@@ -3719,7 +3719,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                             .webp().toBuffer().catch(e=>console.log(`Could not create token: ${e}`))
                         await zip.addFile(`monsters/${uuid5(monster.avatarUrl,uuid5.URL)}_token.webp`,image)
                     }
-                    monsterEntry._content.push( { token: `${uuid5(monster.avatarUrl,uuid5.URL)}_token.webp` } )
+                    monsterEntry._content.push( { token: `${(tdSvc)?'monsters/':''}${uuid5(monster.avatarUrl,uuid5.URL)}_token.webp` } )
                 }
             } catch (e) {
                 console.log(`Error creating token: ${e}\n${monster.avatarUrl}`)
