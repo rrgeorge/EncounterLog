@@ -368,8 +368,61 @@ class DDB {
             fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`rulecache.json`),JSON.stringify(res))
         }
         this.ruledata = res
+        if (!this.ruledata.sq) {
+            const senses = await new Promise((resolve,reject)=>{
+                if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                    let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                    manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
+                }
+                const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
+                const senses = db.prepare(`SELECT RPGSense.ID AS ID,Name,GROUP_CONCAT(Text,'<br>') AS Value FROM RPGSense LEFT JOIN HTMLDescription ON RPGSense.ID=HTMLDescription.EntityID AND HTMLDescription.EntityTypeID=(SELECT ID From EntityType WHERE Name='RPGSense') GROUP BY RPGSense.ID ORDER BY RPGSense.ID,HTMLDescription.DisplayOrder;`).all().map(s=>({
+                    id: s.ID,
+                    name: s.Name,
+                    value: s.Value
+                })
+                )
+                resolve(senses)
+            })
+            const rules = await new Promise((resolve,reject)=>{
+                if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                    let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                    manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
+                }
+                const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
+                const rules = db.prepare(`SELECT RPGRule.ID AS ID,Name,GROUP_CONCAT(Text,'<br>') AS Value FROM RPGRule LEFT JOIN HTMLDescription ON RPGRule.ID=HTMLDescription.EntityID AND HTMLDescription.EntityTypeID=(SELECT ID From EntityType WHERE Name='RPGRule') GROUP BY RPGRule.ID ORDER BY RPGRule.ID,HTMLDescription.DisplayOrder;`).all().map(s=>({
+                    id: s.ID,
+                    name: s.Name,
+                    value: s.Value
+                })
+                )
+                resolve(rules)
+            })
+            const glossary = await new Promise((resolve,reject)=>{
+                if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                    let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                    manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
+                }
+                const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
+                const glossary = db.prepare(`SELECT RPGRulesGlossary.ID AS ID,Name,GROUP_CONCAT(Text,'<br>') AS Value FROM RPGRulesGlossary LEFT JOIN HTMLDescription ON RPGRulesGlossary.ID=HTMLDescription.EntityID AND HTMLDescription.EntityTypeID=(SELECT ID From EntityType WHERE Name='RPGRulesGlossary') GROUP BY RPGRulesGlossary.ID ORDER BY RPGRulesGlossary.ID,HTMLDescription.DisplayOrder;`).all().map(s=>({
+                    id: s.ID,
+                    name: s.Name,
+                    value: s.Value
+                })
+                )
+                resolve(glossary)
+            })
+            this.ruledata.sq = { senses, rules, glossary }
+        }
 
         this.v5LinkAdj = (m,p1,p2,p3) => {
+            if (p2 == "/sources/dnd/free-rules/playing-the-game#Skills") {
+                const mm = m.match(/\[([\w ]+)\]\(.*\)/)
+                if (mm) {
+                    return `[${mm[1]}](/ability-skill/${slugify(mm[1])})`
+                } else {
+                    console.log("COULD NOT TRANSLATE: ",m )
+                }
+            }
             return `${p1}${fixDDBLinks(p2,this.ruledata,true)}${p3}`
         }
     }
@@ -2742,11 +2795,11 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
                 }
                 const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
-                const senses = db.prepare(`SELECT RPGSense.ID AS ID,Name,GROUP_CONCAT(Value,'<br>') AS Value FROM RPGSense LEFT JOIN ContentDetail ON RPGSense.DescriptionContentID=ContentDetail.ContentID GROUP BY RPGSense.ID ORDER BY RPGSense.ID,ContentDetail.DisplayOrder`).all().map(s=>({
+                const senses = db.prepare(`SELECT RPGSense.ID AS ID,Name,GROUP_CONCAT(Text,'<br>') AS Value FROM RPGSense LEFT JOIN HTMLDescription ON RPGSense.ID=HTMLDescription.EntityID AND HTMLDescription.EntityTypeID=(SELECT ID From EntityType WHERE Name='RPGSense') GROUP BY RPGSense.ID ORDER BY RPGSense.ID,HTMLDescription.DisplayOrder;`).all().map(s=>({
                     id: uuid5(`ddb://senses/${s.ID}`,uuid5.URL),
                     name: s.Name,
                     slug: slugify(`${s.Name}`),
-                    descr: tdSvc.turndown(s.Value||''),
+                    descr: tdSvc.turndown(s.Value||'').replaceAll(markDownLinks,this.v5LinkAdj),
                     type: "sense",
                     tags: [
                         "Sense"
@@ -2754,6 +2807,46 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                 })
                 )
                 resolve(senses)
+            })
+            prog.detail = `Exporting rules`
+            const rules = await new Promise((resolve,reject)=>{
+                if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                    let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                    manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
+                }
+                const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
+                const rules = db.prepare(`SELECT RPGRule.ID AS ID,Name,GROUP_CONCAT(Text,'<br>') AS Value FROM RPGRule LEFT JOIN HTMLDescription ON RPGRule.ID=HTMLDescription.EntityID AND HTMLDescription.EntityTypeID=(SELECT ID From EntityType WHERE Name='RPGRule') GROUP BY RPGRule.ID ORDER BY RPGRule.ID,HTMLDescription.DisplayOrder;`).all().map(s=>({
+                    id: uuid5(`ddb://rule/${s.ID}`,uuid5.URL),
+                    name: s.Name,
+                    slug: slugify(`${s.Name}`),
+                    descr: tdSvc.turndown(s.Value||'').replaceAll(markDownLinks,this.v5LinkAdj),
+                    type: "Other",
+                    tags: [
+                        "Rule"
+                    ],
+                })
+                )
+                resolve(rules)
+            })
+            prog.detail = `Exporting glossary`
+            const glossary = await new Promise((resolve,reject)=>{
+                if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                    let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                    manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
+                }
+                const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
+                const glossary = db.prepare(`SELECT RPGRulesGlossary.ID AS ID,Name,GROUP_CONCAT(Text,'<br>') AS Value FROM RPGRulesGlossary LEFT JOIN HTMLDescription ON RPGRulesGlossary.ID=HTMLDescription.EntityID AND HTMLDescription.EntityTypeID=(SELECT ID From EntityType WHERE Name='RPGRulesGlossary') GROUP BY RPGRulesGlossary.ID ORDER BY RPGRulesGlossary.ID,HTMLDescription.DisplayOrder;`).all().map(s=>({
+                    id: uuid5(`ddb://rulesglossary/${s.ID}`,uuid5.URL),
+                    name: s.Name,
+                    slug: slugify(`${s.Name}`),
+                    descr: tdSvc.turndown(s.Value||'').replaceAll(markDownLinks,this.v5LinkAdj),
+                    type: "Other",
+                    tags: [
+                        "Rules Glossary"
+                    ],
+                })
+                )
+                resolve(glossary)
             })
             prog.detail = `Exporting sources`
             let manifestZip = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
@@ -2796,7 +2889,9 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                 ...stats,
                 ...skills,
                 ...senses,
-                ...sources
+                ...sources,
+                ...rules,
+                ...glossary
             ]),'utf8'),null)
         } else {
             prog.detail = `Exporting sources`

@@ -1,5 +1,6 @@
 const Slugify = require('slugify')
 const { convert } = require('html-to-text')
+const { v5: uuid5 } = require('uuid')
 
 function slugify(str) {
    return Slugify(str,{ lower: true, strict: true })
@@ -12,15 +13,75 @@ function camelCase(str) {
 function fixDDBLinks(text,rulesdata,v5=false) {
         let orig = text
         text = text.replace(/^https?:\/\/dndbeyond.com\/linkout\?remoteUrl=/,'')
+        text = text.replace(/sources\/dnd\/free-rules\/treasure#Artifacts/,'sources/dnd/dmg-2024/treasure#Artifacts')
+        if (text == 'https://draft.dndbeyond.com/homebrew/creations/magic-items/27068-lock-of-trickery/dndbeyond.com/sources/dnd/phb-2024')
+            text = 'https://www.dndbeyond.com/sources/dnd/phb-2024/equipment#Lock10GP'
         if (rulesdata) {
             if (text.match(/^(https?:\/\/(?:www\.|draft\.)?dndbeyond\.com)?\/+compendium\/(rules|adventures)\/.*/)) {
                 text = text.replace(/^(https?:\/\/(?:www\.|draft\.)?dndbeyond\.com)?\/+compendium\/(rules|adventures)\//,"https://www.dndbeyond.com/sources/")
             }
             if (v5) {
                 let m
-                if (m = text.match(/appendix-a-conditions#(\w+)/))
-                    if (rulesdata.conditions.find(r=>slugify(r.definition.name)==slugify(m[1])))
-                        return `/condition/${slugify(m[1])}`
+                if (m = text.match(/appendix-a-conditions#(\w+)/) ) {
+                    const match = m[1].replace(/(?<!^)([A-Z])/g," $1");
+                    if (rulesdata.conditions.find(r=>slugify(r.definition.name)==slugify(match))) {
+                        return `/condition/${slugify(match)}`
+                    } else {
+                        console.log(`No condition named: ${match} < ${text}`)
+                    }
+                }
+                if (m = text.match(/.*\/rules-glossary#(\w+)Condition/) ) {
+                    const match = m[1].replace(/(?<!^)([A-Z])/g," $1");
+                    if (rulesdata.conditions.find(r=>slugify(r.definition.name)==slugify(match))) {
+                        return `/condition/${slugify(match)}`
+                    } else {
+                        console.log(`No condition named: ${match} < ${text}`)
+                    }
+                }
+                if (m = text.match(/.*\/rules-glossary#(\w+)Action/) ) {
+                    const match = m[1].replace(/(?<!^)([A-Z])/g," $1");
+                    if (rulesdata.basicActions.find(r=>slugify(r.name)==slugify(match))) {
+                        return `/action/${slugify(match)}`
+                    } else {
+                        console.log(`No action named: ${match} < ${text}`)
+                    }
+                }
+                if (m = text.match(/.*\/rules-glossary#(\w+)AreaofEffect/) ) {
+                    const match = m[1].replace(/(?<!^)([A-Z])/g," $1");
+                    if (rulesdata.sq.glossary.find(r=>slugify(r.name)==slugify(match))) {
+                        return `/other/${slugify(match)}`
+                    } else {
+                        console.log(`No area named: ${match} < ${text}`)
+                    }
+                }
+                if (m = text.match(/.*\/rules-glossary#(\w+)Hazard/) ) {
+                    const match = m[1].replace(/(?<!^)([A-Z])/g," $1");
+                    if (rulesdata.sq.glossary.find(r=>slugify(r.name)==slugify(match))) {
+                        return `/other/${slugify(match)}`
+                    } else {
+                        console.log(`No hazard named: ${match} < ${text}`)
+                    }
+                }
+                if (m = text.match(/.*\/rules-glossary#(\w+)/) ) {
+                    const match = m[1].replace(/(?<!^)([A-Z])/g," $1");
+                    if (rulesdata.rules.find(r=>slugify(r.name)==slugify(match))) {
+                        return `/other/${slugify(match)}`
+                    } else if (rulesdata.basicActions.find(r=>slugify(r.name)==slugify(match))) {
+                        return `/action/${slugify(match)}`
+                    } else if (match == "Grappling" && rulesdata.basicActions.find(r=>slugify(r.name)==slugify("Grapple"))) {
+                        return `/action/${slugify("Grapple")}`
+                    } else if (rulesdata.conditions.find(r=>slugify(r.definition.name)==slugify(match))) {
+                        return `/condition/${slugify(match)}`
+                    } else if (rulesdata.sq.rules.find(r=>slugify(r.name)==slugify(match))) {
+                        return `/other/${slugify(match)}`
+                    } else if (rulesdata.sq.glossary.find(r=>slugify(r.name)==slugify(match))) {
+                        return `/other/${slugify(match)}`
+                    } else if (rulesdata.sq.senses.find(r=>slugify(r.name)==slugify(match))) {
+                        return `/sense/${slugify(match)}`
+                    } else {
+                        console.log(`No rule named: ${match} < ${text}`)
+                    }
+                }
                 if (m = text.match(/using-ability-scores#(\w+)/)) {
                     let match = rulesdata.abilitySkills.find(r=>
                         slugify(r.name)==slugify(m[1])
@@ -101,10 +162,21 @@ function fixDDBLinks(text,rulesdata,v5=false) {
                     return `/monster/${(p3)?p3:uuid5(`ddb://${p1}/${p2}`,uuid5.URL)}`;
                 case "spells":
                     return `/spell/${(p3)?p3:uuid5(`ddb://${p1}/${p2}`,uuid5.URL)}`;
+                case "rulesglossary":
+                    return `/other/${(p3)?p3:uuid5(`ddb://${p1}/${p2}`,uuid5.URL)}`;
                 default:
                     return `/item/${(p3)?p3:uuid5(`ddb://${p1}/${p2}`,uuid5.URL)}`;
             }
         })
+        text=text.replace(/^(?:ddb:\/)\/([a-z-]+)\/(?:([0-9]+)-?)?(.*)?/,(m,p1,p2,p3)=>{
+            let base = p1
+            let id = (p3)?p3:uuid5(`ddb://${p1}/${p2}`,uuid5.URL)
+            if (p1.endsWith('s')) base = p1.slice(0,-1)
+            if (['armor','weapons','adventuring-gear','magic-items','equipment'].includes(p1)) base = 'item'
+            if (p1 == 'rulesglossary') base = 'other'
+            return `/${base}/${id}`
+        })
+
         if (orig==text && !text.startsWith('/')) console.warn('NO MATCH:',orig)
         return text
 }
