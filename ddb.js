@@ -3043,6 +3043,40 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                 ...sources
             ]),'utf8'),null)
         }
+        let modulejson = zip.getEntry(`module.json`)
+        if (!modulejson) {
+            if (source) {
+            const sourceInfo = this.ruledata.sources.find(s=>s.id==source)
+                if (sourceInfo) {
+                    await zip.addFile("module.json",Buffer.from(JSON.stringify({
+                        "id": uuid5(`https://www.dndbeyond.com/${sourceInfo.sourceURL}`,uuid5.DNS),
+                        "name": he.decode(sourceInfo.description),
+                        "slug": slugify(sourceInfo.name),
+                        "version": app.getVersion(),
+                        "category": "Compendium",
+                        "descr": "",
+                        "image": `rules/source-${sourceInfo.name}.jpg`,
+                        "system": "dnd5e",
+                        "tags": [ 'D&D Beyond', 'Compandium' ]
+                    }),'utf8'),null)
+                    await zip.addLocalFile(path.join(__dirname,"icon.png"),"encounterlog")
+                } else {
+                    console.warn(`COULD NOT ADD module.json FOR UNKNOWN MODULE ID ${source}`)
+                }
+            } else {
+                await zip.addFile("module.json",Buffer.from(JSON.stringify({
+                    "id": uuid5(`EncounterLog.play5e.online`,uuid5.DNS),
+                    "name": "EncounterLog Compendium",
+                    "slug": "encounterlog-compendium",
+                    "version": app.getVersion(),
+                    "category": "Compendium",
+                    "descr": "EncounterLog Export of Compendium from D&D Beyond.",
+                    "image": "encounterlog/icon.png",
+                    "system" : "dnd5e"
+                }),'utf8'),null)
+                await zip.addLocalFile(path.join(__dirname,"icon.png"),"encounterlog")
+            }
+        }
         prog.detail = `Writing compendium file`
         if (filename) {
             zip.writeZip(filename)
