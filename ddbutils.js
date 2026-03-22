@@ -116,7 +116,7 @@ function fixDDBLinks(text,rulesdata,v5=false) {
                 ) {
                 console.warn('BR Didnt match!',text)
             }
-            let ddburl = text.match(/^https:\/\/(?:www\.|draft\.)?dndbeyond\.com\/(sources\/[^\/ ]*)/)
+            let ddburl = text.match(/^https:\/\/(?:www\.|draft\.)?dndbeyond\.com\/(sources(?:\/dnd)?\/[^\/ ]*)/)
             if (ddburl) {
                 let source = rulesdata.sources?.find(s=>{
                     if (s.sourceURL.toLowerCase()==ddburl[1].toLowerCase()) {
