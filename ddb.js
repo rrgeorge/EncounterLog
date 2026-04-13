@@ -292,6 +292,16 @@ function applyMeta (playerMap,meta,info,page,headings,siblingHeadings) {
 
 class DDB {
 
+    isLegacy(id,entity) {
+        if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+            let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+            manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
+        }
+        const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
+        const query = db.prepare(`SELECT IsLegacy FROM ${entity} WHERE ID = ?`).all(id)
+        return query[0]?.IsLegacy
+    }
+
     searchCookies() {
 	return new Promise((resolve,reject) => {
 	    session.defaultSession.cookies.get({})
@@ -943,7 +953,8 @@ class DDB {
         this.books = books
         this.sharedBooks = shared
     }
-    async getClassList(prog=null,source=null) {
+    async getClassList(prog=null,source=null,v5=false) {
+        await this.getRuleData()
         const classlist = await new Promise((resolve,reject)=>{
             if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
                 let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
@@ -954,24 +965,25 @@ class DDB {
             const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
             db.prepare(`SELECT C.ID AS ID, C.Name AS Name, SC.Name AS Parent, C.RPGSourceID AS CSource,SC.RPGSourceID AS SCSource FROM RPGSpell S LEFT JOIN RPGClassSpellMapping AS M ON S.ID = M.RPGSpellID LEFT JOIN RPGClass AS C ON M.RPGClassID = C.ID LEFT JOIN RPGClass AS SC ON SC.ID = C.ParentClassID LEFT JOIN RPGEntityAdditionalSourceMapping SRC ON SRC.EntityID = S.ID AND SRC.EntityTypeID = (SELECT ID FROM EntityType WHERE Name='RPGSpell') ${(source)?` WHERE (S.RPGSourceID=${source} OR SRC.RPGSourceID=${source})`:''} GROUP BY C.ID`).all().forEach(r=>{
                     prog.detail = `Retrieving class list ${(r.Parent)?`${r.Parent}/${r.Name}`:r.Name}`
-                    let className = (r.CSource<=5)?`${r.Name} [Legacy]`:r.Name
-                    let parentClassName = (r.SCSource<=5)?`${r.Parent} [Legacy]`:r.Parent
+                    let className = (v5)?`${r.Name}|${this.ruledata.sources.find(s=>s.id===r.CSource)?.name.toLowerCase()||''}`:(r.CSource<=5)?`${r.Name} [Legacy]`:r.Name
+                    let parentClassName = (v5)?r.Parent:(r.SCSource<=5)?`${r.Parent} [Legacy]`:r.Parent
+                    let parentClassNameSrc = `${r.Parent}|${this.ruledata.sources.find(s=>s.id===r.SCSource)?.name.toLowerCase()||''}`
                     classes.push({
-                        id: r.ID, name: (r.Parent)?`${parentClassName}/${className}`:className, baseClass:(r.Parent)?parentClassName:undefined
+                        id: r.ID, name: (r.Parent)?`${parentClassName}/${className}`:className, baseClass:(r.Parent)?`${(v5)?parentClassNameSrc:parentClassName}`:undefined
                     })
             })
             resolve(classes)
         })
         return classlist
     }
-    async getAllSpells(prog=null,source=null) {
+    async getAllSpells(prog=null,source=null,v5=false) {
         const urls = [ "https://character-service.dndbeyond.com/character/v5/game-data/spells",
             "https://character-service.dndbeyond.com/character/v5/game-data/always-known-spells",
             "https://character-service.dndbeyond.com/character/v5/game-data/always-prepared-spells"]
         if (!this.ruledata) await this.getRuleData()
         await this.getCobaltAuth()
         let allSpells = []
-        const classlist = await this.getClassList(prog,source)
+        const classlist = await this.getClassList(prog,source,v5)
         for (const ddbClass of classlist) {
             if (prog) {
                 prog.detail = `Retrieving spells for ${ddbClass.name}`
@@ -1064,7 +1076,7 @@ class DDB {
         ]
         if(!prog) prog = new ProgressBar({title: "Please wait...", text: "Converting spells...", detail: "Please wait...", indeterminate: false, maxValue: 100})
         let allSpells = []
-        allSpells = await this.getAllSpells(prog,source)
+        allSpells = await this.getAllSpells(prog,source,(tdSvc))
         let spells = allSpells.filter(s=>(source)?s.sources.some(b=>(source===10&&(b.sourceId===10||b.sourceId===4))||b.sourceId===source):!s.sources.some(b=>b.sourceId===29))
         if (filename) zip = new AdmZip()
         var compendium = { 
@@ -1086,7 +1098,7 @@ class DDB {
             if (spell.isHomebrew !== homebrew) {
                 continue
             }
-            let spellName = (spell.isLegacy&&this.legacy=='mark')?`${spell.name} [Legacy]`:spell.name
+            let spellName = (spell.isLegacy&&this.legacy=='mark'&&!tdSvc)?`${spell.name} [Legacy]`:spell.name
             //(spell.sources.find(s=>s.sourceId<=5))?`${spell.name} (2014)`:spell.name
             var spellEntry = {
                 _name: "spell",
@@ -1105,6 +1117,14 @@ class DDB {
                     {classes: (tdSvc)?spell.classes:spell.classes.join(",")},
                 ]
             }
+            let attributes = { }
+            let tags = []
+            if (spell.isLegacy) {
+                tags.push( "Legacy" )
+                attributes.legacy = true
+            }
+            if (spell.tags) tags.push(...spell.tags)
+            spellEntry._content.push({attributes},{tags: tags})
             let components = []
             for (let component of spell.components) {
                 let code = this.ruledata.spellComponents.find(s=>s.id===component).shortName
@@ -1252,7 +1272,7 @@ class DDB {
                 } else {
                     itemurl += "adventuring-gear"
                 }
-                let itemName = (item.isLegacy&&this.legacy=='mark')?`${item.name} [Legacy]`:item.name
+                let itemName = (item.isLegacy&&this.legacy=='mark'&&!tdSvc)?`${item.name} [Legacy]`:item.name
                     //(item.sources.find(s=>s.sourceId<=5))?`${item.name} (2014)`:item.name
                 var itemEntry = {
                     _name: "item",
@@ -1266,14 +1286,20 @@ class DDB {
                         {container: item.isContainer },
                     ]
                 }
-                let tags = item.tags || []
+                let tags = []
+                let attributes = { }
+                if (item.isLegacy) {
+                    tags.push( "Legacy" )
+                    attributes.legacy = true
+                }
+                if (item.tags) tags.push(...item.tags)
                 if (item.groupedId) {
                     const group = items.find(g=>g.id===item.groupedId)
                     if (group) tags.push(group.name)
                 } else if (items.some(s=>s.groupedId===item.id)) {
                     tags.push(item.name)
                 }
-                itemEntry._content.push({tags: tags})
+                itemEntry._content.push({attributes},{tags: tags})
                 if (item.container) {
                     itemEntry._content.push({capacity: item.capacityWeight})
                 }
@@ -1851,14 +1877,16 @@ class DDB {
                 })
             }
             if (parentClass) {
-                entry.class = (parentClass.sources.find(s=>s.sourceId<=5))?`${parentClass.name} [Legacy]`:parentClass.name
+                //entry.class = (parentClass.sources.find(s=>s.sourceId<=5))?`${parentClass.name} [Legacy]`:parentClass.name
+                entry.class = `${parentClass.name}|${this.ruledata.sources.find(r=>r.id===parentClass.sources[0]?.sourceId)?.name.toLowerCase()||''}`
             } else {
                 entry.hd = cls.hitDice
                 entry.equipment = tdSvc.turndown(cls.equipmentDescription)
             }
             let fullEntry = {
                 id: uuid5(`ddb://classes/${(parentClass)?`${cls.parentClassId}/${cls.id}`:cls.id}`,uuid5.URL),
-                name: (cls.sources.find(s=>s.sourceId<=5))?`${cls.name} [Legacy]`:cls.name,
+                //name: (cls.sources.find(s=>s.sourceId<=5))?`${cls.name} [Legacy]`:cls.name,
+                name: cls.name,
                 descr: tdSvc.turndown(cls.description).replaceAll(markDownLinks,this.v5LinkAdj),
                 sources: cls.sources
                         .filter(s=>this.ruledata.sources.find(r=>r.id===s.sourceId))
@@ -1869,6 +1897,16 @@ class DDB {
                 page: entry.page,
                 data: entry
             }
+            let tags = []
+            let attributes = { }
+            if (cls.isLegacy || this.isLegacy(cls.id,'RPGClass')) {
+                tags.push( "Legacy" )
+                attributes.legacy = true
+            }
+            if (cls.tags) tags.push(...cls.tags)
+            fullEntry.tags = tags
+            fullEntry.attributes = attributes
+            fullEntry.systemVersion = systemVersion
             return fullEntry
     }
 
@@ -1933,8 +1971,8 @@ class DDB {
                 if (race.weightSpeeds?.normal?.swim) entry.speed.swim = race.weightSpeeds.normal.swim
                 entry.size = this.ruledata.creatureSizes.find(s=>s.id==race.sizeId).name.charAt(0)
                 let fullEntry = {
-                    id: uuid5(`ddb://races/${race.entityRaceId}`,uuid5.URL),
-                    name: (race.isLegacy&&this.legacy=='mark')?`${race.fullName} [Legacy]`:race.fullName,
+                    id: (race.isSubRace)?uuid5(`ddb://races/${race.baseRaceId}/${race.entityRaceId}`,uuid5.URL):uuid5(`ddb://races/${race.entityRaceId}`,uuid5.URL),
+                    name: race.fullName,//(race.isLegacy&&this.legacy=='mark')?`${race.fullName} [Legacy]`:race.fullName,
                     //(race.sources.find(s=>s.sourceId<=5))?`${race.fullName} (2014)`:race.fullName,
                     descr: tdSvc.turndown(race.description).replaceAll(markDownLinks,this.v5LinkAdj),
                     sources: race.sources
@@ -1945,17 +1983,28 @@ class DDB {
                         })),
                     data: entry
                 }
+                let tags = []
+                let attributes = { }
+                if (race.isLegacy || this.isLegacy(race.entityRaceId,(race.isSubRace)?'RPGSubRace':'RPGRace')) {
+                    tags.push( "Legacy" )
+                    attributes.legacy = true
+                }
+                if (race.tags) tags.push(...race.tags)
+                fullEntry.tags = tags
+                fullEntry.attributes = attributes
+                fullEntry.systemVersion = systemVersion
+
                 try{
-                    if ((race.largeAvatarUrl||race.avatarUrl)&&this.art?.includes('artwork')) {
-                        var imageFile = `${uuid5(race.largeAvatarUrl||race.avatarUrl,uuid5.URL)}${path.extname(race.largeAvatarUrl||race.avatarUrl)}`
+                    if ((race.largeAvatarUrl||race.avatarUrl||race.desktopCardImageUrl)&&this.art?.includes('artwork')) {
+                        var imageFile = `${uuid5(race.largeAvatarUrl||race.avatarUrl||race.desktopCardImageUrl,uuid5.URL)}${path.extname(race.largeAvatarUrl||race.avatarUrl||race.desktopCardImageUrl)}`
                         if (!zip.getEntry(`races/${imageFile}`)) {
-                            if ((race.largeAvatarUrl||race.avatarUrl).startsWith("listing_images/")) {
-                                await zip.addFile(`races/${imageFile}`,zip.readFile(race.largeAvatarUrl||race.avatarUrl))
-                                zip.deleteFile(race.largeAvatarUrl||race.avatarUrl)
+                            if ((race.largeAvatarUrl||race.avatarUrl||race.desktopCardImageUrl).startsWith("listing_images/")) {
+                                await zip.addFile(`races/${imageFile}`,zip.readFile(race.largeAvatarUrl||race.avatarUrl||race.desktopCardImageUrl))
+                                zip.deleteFile(race.largeAvatarUrl||race.avatarUrl||race.desktopCardImageUrl)
                             } else if (!zip.getEntry(`races/${path.basename(imageFile,path.extname(imageFile))}.webp`)) {
-                                let imagesrc = await this.getImage(race.largeAvatarUrl||race.avatarUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
+                                let imagesrc = await this.getImage(race.largeAvatarUrl||race.avatarUrl||race.desktopCardImageUrl).catch(e=>console.log(`Could not retrieve image: ${e}`))
                                 if (!imagesrc || imagesrc.toString().substring(0,5).match(/^<\?xml/)) {
-                                    let imgurl = new URL(race.largeAvatarUrl||race.avatarUrl)
+                                    let imgurl = new URL(race.largeAvatarUrl||race.avatarUrl||race.desktopCardImageUrl)
                                     imgurl.pathname = imgurl.pathname.replace(/[/][0-9]+\/[0-9]+[/]([^/]+)$/,'/1000/1000/$1')
                                     imagesrc = await this.getImage(imgurl.toString()).catch(e=>console.log(`Could not retrieve image: ${e}`))
                                 }
@@ -1967,7 +2016,8 @@ class DDB {
                         fullEntry.image = `races/${imageFile}`
                     }
                 } catch (e) {
-                    console.log(`Error adding artwork: ${e}\n${race.name}: ${race.largeAvatarUrl||race.avatarUrl}`)
+                    console.log(`Error adding artwork: ${e}\n${race.fullName}: ${race.largeAvatarUrl||race.avatarUrl||race.desktopCardImageUrl}`)
+                    console.log(e)
                 }
                 try {
                     if (race.portraitAvatarUrl&&this.art?.includes('tokens')) {
@@ -1988,7 +2038,7 @@ class DDB {
                         fullEntry.token = `races/${uuid5(race.portraitAvatarUrl,uuid5.URL)}_token.webp`
                     }
                 } catch (e) {
-                    console.log(`Error creating token: ${e}\n${race.portraitAvatarUrl}`)
+                    console.log(`Error creating ${race.fullName} token: ${e}\n${race.portraitAvatarUrl}`)
                 }
                 compendium.push(fullEntry)
                 prog.value += (!filename)? (5*(1/races.length)) : 1
@@ -2173,7 +2223,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                 }
                 let fullEntry = {
                     id: uuid5(`ddb://backgrounds/${background.id}`,uuid5.URL),
-                    name: (background.sources.find(s=>s.sourceId<=5))?`${background.name} [Legacy]`:background.name,
+                    name: background.name,//(background.sources.find(s=>s.sourceId<=5))?`${background.name} [Legacy]`:background.name,
                     descr: tdSvc.turndown(background.shortDescription.replace(/(<table[^>]*>)<caption>(.*?)<\/caption>/sg,'$2\n$1')).replaceAll(markDownLinks,this.v5LinkAdj),
                     sources: background.sources
                             .filter(s=>this.ruledata.sources.find(r=>r.id===s.sourceId))
@@ -2183,6 +2233,16 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                         })),
                     data: entry
                 }
+                let tags = []
+                let attributes = { }
+                if (background.isLegacy||this.isLegacy(background.id,'RPGBackground')) {
+                    tags.push( "Legacy" )
+                    attributes.legacy = true
+                }
+                if (background.tags) tags.push(...background.tags)
+                fullEntry.tags = tags
+                fullEntry.attributes = attributes
+                fullEntry.systemVersion = systemVersion
                 try{
                     if ((background.largeAvatarUrl||background.avatarUrl)&&this.art?.includes('artwork')) {
                         var imageFile = `${uuid5(background.largeAvatarUrl||background.avatarUrl,uuid5.URL)}${path.extname(background.largeAvatarUrl||background.avatarUrl)}`
@@ -2297,13 +2357,19 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     prog.value += (!filename)? (5*(1/feats.length)) : 1
                     continue
                 }
+                if (feat.isRepeatable && feat.repeatableParentId) continue
                 prog.detail = `Converting feat: ${feat.name}`
                 let entry = {}
-                entry.prerequisite = feat.prerequisites.filter(p=>!p.hidePrerequisite).map(p=>p.description).join(", ")
+                entry.prerequisite = feat.prerequisites.map(p=>p.description).join(", ")
+                if (feat.categories[0]) entry.category = camelCase(feat.categories[0].tagName)
+                let prereq
+                if ((prereq = /[\w -]+ Feat \(Prerequisite: ([^\)]+)\)/.exec(feat.description)) !== null) {
+                    entry.prerequisite = prereq[1]
+                }
                 let fullEntry = {
                     id: uuid5(`ddb://feats/${feat.id}`,uuid5.URL),
-                    name: (feat.sources.find(s=>s.sourceId<=5))?`${feat.name} [Legacy]`:feat.name,
-                    descr: tdSvc.turndown(feat.description.replace(/(<table[^>]*>)<caption>(.*?)<\/caption>/sg,'$2\n$1')).replaceAll(markDownLinks,this.v5LinkAdj),
+                    name: feat.name,//(feat.sources.find(s=>s.sourceId<=5))?`${feat.name} [Legacy]`:feat.name,
+                    descr: tdSvc.turndown(feat.description.replace(/(<table[^>]*>)<caption>(.*?)<\/caption>/sg,'$2\n$1')).replaceAll(markDownLinks,this.v5LinkAdj).replace(/^_[\w -]+ Feat( \(Prerequisite: [^_]*\))?_\n\n/,''),
                     sources: feat.sources
                         .filter(s=>this.ruledata.sources.find(r=>r.id===s.sourceId))
                         .map(s=>({
@@ -2312,6 +2378,16 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                         })),
                     data: entry
                 }
+                let tags = []
+                let attributes = { }
+                if (feat.isLegacy || this.isLegacy(feat.id,'RPGFeat')) {
+                    tags.push( "Legacy" )
+                    attributes.legacy = true
+                }
+                if (feat.tags) tags.push(...feat.tags)
+                fullEntry.tags = tags
+                fullEntry.attributes = attributes
+                fullEntry.systemVersion = systemVersion
                 try{
                     if ((feat.largeAvatarUrl||feat.avatarUrl)&&this.art?.includes('artwork')) {
                         var imageFile = `${uuid5(feat.largeAvatarUrl||feat.avatarUrl,uuid5.URL)}${path.extname(feat.largeAvatarUrl||feat.avatarUrl)}`
@@ -2574,7 +2650,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
 
                 let fullEntry = {
                     id: uuid5(`ddb://vehicles/${vehicle.id}`,uuid5.URL),
-                    name: (vehicle.sources.find(s=>s.sourceId<=5))?`${vehicle.name} [Legacy]`:vehicle.name,
+                    name: vehicle.name,//(vehicle.sources.find(s=>s.sourceId<=5))?`${vehicle.name} [Legacy]`:vehicle.name,
                     descr: tdSvc.turndown(fixDDBTag(vehicle.description)).replaceAll(markDownLinks,this.v5LinkAdj),
                     sources: vehicle.sources
                         .filter(s=>this.ruledata.sources.find(r=>r.id===s.sourceId))
@@ -2584,6 +2660,16 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                         })),
                     data: entry
                 }
+                let tags = []
+                let attributes = { }
+                if (vehicle.isLegacy) {
+                    tags.push( "Legacy" )
+                    attributes.legacy = true
+                }
+                if (vehicle.tags) tags.push(...vehicle.tags)
+                fullEntry.tags = tags
+                fullEntry.attributes = attributes
+                fullEntry.systemVersion = systemVersion
                 try{
                     if ((vehicle.largeAvatarUrl||vehicle.avatarUrl)&&this.art?.includes('artwork')) {
                         var imageFile = `${uuid5(vehicle.largeAvatarUrl||vehicle.avatarUrl,uuid5.URL)}${path.extname(vehicle.largeAvatarUrl||vehicle.avatarUrl)}`
@@ -2683,7 +2769,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     "strReq": "str"
                 }
                 let key = keyMap[k] || k
-                if (["name","slug","token","image","descr","source","tags","page","sources","modifiers"].includes(key)) {
+                if (["name","slug","token","image","descr","source","tags","page","sources","modifiers","attributes"].includes(key)) {
                     if (key == "descr") {
                         attrib[k]=attrib[k].replaceAll(markDownLinks,this.v5LinkAdj)
                     }
@@ -2712,6 +2798,33 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                             obj.data.abilities = {}
                         }
                         obj.data.abilities[key] = attrib[k]
+                    } else if ( k == "alignment") {
+			let alignment
+                        switch(attrib[k]) {
+				case "Lawful Good":
+					alignment = "LG"; break;
+				case "Neutral Good":
+					alignment = "NG"; break;
+				case "Chaotic Good":
+					alignment = "CG"; break;
+				case "Lawful Neutral":
+					alignment = "LN"; break;
+				case "Neutral":
+					alignment = "NN"; break;
+				case "Chaotic Neutral":
+					alignment = "CN"; break;
+				case "Lawful Evil":
+					alignment = "LE"; break;
+				case "Neutral Evil":
+					alignment = "NE"; break;
+				case "Chaotic Evil":
+					alignment = "CE"; break;
+				case "Unaligned":
+					alignment = "UU"; break;
+                            	default:
+					alignment = attrib[k]
+                        }
+			obj.data[key] = alignment
                     } else {
                         if (k=='rarity') attrib[k] = attrib[k].toLowerCase().replace(/(\s|-)+/g,'')
                         obj.data[key] = (typeof attrib[k] === 'string')?attrib[k].replaceAll(markDownLinks,this.v5LinkAdj):attrib[k]
@@ -2741,7 +2854,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
             backgrounds,
             { classes, subclasses },
             feats,
-            races,
+            species,
             vehicles
         ] = await Promise.all([
             this.getMonsters(monsterIds||source,null,zip,imageMap,prog,homebrew,tdSvc),
@@ -2816,7 +2929,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
         await zip.addFile("classes.json",Buffer.from(JSON.stringify(classes),'utf8'),null)
         await zip.addFile("subclasses.json",Buffer.from(JSON.stringify(subclasses),'utf8'),null)
         await zip.addFile("feats.json",Buffer.from(JSON.stringify(feats),'utf8'),null)
-        await zip.addFile("races.json",Buffer.from(JSON.stringify(races),'utf8'),null)
+        await zip.addFile("species.json",Buffer.from(JSON.stringify(species),'utf8'),null)
         //await zip.addFile("conditions.json",Buffer.from(JSON.stringify(conditions),'utf8'),null)
         if (source == null || source == 148) {
             prog.detail = `Exporting actions`
@@ -3194,6 +3307,22 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
         if (errors.length > 0) return errors;
     }
 
+    async getMonsterExtras(force=false) {
+        const url = "https://character-service.dndbeyond.com/character/v5/game-data/monsters"
+        const params = (this.gameId)? qs.stringify({ 'sharingSetting': 2, 'campaignId': this.gameId }) : qs.stringify({ 'sharingSetting': 2 })
+        if (this.userId) await this.getCobaltAuth()
+        let res
+        if (fs.existsSync(path.join(app.getPath("cache"),app.getName(),"datacache",`monster_extras_cache.json`))) {
+             res = JSON.parse(fs.readFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`monster_extras_cache.json`)))
+        }
+        if (force || !res || this.cacheInvalid || this.manifestTimestamp > res.lastUpdate) {
+            res = await this.getRequest(`${url}?${params}`,(this.cobaltauth)?true:false).catch(e =>{ console.log(`Could not retrieve monster extras data: ${e}`); throw `Could not retrieve monster extras data: ${e}`; })
+            res.lastUpdate = (new Date()).getTime()
+            fs.writeFileSync(path.join(app.getPath("cache"),app.getName(),"datacache",`monster_extras_cache.json`),JSON.stringify(res))
+        }
+        return res
+    }
+
     async getMonsterCount(source = 0,homebrew = false) {
         if (!homebrew) {
             const count = await new Promise((resolve,reject)=>{
@@ -3261,6 +3390,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
         }
     }
     async getMonsters(source = 0,filename,zip=null,imageMap=null,prog=null,homebrew=false,tdSvc=null) {
+        await this.getMonsterExtras()
         const url = "https://monster-service.dndbeyond.com/v1/Monster"
         var params
         const count = (source instanceof Array)?source.length:await this.getMonsterCount(source,homebrew).catch((e)=>console.log(e))
@@ -3440,21 +3570,29 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
     }
 
     async getMonsterEntry(monster,zip,tdSvc) {
+            const monsterExtras = await this.getMonsterExtras()
             let monsterName = monster.name//(monster.sources.find(s=>s.sourceId<=5))?`${monster.name} (2014)`:monster.name
             var monsterEntry = {
                 _name: "monster",
                 _attrs: { id: uuid5(`ddb://monsters/${monster.id}`,uuid5.URL) },
                 _content: [
-                    {name: (monster.isLegacy&&this.legacy=='mark')? `${monsterName} [Legacy]` : monsterName},
-                    {slug: slugify((monster.isLegacy&&this.legacy=='mark')? `${monsterName} [Legacy]` : monsterName)},
+                    {name: (monster.isLegacy&&this.legacy=='mark'&&!tdSvc)? `${monsterName} [Legacy]` : monsterName},
+                    {slug: slugify((monster.isLegacy&&this.legacy=='mark'&&!tdSvc)? `${monsterName} [Legacy]` : monsterName)},
                     {size: this.ruledata.creatureSizes.find(s=>s.id===monster.sizeId).name.charAt(0).toUpperCase()},
                     {alignment: this.ruledata.alignments.find(s=>s.id===monster.alignmentId)?.name||undefined},
                     {ac: `${monster.armorClass} ${monster.armorClassDescription}`},
                     {hp: `${monster.averageHitPoints} (${monster.hitPointDice.diceString})`},
                     {role: 'enemy'},
                     {passive: monster.passivePerception},
-                    {tags: monster.tags || []}
                 ] }
+            let attributes = { ruleset: (monsterExtras.data.find(m=>m.id==monster.id)?.statBlockType)?'5.5e':'5e' }
+            let tags = []
+            if (monster.isLegacy) {
+                tags.push( "Legacy" )
+                attributes.legacy = true
+            }
+            if (monster.tags) tags.push(...monster.tags)
+            monsterEntry._content.push({attributes}, {tags: tags })
         /*
             if (monster.tags.includes("NPC")){
                 if (!notNPC.includes(monster.name)) {

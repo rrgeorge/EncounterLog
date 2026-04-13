@@ -9,6 +9,15 @@ function convertCharacter(ddb,rules) {
     this.v5LinkAdj = (m,p1,p2,p3) => {
         return `${p1}${fixDDBLinks(p2,rules,true)}${p3}`
     }
+    const getSrcRef = (m) => {
+        const fS = m.sources[0]
+        const src = rules.sources.find(s=>s.id==fS.sourceId)
+        if (fS && src) {
+            return `/${src.name.toLowerCase()}`
+        } else {
+            return ''
+        }
+    }
     applyModifier = (m) => {
         if (m.type == "bonus" && m.entityTypeId==1472902489) {
             const stat = rules.stats.find(s=>s.id==m.entityId).key.toLowerCase()
@@ -80,7 +89,7 @@ function convertCharacter(ddb,rules) {
         } else if (m.type == "set" && m.subType == "subclass") {
             return
         } else if (m.type == "size") {
-            data.race.size = rules.creatureSizes.find(s=>s.id==m.entityId).name.charAt(0).toUpperCase()
+            data.species.size = rules.creatureSizes.find(s=>s.id==m.entityId).name.charAt(0).toUpperCase()
         } else {
             console.log(`Unknown modifier ${m.type}: ${m.subType} -> ${m.fixedValue}/${m.value}`)
             //console.log(m)
@@ -319,15 +328,16 @@ function convertCharacter(ddb,rules) {
     }
     const addSpell = (m,i) => {
         try {
-        spellName = (m.definition.isLegacy)?`${m.definition.name} [Legacy]`:m.definition.name
-            //(m.definition.sources.find(s=>s.sourceId<=5))?`${m.definition.name} (2014)`:m.definition.name
-            //
+            spellName = m.definition.name
         } catch (e) {
+            console.error('!!')
+            console.error(e)
             console.error(m);
+            return
         }
         data.spells.push({
             name: spellName,
-            reference: `/spell/${slugify(spellName)}`,
+            reference: `/spell/${slugify(spellName)}${getSrcRef(m.definition)}`,
             level: m.definition.level
         })
         const damage = m.definition.modifiers.find(mod=>mod.type=='damage')
@@ -348,7 +358,7 @@ function convertCharacter(ddb,rules) {
             let action = m.definition
             action.name = spellName
             action.attackType = "spell"
-            action.reference = `/spell/${slugify(spellName)}`
+            action.reference = `/spell/${slugify(spellName)}${getSrcRef(m.definition)}`
             if (m.definition.requiresAttackRoll) action.attack = attack
             if (m.definition.requiresSavingThrow) {
                 action.savingThrow = savedc
@@ -421,12 +431,12 @@ function convertCharacter(ddb,rules) {
     data.armorProficiencies = []
     data.toolProficiencies = []
     data.limitedUseActions = {}
-    let raceName = (ddb.race.isLegacy)?`${ddb.race.fullName} [Legacy]`:ddb.race.fullName
+    let raceName = ddb.race.fullName
         //(ddb.race.sources.find(s=>s.sourceId<=5))?`${ddb.race.fullName} (2014)`:ddb.race.fullName
-    data.race = {
+    data.species = {
         name: raceName,
         descr: tdSvc.turndown(ddb.race.description),
-        reference: `/race/${slugify(raceName)}`,
+        reference: `/species/${slugify(raceName)}${getSrcRef(ddb.race)}`,
         size: rules.creatureSizes.find(s=>s.id==ddb.race.sizeId)?.name.charAt(0).toUpperCase(),
         speed: {
             walk: ddb.race.weightSpeeds?.normal?.walk,
@@ -442,11 +452,11 @@ function convertCharacter(ddb,rules) {
     }
     ddb.modifiers.race.forEach(applyModifier)
     if (ddb.background?.definition) {
-        let backgroundName = (ddb.background.definition.sources.find(s=>s.sourceId<=5))?`${ddb.background.definition.name} [Legacy]`:ddb.background.definition.name
+        let backgroundName = ddb.background.definition.name
         data.background = {
             name: backgroundName,
             descr: tdSvc.turndown(ddb.background.definition.shortDescription.replace(/(<table[^>]*>)<caption>(.*)<\/caption>/s,'$2\n$1')).replaceAll(markDownLinks,this.v5LinkAdj),
-            reference: `/background/${slugify(backgroundName)}`,
+            reference: `/background/${slugify(backgroundName)}${getSrcRef(ddb.background.definition)}`,
         }
         if (ddb.background.definition.featureDescription) {
             data.background.entries = [
@@ -459,9 +469,9 @@ function convertCharacter(ddb,rules) {
         ddb.modifiers.background.forEach(applyModifier)
     }
     data.classes = ddb.classes.sort((a,b)=>a.isStartingClass?-1:b.isStartingClass?1:0).map(c=>({
-        name: (c.definition.sources.find(s=>s.sourceId<=5))?`${c.definition.name} [Legacy]`:c.definition.name,
+        name: c.definition.name,
         level: c.level,
-        reference: `/class/${slugify((c.definition.sources.find(s=>s.sourceId<=5))?`${c.definition.name} [Legacy]`:c.definition.name)}`,
+        reference: `/class/${slugify(c.definition.name)}${getSrcRef(c.definition)}`,
         descr: tdSvc.turndown(c.definition.description),
         castSpells: c.definition.canCastSpells||c.subclassDefinition?.canCastSpells,
         spellcastingAbility: (c.definition.canCastSpells)?
@@ -486,15 +496,15 @@ function convertCharacter(ddb,rules) {
 
     data.feats = ddb.feats.map(f=>{
         return {
-            name: (f.definition.sources.find(s=>s.sourceId<=5))?`${f.definition.name} [Legacy]`:f.definition.name,
+            name: f.definition.name,
             descr: tdSvc.turndown(f.definition.description).replaceAll(markDownLinks,v5LinkAdj),
-            reference: `/feat/${slugify((f.definition.sources.find(s=>s.sourceId<=5))?`${f.definition.name} [Legacy]`:f.definition.name)}`
+            reference: `/feat/${slugify(f.definition.name)}${getSrcRef(f.definition)}`
         }
     })
     ddb.modifiers.feat.forEach(applyModifier)
 
     data.items = ddb.inventory.map(i=>{
-        let name = (i.definition.isLegacy)?`${i.definition.name} [Legacy]`:i.definition.name
+        let name = i.definition.name
             //(i.definition.sources.find(s=>s.sourceId<=5))?`${i.definition.name} (2014)`:i.definition.name
         return({
             id: i.id.toString(),
@@ -504,7 +514,7 @@ function convertCharacter(ddb,rules) {
             equipped: i.equipped,
             quantity: i.quantity,
             parentId: (i.containerEntityId!=ddb.id)?i.containerEntityId.toString():null,
-            reference: `/item/${slugify(name)}`
+            reference: `/item/${slugify(name)}${getSrcRef(i.definition)}`
         })
     }
     )
