@@ -20,7 +20,7 @@ const fs = require('fs');
 const semver = require('semver');
 const turndown = require('turndown');
 const turndownGfm = require('@rrgeorge/turndown-plugin-gfm');
-const { slugify, camelCase, fixDDBLinks, fixDDBTag, markDownLinks, markDownImages, sanitize } = require('./ddbutils');
+const { slugify, camelCase, fixDDBLinks, fixDDBTag, markDownLinks, markDownImages, sanitize, systemVersion } = require('./ddbutils');
 const convertCharacter = require('./convert-character');
 
 const RATE = 100000
@@ -2663,7 +2663,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
             let obj = {
                 id: o._attrs.id,
                 data: {},
-                systemVersion: 'v0.9.12'
+                systemVersion: systemVersion
             }
             for (const attrib of o._content) {
                 const keys = Object.keys(attrib)

@@ -1,7 +1,7 @@
 const turndown = require('turndown');
 const turndownGfm = require('@rrgeorge/turndown-plugin-gfm');
-
-const { slugify, camelCase, fixDDBLinks, fixDDBTag, markDownLinks } = require('./ddbutils');
+const DDB = require('./ddb')
+const { slugify, camelCase, fixDDBLinks, fixDDBTag, markDownLinks, systemVersion } = require('./ddbutils');
 
 function convertCharacter(ddb,rules) {
     const tdSvc = new turndown()
