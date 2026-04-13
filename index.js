@@ -2008,7 +2008,10 @@ function connectEWS(msg=null,initial=false) {
         return
     }
     getEAPI()
-    if (!_eWs || _eWs.readyState !== WebSocket.OPEN) {
+    if (_eWs && _eWs.readyState === WebSocket.CONNECTING) {
+        //setTimeout(()=>connectEWS(msg,initial),100)
+        if (msg) _eWs.once('open',()=>_eWs.send(msg))
+    } else if (!_eWs || _eWs.readyState !== WebSocket.OPEN) {
         let epWs = new URL("ws",encounterhost)
         epWs.protocol = epWs.protocol.replace("http","ws")
         _eWs = new WebSocket(epWs.href)
