@@ -2867,20 +2867,22 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
             }
             return obj
         }
-        if (!prog) prog = new ProgressBar({title: "Please wait...",text: "Converting Compendium...", detail: "Please wait...", indeterminate: false, maxValue: 100})
+        if (!prog) {
+            prog = new ProgressBar({title: "Please wait...",text: "Converting Compendium...", detail: "Please wait...", indeterminate: false, maxValue: 100})
+            console.log("Creating progress bar...")
+            await new Promise(resolve=>{
+                prog.on('ready',()=>resolve())
+            })
+        }
         process.once('unhandledRejection', (reason, _) => {
             if (prog) prog.close()
             dialog.showErrorBox('Unexpected error', `An unexpected error occurred while trying to convert the module: ${reason.stack||reason}`)
               // Application specific logging, throwing an error, or other logic here
         });
-        if (!prog.isInProgress) {
-            await new Promise(resolve=>{
-                prog.on('ready',()=>resolve())
-            })
-        }
         prog.value = 0
         await this.getCobaltAuth()
         if (!this.ruledata) await this.getRuleData().catch(e=>{throw new Error(e)})
+        
         const [
             monstersxml,
             itemsxml,
@@ -3287,6 +3289,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     "id": uuid5(`EncounterLog.play5e.online`,uuid5.DNS),
                     "name": "EncounterLog Compendium",
                     "slug": "encounterlog-compendium",
+                    "author": "D&D Beyond via EncounterLog",
                     "version": app.getVersion(),
                     "category": "Compendium",
                     "descr": "EncounterLog Export of Compendium from D&D Beyond.",
@@ -4723,7 +4726,17 @@ font-weight: bold;
                         try {
                             console.log(`Retrieving ${css}`)
                             prog.detail = "Retrieving stylesheet resources"
-                            let cssBuf = await this.getImage(css).catch(e=>console.log(`Error retrieving ${css}: ${e}`))
+                            let cssBuf = await this.getImage(css).catch(e=>{
+                                    console.log(`Error retrieving ${css}: ${e}`)
+                                    prog.detail(`Error retrieving stylesheet resource ${css}: ${e}`)
+                                })
+                            if (!cssBuf) {
+                                prog.detail = "Error retrieving stylesheet resources, trying again"
+                                cssBuf = await this.getImage(css).catch(e=>{
+                                        console.log(`Error retrieving ${css}: ${e}`)
+                                        prog.detail(`Could not retrieve stylesheet resource ${css}: ${e}`)
+                                })
+                            }
                             let cssTxt = cssBuf
                                 .toString('utf8').replaceAll(/url\((['"]?)((?:(?:https?:)?\/\/|\.\.).*?)(?:\1)\)/g,(m,m1,m2)=>{
                                     if (!m2.startsWith("http")&&m2.startsWith("//")) m2 = "https:" + m2
