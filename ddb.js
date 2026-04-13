@@ -38,6 +38,16 @@ const numbers = {
     ten: 10
 }
 
+const masteries = [
+    "cleave",
+    "graze",
+    "nick",
+    "push",
+    "sap",
+    "slow",
+    "topple",
+    "vex",
+]
 const isNPC = [
     "Spiderbait",
     "Yuk Yuk"
@@ -1354,11 +1364,21 @@ class DDB {
                         itemEntry._content.push({modifiers: modifiers})
                     }
                     if (tdSvc) {
+                        
                         if (item.properties.length > 0) {
                             itemEntry._content.push({
-                                properties: item.properties.map(m=>
+                                properties: item.properties.filter(p=>!masteries.includes(p.name.toLowerCase())).map(m=>
                                     camelCase(m.name)
                                 )})
+                            if (item.properties.filter(p=>masteries.includes(p.name.toLowerCase())).length > 1) console.log(item.name,"HAS MORE THAN 1 MASTERY!",item.properties.filter(p=>masteries.includes(p.name.toLowerCase())))
+                            if (item.properties.find(p=>masteries.includes(p.name.toLowerCase())))
+                                itemEntry._content.push({
+                                    mastery: item.properties.find(p=>masteries.includes(p.name.toLowerCase())).name.toLowerCase()
+                                })
+                            if (item.properties.find(p=>p.name=="Versatile")) 
+                                itemEntry._content.push({
+                                    dmg2: item.properties.find(p=>p.name=="Versatile").notes
+                                })
                         }
                     } else {
                         let props = []
@@ -3031,6 +3051,15 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                 )
                 resolve(senses)
             })
+            prog.detail = `Exporting weapon properties`
+            const weaponprops = this.ruledata.weaponProperties.map(c=>({
+                        id: uuid5(`ddb://combat/${c.id}`,uuid5.URL),
+                        name: c.name,
+                        slug: slugify(`${camelCase(c.name)}`),
+                        descr: tdSvc.turndown(c.description.replace(/(<table[^>]*>)<caption>(.*?)<\/caption>/sg,'$2\n$1')),
+                        type: "combat",
+                        tags: [ "Weapon Property" ]
+                    }))
             prog.detail = `Exporting rules`
             const rules = await new Promise((resolve,reject)=>{
                 if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
