@@ -3072,7 +3072,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     name: s.Name,
                     slug: slugify(`${s.Name}`),
                     descr: tdSvc.turndown(s.Value||'').replaceAll(markDownLinks,this.v5LinkAdj),
-                    type: "Other",
+                    type: "other",
                     tags: [
                         "Rule"
                     ],
@@ -3092,7 +3092,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     name: s.Name,
                     slug: slugify(`${s.Name}`),
                     descr: tdSvc.turndown(s.Value||'').replaceAll(markDownLinks,this.v5LinkAdj),
-                    type: "Other",
+                    type: "other",
                     tags: [
                         "Rules Glossary"
                     ],
@@ -3126,7 +3126,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
             const sources = manifest.map(s=>{
                 zip.addLocalFile(path.join(app.getPath("userData"),"book-covers",s.ImageUrl),"rules",`source-${s.ImageUrl}`)
                 return {
-                    id: uuid5(`https://www.dndbeyond.com/sources/dnd${s.DirectoryName}`,uuid5.URL),
+                    id: uuid5(`https://www.dndbeyond.com/sources/dnd/${s.DirectoryName}`,uuid5.URL),
                     name: s.Title,
                     slug: s.DirectoryName,
                     type: "source",
@@ -3135,6 +3135,48 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                     image: `source-${s.ImageUrl}`
                 }
             })
+            let missingSrcs = []
+            const findMissingSrc = e=>{
+                e.sources?.forEach(a=>{
+                    if (sources.find(s=>s.slug==a.name)) return
+                    if (!missingSrcs.includes(a.name)) missingSrcs.push(a.name)
+                })
+            }
+            console.log(Date.now(),'Checking for missing sources')
+            items.forEach(findMissingSrc)
+            spells.forEach(findMissingSrc)
+            monsters.forEach(findMissingSrc)
+            classes.forEach(findMissingSrc)
+            subclasses.forEach(findMissingSrc)
+            vehicles.forEach(findMissingSrc)
+            backgrounds.forEach(findMissingSrc)
+            feats.forEach(findMissingSrc)
+            species.forEach(findMissingSrc)
+
+            console.log(Date.now(),"Missing Sources: ",missingSrcs)
+
+            const xtraSrc = await Promise.all(this.ruledata.sources.filter(s=>missingSrcs.find(sr=>sr==s.name.toLowerCase())).map(async s=>{
+                let obj = {
+                    id: uuid5(`https://www.dndbeyond.com/sources/dnd/${s.name.toLowerCase()}`,uuid5.URL),
+                    name: s.description,
+                    slug: s.name.toLowerCase(),
+                    type: "source",
+                    tags: [ "Source" ]
+                }
+                if (s.avatarURL) {
+                    // Fix CR source image
+                    if (s.name == "CR") s.avatarURL = "https://www.dndbeyond.com/avatars/105/174/636512853628516966.png"
+                    const ext = path.extname(s.avatarURL)
+                    if (ext) {
+                        const image = await this.getImage(s.avatarURL).catch(e=>`Couldn't download cover for ${s.name}: ${e}`)
+                        if (image) {
+                            zip.addFile(`rules/source-${s.name.toLowerCase()}${ext}`, image)
+                            obj.image = `source-${s.name.toLowerCase()}${ext}`
+                        }
+                    }
+                }
+                return obj
+            }))
             await zip.addFile("rules.json",Buffer.from(JSON.stringify([
                 ...actions,
                 ...conditions,
@@ -3142,6 +3184,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                 ...skills,
                 ...senses,
                 ...sources,
+                ...xtraSrc,
                 ...rules,
                 ...glossary
             ]),'utf8'),null)
@@ -3199,7 +3242,7 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                         "descr": "",
                         "image": `rules/source-${sourceInfo.name}.jpg`,
                         "system": "dnd5e",
-                        "tags": [ 'D&D Beyond', 'Compandium' ]
+                        "tags": [ 'D&D Beyond', 'Compendium' ]
                     }),'utf8'),null)
                 } else {
                     console.warn(`COULD NOT ADD module.json FOR UNKNOWN MODULE ID ${source}`)

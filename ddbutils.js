@@ -172,8 +172,9 @@ function fixDDBLinks(text,rulesdata,v5=false) {
             let base = p1
             let id = (p3)?p3:uuid5(`ddb://${p1}/${p2}`,uuid5.URL)
             if (p1.endsWith('s')) base = p1.slice(0,-1)
-            if (['armor','weapons','adventuring-gear','magic-items','equipment'].includes(p1)) base = 'item'
+            if (['armor','weapons','adventuring-gear','magic-items','equipment','magicitems'].includes(p1)) base = 'item'
             if (p1 == 'rulesglossary') base = 'other'
+            if (p1 == 'loreglossary') base = 'other'
             return `/${base}/${id}`
         })
 
