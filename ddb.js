@@ -431,7 +431,21 @@ class DDB {
                 )
                 resolve(glossary)
             })
-            this.ruledata.sq = { senses, rules, glossary }
+            const loreglossary = await new Promise((resolve,reject)=>{
+                if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                    let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                    manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
+                }
+                const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
+                const loreglossary = db.prepare(`SELECT RPGLoreGlossary.ID AS ID,Name,GROUP_CONCAT(Text,'<br>') AS Value FROM RPGLoreGlossary LEFT JOIN HTMLDescription ON RPGLoreGlossary.ID=HTMLDescription.EntityID AND HTMLDescription.EntityTypeID=(SELECT ID From EntityType WHERE Name='RPGLoreGlossary') GROUP BY RPGLoreGlossary.ID ORDER BY RPGLoreGlossary.ID,HTMLDescription.DisplayOrder;`).all().map(s=>({
+                    id: s.ID,
+                    name: s.Name,
+                    value: s.Value
+                })
+                )
+                resolve(loreglossary)
+            })
+            this.ruledata.sq = { senses, rules, glossary, loreglossary }
         }
 
         this.v5LinkAdj = (m,p1,p2,p3) => {
@@ -3100,6 +3114,25 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                 )
                 resolve(glossary)
             })
+            const loreglossary = await new Promise((resolve,reject)=>{
+                if (!fs.existsSync(path.join(app.getPath("userData"),"skeleton.db3"))) {
+                    let manifest = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
+                    manifest.extractEntryTo("skeleton.db3",app.getPath("userData"))
+                }
+                const db = new sqlite3(path.join(app.getPath("userData"),"skeleton.db3"))
+                const loreglossary = db.prepare(`SELECT RPGLoreGlossary.ID AS ID,Name,GROUP_CONCAT(Text,'<br>') AS Value FROM RPGLoreGlossary LEFT JOIN HTMLDescription ON RPGLoreGlossary.ID=HTMLDescription.EntityID AND HTMLDescription.EntityTypeID=(SELECT ID From EntityType WHERE Name='RPGLoreGlossary') GROUP BY RPGLoreGlossary.ID ORDER BY RPGLoreGlossary.ID,HTMLDescription.DisplayOrder;`).all().map(s=>({
+                    id: uuid5(`ddb://loreglossary/${s.ID}`,uuid5.URL),
+                    name: s.Name,
+                    slug: slugify(`${s.Name}`),
+                    descr: tdSvc.turndown(s.Value||'').replaceAll(markDownLinks,this.v5LinkAdj),
+                    type: "other",
+                    tags: [
+                        "Lore Glossary"
+                    ],
+                })
+                )
+                resolve(loreglossary)
+            })
             prog.detail = `Exporting sources`
             let manifestZip = new AdmZip(path.join(app.getPath("userData"),"manifest.zip"))
             if (!fs.existsSync(path.join(app.getPath("userData"),"manifest.json"))) {
@@ -3186,7 +3219,9 @@ ${background.flaws.map(r=>`| ${r.diceRoll} | ${r.description} |`).join('\n')}
                 ...sources,
                 ...xtraSrc,
                 ...rules,
-                ...glossary
+                ...glossary,
+                ...loreglossary,
+                ...weaponprops
             ]),'utf8'),null)
         } else {
             prog.detail = `Exporting sources`

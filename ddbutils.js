@@ -164,6 +164,8 @@ function fixDDBLinks(text,rulesdata,v5=false) {
                     return `/spell/${(p3)?p3:uuid5(`ddb://${p1}/${p2}`,uuid5.URL)}`;
                 case "rulesglossary":
                     return `/other/${(p3)?p3:uuid5(`ddb://${p1}/${p2}`,uuid5.URL)}`;
+                case "loreglossary":
+                    return `/other/${(p3)?p3:uuid5(`ddb://${p1}/${p2}`,uuid5.URL)}`;
                 default:
                     return `/item/${(p3)?p3:uuid5(`ddb://${p1}/${p2}`,uuid5.URL)}`;
             }
