@@ -859,7 +859,7 @@ function populateCompendiumMenu(force=false) {
                                                 httpServer.server.then((s)=>{
                                                     dialog.showMessageBox(_win,{
                                                         title: 'Server Running',
-                                                        message: `The web server is running. Set the manifest to:\nhttp://${httpServer.ipaddr}:${httpServer.port}\nIt will shutdown after you close this dialog.`,
+                                                        message: `The web server is running. Set the manifest to:\nhttp://${httpServer.hostname||httpServer.ipaddr}:${httpServer.port}\nIt will shutdown after you close this dialog.`,
                                                         type: "info"
                                                     }).then((r)=>{
                                                         s.close()
@@ -929,7 +929,7 @@ function populateCompendiumMenu(force=false) {
                                             httpServer.server.then((s)=>{
                                                 dialog.showMessageBox(_win,{
                                                     title: 'Server Running',
-                                                    message: `The web server is running. Set the manifest to:\nhttp://${httpServer.ipaddr}:${httpServer.port}\nIt will shutdown after you close this dialog.`,
+                                                    message: `The web server is running. Set the manifest to:\nhttp://${httpServer.hostname||httpServer.ipaddr}:${httpServer.port}\nIt will shutdown after you close this dialog.`,
                                                     type: "info"
                                                 }).then((r)=>{
                                                     s.close()
@@ -1008,7 +1008,7 @@ function populateCompendiumMenu(force=false) {
                                                 httpServer.server.then((s)=>{
                                                     dialog.showMessageBox(_win,{
                                                         title: 'Server Running',
-                                                        message: `The web server is running. Set the manifest to:\nhttp://${httpServer.ipaddr}:${httpServer.port}\nIt will shutdown after you close this dialog.`,
+                                                        message: `The web server is running. Set the manifest to:\nhttp://${httpServer.hostname||httpServer.ipaddr}:${httpServer.port}\nIt will shutdown after you close this dialog.`,
                                                         type: "info"
                                                     }).then((r)=>{
                                                         s.close()
@@ -1083,7 +1083,7 @@ function populateCompendiumMenu(force=false) {
                                     httpServer.server.then((s)=>{
                                         dialog.showMessageBox(_win,{
                                             title: 'Server Running',
-                                            message: `The web server is running. Set the manifest to:\nhttp://${httpServer.ipaddr}:${httpServer.port}\nIt will shutdown after you close this dialog.`,
+                                            message: `The web server is running. Set the manifest to:\nhttp://${httpServer.hostname||httpServer.ipaddr}:${httpServer.port}\nIt will shutdown after you close this dialog.`,
                                             type: "info"
                                         }).then((r)=>{
                                             s.close()
@@ -1156,7 +1156,7 @@ function populateCompendiumMenu(force=false) {
                                     httpServer.server.then((s)=>{
                                         dialog.showMessageBox(_win,{
                                             title: 'Server Running',
-                                            message: `The web server is running. Set the manifest to:\nhttp://${httpServer.ipaddr}:${httpServer.port}\nIt will shutdown after you close this dialog.`,
+                                            message: `The web server is running. Set the manifest to:\nhttp://${httpServer.hostname||httpServer.ipaddr}:${httpServer.port}\nIt will shutdown after you close this dialog.`,
                                             type: "info"
                                         }).then((r)=>{
                                             s.close()
@@ -1323,7 +1323,7 @@ function convertCharactersV5(campaignId) {
                 httpServer.server.then((s)=>{
                     dialog.showMessageBox(_win,{
                         title: 'Server Running',
-                        message: `The web server is running. Set the manifest to:\nhttp://${httpServer.ipaddr}:${httpServer.port}\nIt will shutdown after you close this dialog.`,
+                        message: `The web server is running. Set the manifest to:\nhttp://${httpServer.hostname||httpServer.ipaddr}:${httpServer.port}\nIt will shutdown after you close this dialog.`,
                         detail: `This will load ${path.basename(save.filePath)}`,
                         type: "info"
                     }).then((r)=>{

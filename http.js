@@ -1,6 +1,8 @@
 const { app } = require('electron')
 const express = require('express')
 const { networkInterfaces } = require('os')
+const { hostname } = require('os')
+const { lookup } = require('dns')
 const path = require('path')
 class http {
     get ipaddr() {
@@ -8,6 +10,9 @@ class http {
     }
     get port() {
         return this.app.locals.port
+    }
+    get hostname() {
+        return this.app.locals.hostname
     }
 
     constructor(filename,code,name) {
@@ -42,7 +47,7 @@ class http {
 
         this.server = new Promise((resolve,reject)=>{
             try{
-                let server = this.app.listen(0,'::',()=>{
+                let server = this.app.listen(55123,'::',()=>{
                     console.log("Server started.")
                     const nets = networkInterfaces()
                     for (const net of Object.keys(nets)) {
@@ -54,9 +59,17 @@ class http {
                         }
                         if (this.app.locals.ip) break;
                     }
-                    console.log(server.address())
                     this.app.locals.port = server.address()?.port
-                    resolve(server)
+                    console.log("Checking hostname",hostname(),"matches ip")
+                    lookup(hostname(), (err, address) =>{
+                        console.log(err,address)
+                        if (err) return resolve(server)
+                        if (address == this.app.locals.ip) {
+                            this.app.locals.hostname = hostname()
+                        }
+                        return resolve(server)
+                    })
+                    console.log(server.address())
                 })
             } catch(e) {
                 reject(e)
