@@ -11,7 +11,7 @@ function convertCharacter(ddb,rules) {
     }
     const getSrcRef = (m) => {
         const fS = m.sources[0]
-        const src = rules.sources.find(s=>s.id==fS.sourceId)
+        const src = rules.sources.find(s=>s.id==fS?.sourceId)
         if (fS && src) {
             return `/${src.name.toLowerCase()}`
         } else {
